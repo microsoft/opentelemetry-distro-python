@@ -1,0 +1,9 @@
+-e ../../../eng/tools/azure-sdk-tools
+pytest
+django
+fastapi-slim
+flask
+psycopg2-binary
+requests
+urllib3
+brotli
