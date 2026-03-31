@@ -75,7 +75,7 @@ pytest
 ## Reference
 
 - POC repo: https://github.com/azure-data/microsoft-opentelemetry-distro-poc
-- Planning document: [PLANNING.md](/c:/Repos/microsoft-opentelemetry-distro-python/PLANNING.md)
+- Planning document: [PLANNING.md](./PLANNING.md)
 
 ## Contributing
 
