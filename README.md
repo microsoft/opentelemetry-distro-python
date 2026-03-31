@@ -1,4 +1,4 @@
-# microsoft-opentelemetry-distro-python
+# microsoft-opentelemetry
 
 [![PyPI version](https://img.shields.io/pypi/v/microsoft-opentelemetry)](https://pypi.org/project/microsoft-opentelemetry/)
 
