@@ -4,6 +4,10 @@
 # license information.
 # -------------------------------------------------------------------------
 
+# Extend path so the exporter subpackage (azure-monitor-opentelemetry-exporter)
+# is discoverable when this package is installed in editable/development mode.
+__path__ = __import__("pkgutil").extend_path(__path__, __name__)
+
 from azure.monitor.opentelemetry._configure import configure_azure_monitor
 
 from ._version import VERSION
