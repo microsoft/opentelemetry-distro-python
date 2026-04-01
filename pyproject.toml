@@ -14,12 +14,33 @@ dependencies = []
 test = [
     "pytest>=8.0",
 ]
+dev = [
+    "black>=24.0",
+    "pylint>=3.3",
+    "pytest>=8.0",
+]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.pylint.main]
+py-version = "3.10"
+
+[tool.pylint.format]
+max-line-length = 88
+
+[tool.pylint.messages_control]
+disable = [
+    "missing-function-docstring",
+    "missing-module-docstring",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

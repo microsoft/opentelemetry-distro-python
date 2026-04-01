@@ -15,13 +15,15 @@ This project has adopted the [Microsoft Open Source Code of Conduct](https://ope
 ## Development Setup
 
 1. Create and activate a virtual environment.
-2. Install the project with test dependencies.
-3. Run the test suite.
+2. Install the project with development dependencies.
+3. Run formatting, linting, and tests before opening a pull request.
 
 ```bash
 python -m venv .venv
 .venv\Scripts\activate
-pip install -e .[test]
+python -m pip install -e .[dev]
+black --check src tests
+pylint src tests
 pytest
 ```
 
