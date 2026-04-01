@@ -46,7 +46,9 @@ class ApplicationInsightsWebSnippetMiddleware(MiddlewareMixin):
         self.get_response = get_response
         self._injector: Optional[WebSnippetInjector] = None
         if not DJANGO_AVAILABLE:
-            _logger.warning("Django not available - ApplicationInsightsWebSnippetMiddleware will not function")
+            _logger.warning(
+                "Django not available - ApplicationInsightsWebSnippetMiddleware will not function"
+            )
             return
 
         # Auto-configure from Django settings if available
@@ -63,7 +65,9 @@ class ApplicationInsightsWebSnippetMiddleware(MiddlewareMixin):
         response = self.get_response(request)
         return self.process_response(request, response)
 
-    def process_response(self, request: HttpRequest, response: HttpResponse) -> HttpResponse:
+    def process_response(
+        self, request: HttpRequest, response: HttpResponse
+    ) -> HttpResponse:
         """Process the response to inject the Application Insights snippet if appropriate.
 
         :param request: Django HTTP request object.
@@ -80,10 +84,14 @@ class ApplicationInsightsWebSnippetMiddleware(MiddlewareMixin):
             content_type = response.get("Content-Type", "")
             content_encoding = response.get("Content-Encoding")
             # Check if we should inject the snippet
-            if not self._injector.should_inject(request.method, content_type, response.content, content_encoding):
+            if not self._injector.should_inject(
+                request.method, content_type, response.content, content_encoding
+            ):
                 return response
             # Inject the snippet with compression handling
-            modified_content, new_encoding = self._injector.inject_with_compression(response.content, content_encoding)
+            modified_content, new_encoding = self._injector.inject_with_compression(
+                response.content, content_encoding
+            )
             # Update response with modified content
             response.content = modified_content
             if new_encoding and new_encoding != content_encoding:
@@ -91,10 +99,16 @@ class ApplicationInsightsWebSnippetMiddleware(MiddlewareMixin):
             # Update content length if it changed
             response["Content-Length"] = str(len(modified_content))
         except Exception as ex:  # pylint: disable=broad-exception-caught
-            _logger.warning("Failed to inject Application Insights snippet: %s", ex, exc_info=True)
+            _logger.warning(
+                "Failed to inject Application Insights snippet: %s", ex, exc_info=True
+            )
         return response
 
-    def configure(self, config: Union[BrowserSDKConfig, dict, str], legacy_config: Optional[dict] = None) -> None:
+    def configure(
+        self,
+        config: Union[BrowserSDKConfig, dict, str],
+        legacy_config: Optional[dict] = None,
+    ) -> None:
         """Configure the middleware with Application Insights settings.
 
         :param config: Configuration object, dict, or connection string.
@@ -104,7 +118,9 @@ class ApplicationInsightsWebSnippetMiddleware(MiddlewareMixin):
         :rtype: None
         """
         if legacy_config:
-            _logger.debug("legacy_config provided to configure(); parameter retained for backward compatibility")
+            _logger.debug(
+                "legacy_config provided to configure(); parameter retained for backward compatibility"
+            )
 
         try:
             if isinstance(config, BrowserSDKConfig):
@@ -122,7 +138,9 @@ class ApplicationInsightsWebSnippetMiddleware(MiddlewareMixin):
                 # Legacy mode: config is connection string
                 snippet_config = BrowserSDKConfig(connection_string=config)
             else:
-                _logger.error("Invalid config type provided to configure(): %s", type(config))
+                _logger.error(
+                    "Invalid config type provided to configure(): %s", type(config)
+                )
                 return
 
             self._injector = WebSnippetInjector(snippet_config)
@@ -144,11 +162,19 @@ class ApplicationInsightsWebSnippetMiddleware(MiddlewareMixin):
                 if isinstance(config, (dict, BrowserSDKConfig)):
                     # Pass the configuration to configure method (handles both dict and BrowserSDKConfig)
                     self.configure(config)
-                    _logger.debug("Auto-configured Application Insights middleware from Django settings")
+                    _logger.debug(
+                        "Auto-configured Application Insights middleware from Django settings"
+                    )
                 else:
-                    _logger.debug("Invalid AZURE_MONITOR_WEB_SNIPPET_CONFIG format in Django settings")
+                    _logger.debug(
+                        "Invalid AZURE_MONITOR_WEB_SNIPPET_CONFIG format in Django settings"
+                    )
             else:
-                _logger.debug("No AZURE_MONITOR_WEB_SNIPPET_CONFIG found in Django settings")
+                _logger.debug(
+                    "No AZURE_MONITOR_WEB_SNIPPET_CONFIG found in Django settings"
+                )
 
         except Exception as ex:  # pylint: disable=broad-exception-caught
-            _logger.debug("Failed to auto-configure from Django settings: %s", ex, exc_info=True)
+            _logger.debug(
+                "Failed to auto-configure from Django settings: %s", ex, exc_info=True
+            )
