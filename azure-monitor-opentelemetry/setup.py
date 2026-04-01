@@ -78,7 +78,7 @@ setup(
     ),
     include_package_data=True,
     package_data={
-        "pytyped": ["py.typed"],
+        "azure.monitor.opentelemetry": ["py.typed"],
     },
     python_requires=">=3.8",
     install_requires=[
