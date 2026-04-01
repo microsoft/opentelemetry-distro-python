@@ -6,8 +6,7 @@
 
 # Import shared constants from azure-monitor-opentelemetry to avoid duplication.
 # The azure-monitor-opentelemetry package defines the base distro constants;
-# this module re-exports them and adds microsoft-specific extensions for
-# OTLP, A365, and GenAI support.
+# this module re-exports them and adds microsoft-specific extensions.
 from azure.monitor.opentelemetry._constants import (  # noqa: F401
     ENABLE_LIVE_METRICS_ARG,
     DISABLE_AZURE_CORE_TRACING_ARG,
@@ -64,30 +63,5 @@ CONNECTION_STRING_ARG = "azure_monitor_connection_string"
 
 _PREVIEW_ENTRY_POINT_WARNING = "Autoinstrumentation for the Microsoft OpenTelemetry Distro is in preview."
 
-# --------------------Exporter Configuration------------------------------------------
-
-# OTLP Exporter
-ENABLE_OTLP_EXPORTER_ARG = "enable_otlp_export"
-OTLP_ENDPOINT_ARG = "otlp_endpoint"
-OTLP_PROTOCOL_ARG = "otlp_protocol"
-OTLP_HEADERS_ARG = "otlp_headers"
-
 # Azure Monitor Exporter
 ENABLE_AZURE_MONITOR_EXPORTER_ARG = "enable_azure_monitor_export"
-
-# Agent365 Exporter
-ENABLE_A365_EXPORTER_ARG = "enable_a365_export"
-A365_TOKEN_RESOLVER_ARG = "a365_token_resolver"
-A365_CLUSTER_CATEGORY_ARG = "a365_cluster_category"
-A365_EXPORTER_OPTIONS_ARG = "a365_exporter_options"
-
-# Agent365 Instrumentations
-ENABLE_A365_OPENAI_INSTRUMENTATION_ARG = "enable_a365_openai_instrumentation"
-ENABLE_A365_LANGCHAIN_INSTRUMENTATION_ARG = "enable_a365_langchain_instrumentation"
-ENABLE_A365_SEMANTICKERNEL_INSTRUMENTATION_ARG = "enable_a365_semantickernel_instrumentation"
-ENABLE_A365_AGENTFRAMEWORK_INSTRUMENTATION_ARG = "enable_a365_agentframework_instrumentation"
-
-# GenAI OTel Contrib Instrumentations
-ENABLE_GENAI_OPENAI_INSTRUMENTATION_ARG = "enable_genai_openai_instrumentation"
-ENABLE_GENAI_OPENAI_AGENTS_INSTRUMENTATION_ARG = "enable_genai_openai_agents_instrumentation"
-ENABLE_GENAI_LANGCHAIN_INSTRUMENTATION_ARG = "enable_genai_langchain_instrumentation"

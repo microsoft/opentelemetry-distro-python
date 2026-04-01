@@ -34,22 +34,7 @@ from azure.monitor.opentelemetry._utils.configurations import (  # noqa: F401
 
 from microsoft.opentelemetry._constants import (
     CONNECTION_STRING_ARG,
-    ENABLE_OTLP_EXPORTER_ARG,
-    OTLP_ENDPOINT_ARG,
-    OTLP_PROTOCOL_ARG,
-    OTLP_HEADERS_ARG,
     ENABLE_AZURE_MONITOR_EXPORTER_ARG,
-    ENABLE_A365_EXPORTER_ARG,
-    A365_TOKEN_RESOLVER_ARG,
-    A365_CLUSTER_CATEGORY_ARG,
-    A365_EXPORTER_OPTIONS_ARG,
-    ENABLE_A365_OPENAI_INSTRUMENTATION_ARG,
-    ENABLE_A365_LANGCHAIN_INSTRUMENTATION_ARG,
-    ENABLE_A365_SEMANTICKERNEL_INSTRUMENTATION_ARG,
-    ENABLE_A365_AGENTFRAMEWORK_INSTRUMENTATION_ARG,
-    ENABLE_GENAI_OPENAI_INSTRUMENTATION_ARG,
-    ENABLE_GENAI_OPENAI_AGENTS_INSTRUMENTATION_ARG,
-    ENABLE_GENAI_LANGCHAIN_INSTRUMENTATION_ARG,
     DISTRO_VERSION_ARG,
 )
 from microsoft.opentelemetry._types import ConfigurationValue
@@ -65,7 +50,7 @@ def _get_configurations(**kwargs) -> Dict[str, ConfigurationValue]:
     Calls the shared azure-monitor-opentelemetry defaults for base settings,
     then applies microsoft-specific defaults for the connection string
     (uses 'azure_monitor_connection_string' instead of 'connection_string')
-    and exporter options (OTLP, A365, GenAI).
+    and Azure Monitor exporter options.
     """
     configurations: Dict[str, Any] = {}
 
@@ -92,7 +77,7 @@ def _get_configurations(**kwargs) -> Dict[str, ConfigurationValue]:
     _default_views(configurations)
     _default_enable_trace_based_sampling(configurations)
     _default_browser_sdk_loader(configurations)
-    # Microsoft-specific: OTLP, Azure Monitor, A365, GenAI exporter/instrumentation defaults
+    # Microsoft-specific: Azure Monitor exporter defaults
     _default_exporter_options(configurations)
 
     return configurations
@@ -113,9 +98,9 @@ def _default_connection_string(configurations):
 
 
 def _default_exporter_options(configurations):
-    """Set default exporter options for OTLP, Azure Monitor, and A365.
+    """Set default exporter options for Azure Monitor.
 
-    Azure Monitor is only enabled when an azure_monitor_connection_string is available
+    Azure Monitor is enabled when an azure_monitor_connection_string is available
     (via parameter or APPLICATIONINSIGHTS_CONNECTION_STRING env var).
     """
     # Azure Monitor exporter: enable only when connection string is present
@@ -130,67 +115,8 @@ def _default_exporter_options(configurations):
         )
         configurations[ENABLE_AZURE_MONITOR_EXPORTER_ARG] = False
 
-    # OTLP exporter: check environment variable or kwarg
-    if ENABLE_OTLP_EXPORTER_ARG not in configurations:
-        configurations[ENABLE_OTLP_EXPORTER_ARG] = (
-            environ.get("ENABLE_OTLP_EXPORTER", "").lower() == "true"
-        )
-    configurations.setdefault(OTLP_ENDPOINT_ARG, environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"))
-    configurations.setdefault(OTLP_PROTOCOL_ARG, environ.get("OTEL_EXPORTER_OTLP_PROTOCOL", "http/protobuf"))
-    configurations.setdefault(OTLP_HEADERS_ARG, environ.get("OTEL_EXPORTER_OTLP_HEADERS"))
-
-    # A365 exporter: auto-enable when a365_token_resolver is provided or
-    # when ENABLE_A365_EXPORTER=true env var is set
-    has_a365_token_resolver = A365_TOKEN_RESOLVER_ARG in configurations and configurations[A365_TOKEN_RESOLVER_ARG] is not None
-    if ENABLE_A365_EXPORTER_ARG not in configurations:
-        configurations[ENABLE_A365_EXPORTER_ARG] = (
-            has_a365_token_resolver
-            or environ.get("ENABLE_A365_EXPORTER", "").lower() == "true"
-        )
-    configurations.setdefault(A365_TOKEN_RESOLVER_ARG, None)
-    configurations.setdefault(A365_CLUSTER_CATEGORY_ARG, environ.get("A365_CLUSTER_CATEGORY", "prod"))
-    configurations.setdefault(A365_EXPORTER_OPTIONS_ARG, None)
-
-    # A365 instrumentations: check environment variables or kwargs
-    if ENABLE_A365_OPENAI_INSTRUMENTATION_ARG not in configurations:
-        configurations[ENABLE_A365_OPENAI_INSTRUMENTATION_ARG] = (
-            environ.get("ENABLE_A365_OPENAI_INSTRUMENTATION", "").lower() == "true"
-        )
-    if ENABLE_A365_LANGCHAIN_INSTRUMENTATION_ARG not in configurations:
-        configurations[ENABLE_A365_LANGCHAIN_INSTRUMENTATION_ARG] = (
-            environ.get("ENABLE_A365_LANGCHAIN_INSTRUMENTATION", "").lower() == "true"
-        )
-    if ENABLE_A365_SEMANTICKERNEL_INSTRUMENTATION_ARG not in configurations:
-        configurations[ENABLE_A365_SEMANTICKERNEL_INSTRUMENTATION_ARG] = (
-            environ.get("ENABLE_A365_SEMANTICKERNEL_INSTRUMENTATION", "").lower() == "true"
-        )
-    if ENABLE_A365_AGENTFRAMEWORK_INSTRUMENTATION_ARG not in configurations:
-        configurations[ENABLE_A365_AGENTFRAMEWORK_INSTRUMENTATION_ARG] = (
-            environ.get("ENABLE_A365_AGENTFRAMEWORK_INSTRUMENTATION", "").lower() == "true"
-        )
-
-    # GenAI OTel contrib instrumentations: check environment variables or kwargs
-    if ENABLE_GENAI_OPENAI_INSTRUMENTATION_ARG not in configurations:
-        configurations[ENABLE_GENAI_OPENAI_INSTRUMENTATION_ARG] = (
-            environ.get("ENABLE_GENAI_OPENAI_INSTRUMENTATION", "").lower() == "true"
-        )
-    if ENABLE_GENAI_OPENAI_AGENTS_INSTRUMENTATION_ARG not in configurations:
-        configurations[ENABLE_GENAI_OPENAI_AGENTS_INSTRUMENTATION_ARG] = (
-            environ.get("ENABLE_GENAI_OPENAI_AGENTS_INSTRUMENTATION", "").lower() == "true"
-        )
-    if ENABLE_GENAI_LANGCHAIN_INSTRUMENTATION_ARG not in configurations:
-        configurations[ENABLE_GENAI_LANGCHAIN_INSTRUMENTATION_ARG] = (
-            environ.get("ENABLE_GENAI_LANGCHAIN_INSTRUMENTATION", "").lower() == "true"
-        )
-
-    # Warn if no exporters are enabled at all
-    if (
-        not configurations[ENABLE_AZURE_MONITOR_EXPORTER_ARG]
-        and not configurations[ENABLE_OTLP_EXPORTER_ARG]
-        and not configurations[ENABLE_A365_EXPORTER_ARG]
-    ):
+    if not configurations[ENABLE_AZURE_MONITOR_EXPORTER_ARG]:
         _logger.warning(
             "No exporters are enabled. Telemetry will be collected but not exported. "
-            "Enable at least one exporter: Azure Monitor (azure_monitor_connection_string), "
-            "OTLP (enable_otlp_export=True), or A365 (enable_a365_export=True)."
+            "Enable Azure Monitor by providing azure_monitor_connection_string."
         )

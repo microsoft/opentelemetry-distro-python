@@ -12,7 +12,7 @@ parameters, and orchestrates the multi-step setup pipeline.
 """
 
 import unittest
-from unittest.mock import MagicMock, Mock, call, patch
+from unittest.mock import patch
 
 from opentelemetry.sdk.resources import Resource
 
@@ -32,11 +32,7 @@ class TestConfigureMicrosoftOpenTelemetry(unittest.TestCase):
     # Azure Monitor enabled — delegation to configure_azure_monitor()
     # -----------------------------------------------------------------
 
-    @patch("microsoft.opentelemetry._configure._setup_genai_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_a365_instrumentations")
     @patch("microsoft.opentelemetry._configure._setup_instrumentations")
-    @patch("microsoft.opentelemetry._configure._add_a365_exporter")
-    @patch("microsoft.opentelemetry._configure._add_otlp_exporters")
     @patch("microsoft.opentelemetry._configure._setup_standalone_providers")
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
     @patch("microsoft.opentelemetry._configure._get_configurations")
@@ -45,18 +41,12 @@ class TestConfigureMicrosoftOpenTelemetry(unittest.TestCase):
         config_mock,
         azure_monitor_mock,
         standalone_mock,
-        otlp_mock,
-        a365_mock,
         instrumentations_mock,
-        a365_instr_mock,
-        genai_mock,
     ):
         """When Azure Monitor is enabled, _setup_azure_monitor is called
         and _setup_standalone_providers is NOT called."""
         config_mock.return_value = {
             "enable_azure_monitor_export": True,
-            "enable_otlp_export": False,
-            "enable_a365_export": False,
             "disable_metrics": False,
         }
         configure_microsoft_opentelemetry(
@@ -67,11 +57,7 @@ class TestConfigureMicrosoftOpenTelemetry(unittest.TestCase):
         # Instrumentations are NOT set up by the microsoft distro when AzMon handles them
         instrumentations_mock.assert_not_called()
 
-    @patch("microsoft.opentelemetry._configure._setup_genai_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_a365_instrumentations")
     @patch("microsoft.opentelemetry._configure._setup_instrumentations")
-    @patch("microsoft.opentelemetry._configure._add_a365_exporter")
-    @patch("microsoft.opentelemetry._configure._add_otlp_exporters")
     @patch("microsoft.opentelemetry._configure._setup_standalone_providers")
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
     @patch("microsoft.opentelemetry._configure._get_configurations")
@@ -80,207 +66,18 @@ class TestConfigureMicrosoftOpenTelemetry(unittest.TestCase):
         config_mock,
         azure_monitor_mock,
         standalone_mock,
-        otlp_mock,
-        a365_mock,
         instrumentations_mock,
-        a365_instr_mock,
-        genai_mock,
     ):
         """When Azure Monitor is disabled, standalone providers are created
         and instrumentations are set up by the microsoft distro."""
         config_mock.return_value = {
             "enable_azure_monitor_export": False,
-            "enable_otlp_export": False,
-            "enable_a365_export": False,
             "disable_metrics": False,
         }
         configure_microsoft_opentelemetry()
         azure_monitor_mock.assert_not_called()
         standalone_mock.assert_called_once()
         instrumentations_mock.assert_called_once()
-
-    # -----------------------------------------------------------------
-    # OTLP exporter wiring
-    # -----------------------------------------------------------------
-
-    @patch("microsoft.opentelemetry._configure._setup_genai_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_a365_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_instrumentations")
-    @patch("microsoft.opentelemetry._configure._add_a365_exporter")
-    @patch("microsoft.opentelemetry._configure._add_otlp_exporters")
-    @patch("microsoft.opentelemetry._configure._setup_standalone_providers")
-    @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
-    @patch("microsoft.opentelemetry._configure._prepare_otlp_metric_reader")
-    @patch("microsoft.opentelemetry._configure._get_configurations")
-    def test_otlp_enabled_adds_exporters(
-        self,
-        config_mock,
-        otlp_metric_mock,
-        azure_monitor_mock,
-        standalone_mock,
-        otlp_mock,
-        a365_mock,
-        instrumentations_mock,
-        a365_instr_mock,
-        genai_mock,
-    ):
-        """When OTLP is enabled, OTLP exporters are added and metric reader is prepared."""
-        config_mock.return_value = {
-            "enable_azure_monitor_export": True,
-            "enable_otlp_export": True,
-            "enable_a365_export": False,
-            "disable_metrics": False,
-        }
-        configure_microsoft_opentelemetry(
-            azure_monitor_connection_string=TEST_CONNECTION_STRING,
-            enable_otlp_export=True,
-        )
-        otlp_metric_mock.assert_called_once()
-        otlp_mock.assert_called_once()
-
-    @patch("microsoft.opentelemetry._configure._setup_genai_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_a365_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_instrumentations")
-    @patch("microsoft.opentelemetry._configure._add_a365_exporter")
-    @patch("microsoft.opentelemetry._configure._add_otlp_exporters")
-    @patch("microsoft.opentelemetry._configure._setup_standalone_providers")
-    @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
-    @patch("microsoft.opentelemetry._configure._prepare_otlp_metric_reader")
-    @patch("microsoft.opentelemetry._configure._get_configurations")
-    def test_otlp_disabled_no_exporters(
-        self,
-        config_mock,
-        otlp_metric_mock,
-        azure_monitor_mock,
-        standalone_mock,
-        otlp_mock,
-        a365_mock,
-        instrumentations_mock,
-        a365_instr_mock,
-        genai_mock,
-    ):
-        """When OTLP is disabled, no OTLP exporters or metric readers are added."""
-        config_mock.return_value = {
-            "enable_azure_monitor_export": True,
-            "enable_otlp_export": False,
-            "enable_a365_export": False,
-            "disable_metrics": False,
-        }
-        configure_microsoft_opentelemetry(
-            azure_monitor_connection_string=TEST_CONNECTION_STRING,
-        )
-        otlp_metric_mock.assert_not_called()
-        otlp_mock.assert_not_called()
-
-    # -----------------------------------------------------------------
-    # A365 exporter wiring
-    # -----------------------------------------------------------------
-
-    @patch("microsoft.opentelemetry._configure._setup_genai_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_a365_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_instrumentations")
-    @patch("microsoft.opentelemetry._configure._add_a365_exporter")
-    @patch("microsoft.opentelemetry._configure._add_otlp_exporters")
-    @patch("microsoft.opentelemetry._configure._setup_standalone_providers")
-    @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
-    @patch("microsoft.opentelemetry._configure._get_configurations")
-    def test_a365_enabled_adds_exporter(
-        self,
-        config_mock,
-        azure_monitor_mock,
-        standalone_mock,
-        otlp_mock,
-        a365_mock,
-        instrumentations_mock,
-        a365_instr_mock,
-        genai_mock,
-    ):
-        """When A365 is enabled, _add_a365_exporter is called."""
-        config_mock.return_value = {
-            "enable_azure_monitor_export": False,
-            "enable_otlp_export": False,
-            "enable_a365_export": True,
-            "disable_metrics": False,
-        }
-        configure_microsoft_opentelemetry(enable_a365_export=True)
-        a365_mock.assert_called_once()
-
-    @patch("microsoft.opentelemetry._configure._setup_genai_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_a365_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_instrumentations")
-    @patch("microsoft.opentelemetry._configure._add_a365_exporter")
-    @patch("microsoft.opentelemetry._configure._add_otlp_exporters")
-    @patch("microsoft.opentelemetry._configure._setup_standalone_providers")
-    @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
-    @patch("microsoft.opentelemetry._configure._get_configurations")
-    def test_a365_disabled_no_exporter(
-        self,
-        config_mock,
-        azure_monitor_mock,
-        standalone_mock,
-        otlp_mock,
-        a365_mock,
-        instrumentations_mock,
-        a365_instr_mock,
-        genai_mock,
-    ):
-        """When A365 is disabled, _add_a365_exporter is NOT called."""
-        config_mock.return_value = {
-            "enable_azure_monitor_export": True,
-            "enable_otlp_export": False,
-            "enable_a365_export": False,
-            "disable_metrics": False,
-        }
-        configure_microsoft_opentelemetry(
-            azure_monitor_connection_string=TEST_CONNECTION_STRING,
-        )
-        a365_mock.assert_not_called()
-
-    # -----------------------------------------------------------------
-    # Full pipeline: Azure Monitor + OTLP + A365 together
-    # -----------------------------------------------------------------
-
-    @patch("microsoft.opentelemetry._configure._setup_genai_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_a365_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_instrumentations")
-    @patch("microsoft.opentelemetry._configure._add_a365_exporter")
-    @patch("microsoft.opentelemetry._configure._add_otlp_exporters")
-    @patch("microsoft.opentelemetry._configure._setup_standalone_providers")
-    @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
-    @patch("microsoft.opentelemetry._configure._prepare_otlp_metric_reader")
-    @patch("microsoft.opentelemetry._configure._get_configurations")
-    def test_all_exporters_enabled(
-        self,
-        config_mock,
-        otlp_metric_mock,
-        azure_monitor_mock,
-        standalone_mock,
-        otlp_mock,
-        a365_mock,
-        instrumentations_mock,
-        a365_instr_mock,
-        genai_mock,
-    ):
-        """When all exporters are enabled, Azure Monitor sets up providers,
-        then OTLP and A365 are added on top."""
-        config_mock.return_value = {
-            "enable_azure_monitor_export": True,
-            "enable_otlp_export": True,
-            "enable_a365_export": True,
-            "disable_metrics": False,
-        }
-        configure_microsoft_opentelemetry(
-            azure_monitor_connection_string=TEST_CONNECTION_STRING,
-            enable_otlp_export=True,
-            enable_a365_export=True,
-        )
-        azure_monitor_mock.assert_called_once()
-        standalone_mock.assert_not_called()
-        otlp_metric_mock.assert_called_once()
-        otlp_mock.assert_called_once()
-        a365_mock.assert_called_once()
-        # AzMon handles instrumentations, so microsoft distro skips them
-        instrumentations_mock.assert_not_called()
 
 
 class TestSetupAzureMonitor(unittest.TestCase):
@@ -303,11 +100,8 @@ class TestSetupAzureMonitor(unittest.TestCase):
             "views": [],
             "enable_live_metrics": True,
             "enable_performance_counters": True,
-            # Microsoft-only keys that should NOT be forwarded
-            "enable_otlp_export": True,
-            "otlp_endpoint": "http://localhost:4318",
-            "enable_a365_export": False,
-            "enable_genai_openai_instrumentation": True,
+            # Microsoft-only key that should NOT be forwarded
+            "enable_azure_monitor_export": True,
         }
         _setup_azure_monitor(configurations)
         cam_mock.assert_called_once()
@@ -322,28 +116,13 @@ class TestSetupAzureMonitor(unittest.TestCase):
 
     @patch("azure.monitor.opentelemetry.configure_azure_monitor")
     def test_filters_microsoft_only_keys(self, cam_mock):
-        """Microsoft-only keys (OTLP, A365, GenAI) are NOT forwarded to configure_azure_monitor."""
+        """Microsoft-only keys are NOT forwarded to configure_azure_monitor."""
         from microsoft.opentelemetry._configure import _setup_azure_monitor
 
         configurations = {
             "azure_monitor_connection_string": TEST_CONNECTION_STRING,
             "resource": TEST_RESOURCE,
-            "enable_otlp_export": True,
-            "otlp_endpoint": "http://localhost:4318",
-            "otlp_protocol": "http/protobuf",
-            "otlp_headers": "key=value",
             "enable_azure_monitor_export": True,
-            "enable_a365_export": True,
-            "a365_token_resolver": lambda a, t: None,
-            "a365_cluster_category": "prod",
-            "a365_exporter_options": None,
-            "enable_a365_openai_instrumentation": True,
-            "enable_a365_langchain_instrumentation": False,
-            "enable_a365_semantickernel_instrumentation": False,
-            "enable_a365_agentframework_instrumentation": True,
-            "enable_genai_openai_instrumentation": True,
-            "enable_genai_openai_agents_instrumentation": False,
-            "enable_genai_langchain_instrumentation": False,
         }
         _setup_azure_monitor(configurations)
         actual_kwargs = cam_mock.call_args[1]
@@ -396,22 +175,14 @@ class TestSetupAzureMonitor(unittest.TestCase):
 class TestConnectionStringRemapping(unittest.TestCase):
     """Tests that azure_monitor_connection_string is correctly handled."""
 
-    @patch("microsoft.opentelemetry._configure._setup_genai_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_a365_instrumentations")
     @patch("microsoft.opentelemetry._configure._setup_instrumentations")
-    @patch("microsoft.opentelemetry._configure._add_a365_exporter")
-    @patch("microsoft.opentelemetry._configure._add_otlp_exporters")
     @patch("microsoft.opentelemetry._configure._setup_standalone_providers")
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
     def test_connection_string_enables_azure_monitor(
         self,
         azure_monitor_mock,
         standalone_mock,
-        otlp_mock,
-        a365_mock,
         instrumentations_mock,
-        a365_instr_mock,
-        genai_mock,
     ):
         """Providing azure_monitor_connection_string auto-enables Azure Monitor."""
         configure_microsoft_opentelemetry(
@@ -420,22 +191,14 @@ class TestConnectionStringRemapping(unittest.TestCase):
         azure_monitor_mock.assert_called_once()
         standalone_mock.assert_not_called()
 
-    @patch("microsoft.opentelemetry._configure._setup_genai_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_a365_instrumentations")
     @patch("microsoft.opentelemetry._configure._setup_instrumentations")
-    @patch("microsoft.opentelemetry._configure._add_a365_exporter")
-    @patch("microsoft.opentelemetry._configure._add_otlp_exporters")
     @patch("microsoft.opentelemetry._configure._setup_standalone_providers")
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
     def test_no_connection_string_uses_standalone(
         self,
         azure_monitor_mock,
         standalone_mock,
-        otlp_mock,
-        a365_mock,
         instrumentations_mock,
-        a365_instr_mock,
-        genai_mock,
     ):
         """Without a connection string, Azure Monitor is disabled and standalone providers are used."""
         configure_microsoft_opentelemetry()
@@ -443,150 +206,19 @@ class TestConnectionStringRemapping(unittest.TestCase):
         standalone_mock.assert_called_once()
 
     @patch.dict("os.environ", {"APPLICATIONINSIGHTS_CONNECTION_STRING": TEST_CONNECTION_STRING})
-    @patch("microsoft.opentelemetry._configure._setup_genai_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_a365_instrumentations")
     @patch("microsoft.opentelemetry._configure._setup_instrumentations")
-    @patch("microsoft.opentelemetry._configure._add_a365_exporter")
-    @patch("microsoft.opentelemetry._configure._add_otlp_exporters")
     @patch("microsoft.opentelemetry._configure._setup_standalone_providers")
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
     def test_env_var_connection_string_enables_azure_monitor(
         self,
         azure_monitor_mock,
         standalone_mock,
-        otlp_mock,
-        a365_mock,
         instrumentations_mock,
-        a365_instr_mock,
-        genai_mock,
     ):
         """APPLICATIONINSIGHTS_CONNECTION_STRING env var auto-enables Azure Monitor."""
         configure_microsoft_opentelemetry()
         azure_monitor_mock.assert_called_once()
         standalone_mock.assert_not_called()
-
-
-class TestPipelineOrdering(unittest.TestCase):
-    """Tests that the setup steps execute in the correct order."""
-
-    @patch("microsoft.opentelemetry._configure._setup_genai_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_a365_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_instrumentations")
-    @patch("microsoft.opentelemetry._configure._add_a365_exporter")
-    @patch("microsoft.opentelemetry._configure._add_otlp_exporters")
-    @patch("microsoft.opentelemetry._configure._setup_standalone_providers")
-    @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
-    @patch("microsoft.opentelemetry._configure._prepare_otlp_metric_reader")
-    @patch("microsoft.opentelemetry._configure._get_configurations")
-    def test_azure_monitor_before_otlp_before_a365(
-        self,
-        config_mock,
-        otlp_metric_mock,
-        azure_monitor_mock,
-        standalone_mock,
-        otlp_mock,
-        a365_mock,
-        instrumentations_mock,
-        a365_instr_mock,
-        genai_mock,
-    ):
-        """Azure Monitor is set up first, then OTLP, then A365."""
-        call_order = []
-        config_mock.return_value = {
-            "enable_azure_monitor_export": True,
-            "enable_otlp_export": True,
-            "enable_a365_export": True,
-            "disable_metrics": False,
-        }
-        azure_monitor_mock.side_effect = lambda *a, **k: call_order.append("azure_monitor")
-        otlp_mock.side_effect = lambda *a, **k: call_order.append("otlp")
-        a365_mock.side_effect = lambda *a, **k: call_order.append("a365")
-
-        configure_microsoft_opentelemetry(
-            azure_monitor_connection_string=TEST_CONNECTION_STRING,
-            enable_otlp_export=True,
-            enable_a365_export=True,
-        )
-
-        self.assertIn("azure_monitor", call_order)
-        self.assertIn("otlp", call_order)
-        self.assertIn("a365", call_order)
-        self.assertLess(
-            call_order.index("azure_monitor"),
-            call_order.index("otlp"),
-            "Azure Monitor must be set up before OTLP",
-        )
-        self.assertLess(
-            call_order.index("otlp"),
-            call_order.index("a365"),
-            "OTLP must be set up before A365",
-        )
-
-
-class TestGenAIAndA365Instrumentations(unittest.TestCase):
-    """Tests that GenAI and A365 instrumentations are always invoked."""
-
-    @patch("microsoft.opentelemetry._configure._setup_genai_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_a365_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_instrumentations")
-    @patch("microsoft.opentelemetry._configure._add_a365_exporter")
-    @patch("microsoft.opentelemetry._configure._add_otlp_exporters")
-    @patch("microsoft.opentelemetry._configure._setup_standalone_providers")
-    @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
-    @patch("microsoft.opentelemetry._configure._get_configurations")
-    def test_genai_and_a365_instrumentations_always_called(
-        self,
-        config_mock,
-        azure_monitor_mock,
-        standalone_mock,
-        otlp_mock,
-        a365_mock,
-        instrumentations_mock,
-        a365_instr_mock,
-        genai_mock,
-    ):
-        """GenAI and A365 instrumentation setup is always called regardless of exporter config."""
-        config_mock.return_value = {
-            "enable_azure_monitor_export": True,
-            "enable_otlp_export": False,
-            "enable_a365_export": False,
-            "disable_metrics": False,
-        }
-        configure_microsoft_opentelemetry(
-            azure_monitor_connection_string=TEST_CONNECTION_STRING,
-        )
-        a365_instr_mock.assert_called_once()
-        genai_mock.assert_called_once()
-
-    @patch("microsoft.opentelemetry._configure._setup_genai_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_a365_instrumentations")
-    @patch("microsoft.opentelemetry._configure._setup_instrumentations")
-    @patch("microsoft.opentelemetry._configure._add_a365_exporter")
-    @patch("microsoft.opentelemetry._configure._add_otlp_exporters")
-    @patch("microsoft.opentelemetry._configure._setup_standalone_providers")
-    @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
-    @patch("microsoft.opentelemetry._configure._get_configurations")
-    def test_genai_and_a365_instrumentations_called_standalone_mode(
-        self,
-        config_mock,
-        azure_monitor_mock,
-        standalone_mock,
-        otlp_mock,
-        a365_mock,
-        instrumentations_mock,
-        a365_instr_mock,
-        genai_mock,
-    ):
-        """GenAI and A365 instrumentations are called even without any exporter."""
-        config_mock.return_value = {
-            "enable_azure_monitor_export": False,
-            "enable_otlp_export": False,
-            "enable_a365_export": False,
-            "disable_metrics": False,
-        }
-        configure_microsoft_opentelemetry()
-        a365_instr_mock.assert_called_once()
-        genai_mock.assert_called_once()
 
 
 if __name__ == "__main__":
