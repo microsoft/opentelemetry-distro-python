@@ -9,11 +9,8 @@ from os import environ
 from typing import Any, Dict
 
 # Re-export shared configuration utilities from azure-monitor-opentelemetry.
-# These functions handle base distro defaults (logging, metrics, tracing,
-# sampling, instrumentations, etc.) and are identical between the two packages.
+# These functions handle base distro defaults and are called by _get_configurations().
 from azure.monitor.opentelemetry._utils.configurations import (  # noqa: F401
-    _is_instrumentation_enabled,
-    _get_sampler_from_name,
     _default_disable_logging,
     _default_disable_metrics,
     _default_disable_tracing,

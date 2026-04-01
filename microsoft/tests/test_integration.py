@@ -55,12 +55,6 @@ class TestPublicAPISurface(unittest.TestCase):
         from microsoft.opentelemetry._types import ConfigurationValue
         self.assertIsNotNone(ConfigurationValue)
 
-    def test_utils_instrumentation_reexported(self):
-        from microsoft.opentelemetry._utils.instrumentation import (
-            get_dist_dependency_conflicts,
-        )
-        self.assertTrue(callable(get_dist_dependency_conflicts))
-
 
 # -- Azure Monitor Error Handling ------------------------------------------
 
