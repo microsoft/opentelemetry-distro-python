@@ -31,7 +31,7 @@ image_data = base64.b64encode(httpx.get(image_url).content).decode("utf-8")
 
 message = HumanMessage(
     content=[
-        {"type": "text", "text": "describe the weather in this image"},
+        {"type": "text", "text": "describe this image"},
         {
             "type": "image_url",
             "image_url": {"url": f"data:image/jpeg;base64,{image_data}", "detail": "low"},
