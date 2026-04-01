@@ -1,5 +1,4 @@
 
-import os
 from azure.monitor.opentelemetry import configure_azure_monitor
 from opentelemetry.instrumentation.langchain import LangChainInstrumentor
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
