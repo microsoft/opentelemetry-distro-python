@@ -9,7 +9,7 @@ import httpx
 
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
-from azure.monitor.opentelemetry._configure import configure_azure_monitor
+from azure.monitor.opentelemetry import configure_azure_monitor
 
 from openinference.instrumentation.langchain import LangChainInstrumentor
 

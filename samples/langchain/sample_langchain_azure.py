@@ -6,7 +6,7 @@ import os
 import random
 from uuid import uuid4
 
-from azure.monitor.opentelemetry._configure import configure_azure_monitor
+from azure.monitor.opentelemetry import configure_azure_monitor
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
