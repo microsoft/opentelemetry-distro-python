@@ -9,4 +9,5 @@
 ### Bugs Fixed
 
 ### Other Changes
+- Added `azure-monitor-opentelemetry` package source for Azure Monitor OpenTelemetry distro integration.
 - Project metadata, license, and documentation
