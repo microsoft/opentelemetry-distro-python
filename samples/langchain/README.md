@@ -36,6 +36,13 @@ set it using the `APPLICATIONINISGHTS_CONNECTION_STRING` environment variable.
 
 Demonstrates the `opentelemetry-instrumentation-langchain` package with two differently configured LLMs (creative vs. precise).
 
+**Environment variables to set to view the telemetry**
+
+| Environment Variable | Value |
+| ---------------------------------------------------- | ---------------------------- |
+| `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` | "SPAN_AND_EVENT"             |
+| `OTEL_SEMCONV_STABILITY_OPT_IN`                      | "gen_ai_latest_experimental" |
+
 **Placeholders to fill:**
 
 | Placeholder | Value |
@@ -57,6 +64,13 @@ python sample_opentelemetry.py
 ### 2. `sample_arise_langchain.py`
 
 Demonstrates image description using a vision-capable model, with tracing via the `openinference-instrumentation-langchain` instrumentor.
+
+
+**Environment variables to set to view the telemetry**
+
+| Environment Variable | Value |
+| ---------------------------------------- | ------ |
+| `AZURE_EXERIMENTAL_ENABLE_GENAI_TRACING` | "true" |
 
 **Placeholders to fill:**
 
