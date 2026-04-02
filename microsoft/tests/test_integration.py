@@ -18,9 +18,6 @@ from microsoft.opentelemetry._configure import (
     _setup_azure_monitor,
     configure_microsoft_opentelemetry,
 )
-from microsoft.opentelemetry._constants import (
-    CONNECTION_STRING_ARG,
-)
 
 TEST_CONNECTION_STRING = (
     "InstrumentationKey=test-key;"
@@ -65,7 +62,7 @@ class TestAzureMonitorImportError(unittest.TestCase):
     def test_warns_when_azure_monitor_not_installed(self):
         with patch.dict("sys.modules", {"azure.monitor.opentelemetry": None}):
             with self.assertLogs("microsoft.opentelemetry._configure", level="WARNING") as cm:
-                _setup_azure_monitor({CONNECTION_STRING_ARG: TEST_CONNECTION_STRING})
+                _setup_azure_monitor(connection_string=TEST_CONNECTION_STRING)
             self.assertTrue(
                 any("not installed" in msg for msg in cm.output),
             )
