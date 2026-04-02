@@ -70,7 +70,7 @@ Demonstrates image description using a vision-capable model, with tracing via th
 
 | Environment Variable | Value |
 | ---------------------------------------- | ------ |
-| `AZURE_EXERIMENTAL_ENABLE_GENAI_TRACING` | "true" |
+| `AZURE_EXPERIMENTAL_ENABLE_GENAI_TRACING` | "true" |
 
 **Placeholders to fill:**
 
