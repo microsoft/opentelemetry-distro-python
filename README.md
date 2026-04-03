@@ -30,10 +30,17 @@ configure_microsoft_opentelemetry(
 |---|---|---|---|
 | `azure_monitor_connection_string` | `str` | `None` | Connection string for Application Insights. Also read from `APPLICATIONINSIGHTS_CONNECTION_STRING` env var. |
 | `disable_azure_monitor_exporter` | `bool` | `False` | Explicitly disable Azure Monitor export. |
+| `credential` | `TokenCredential` | `None` | Azure AD token credential for authentication. |
+| `disable_logging` | `bool` | `False` | Disable the logging pipeline. |
+| `disable_tracing` | `bool` | `False` | Disable the tracing pipeline. |
+| `disable_metrics` | `bool` | `False` | Disable the metrics pipeline. |
 | `disable_live_metrics` | `bool` | `False` | Disable live metrics collection. |
 | `disable_performance_counters` | `bool` | `False` | Disable performance counter collection. |
+| `disable_offline_storage` | `bool` | `False` | Disable offline retry storage for failed telemetry. |
+| `storage_directory` | `str` | `None` | Custom directory for offline telemetry storage. |
 | `sampling_ratio` | `float` | `1.0` | Fixed-percentage sampling ratio (0–1). |
 | `traces_per_second` | `float` | `5.0` | Rate-limited sampling target. |
+| `sampler` | `str` | `None` | Sampler type name (e.g. `microsoft.rate_limited`). |
 | `resource` | `Resource` | auto | OpenTelemetry Resource. |
 | `span_processors` | `list` | `[]` | Additional span processors. |
 | `log_record_processors` | `list` | `[]` | Additional log record processors. |
@@ -41,6 +48,9 @@ configure_microsoft_opentelemetry(
 | `views` | `list` | `[]` | Metric views. |
 | `logger_name` | `str` | `None` | Logger name for log collection. |
 | `logging_formatter` | `Formatter` | `None` | Formatter for collected logs. |
+| `instrumentation_options` | `dict` | `None` | Per-library instrumentation enable/disable options. |
+| `enable_trace_based_sampling_for_logs` | `bool` | `False` | Enable trace-based sampling for logs. |
+| `browser_sdk_loader_config` | `dict` | `None` | Browser SDK loader configuration. |
 
 ## Planned Scope
 

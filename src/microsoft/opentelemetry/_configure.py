@@ -34,10 +34,22 @@ def configure_microsoft_opentelemetry(**kwargs) -> None:
     :keyword bool disable_azure_monitor_exporter:
         Explicitly disable Azure Monitor export.
         Defaults to False when a connection string is available.
+    :keyword credential:
+        Azure AD token credential for authentication.
+    :keyword bool disable_logging:
+        Disable the logging pipeline. Defaults to False.
+    :keyword bool disable_tracing:
+        Disable the tracing pipeline. Defaults to False.
+    :keyword bool disable_metrics:
+        Disable the metrics pipeline. Defaults to False.
     :keyword bool disable_live_metrics:
         Disable live metrics. Defaults to False.
     :keyword bool disable_performance_counters:
         Disable performance counters. Defaults to False.
+    :keyword bool disable_offline_storage:
+        Disable offline retry storage. Defaults to False.
+    :keyword str storage_directory:
+        Custom directory for offline telemetry storage.
     :keyword resource: OpenTelemetry Resource.
     :keyword list span_processors: Additional span processors.
     :keyword list log_record_processors:
@@ -48,8 +60,16 @@ def configure_microsoft_opentelemetry(**kwargs) -> None:
         Fixed-percentage sampling ratio (0-1).
     :keyword float traces_per_second:
         Rate-limited sampling target.
+    :keyword str sampler:
+        Sampler type name (e.g. ``microsoft.rate_limited``).
     :keyword str logger_name: Logger name for log collection.
     :keyword logging_formatter: Formatter for collected logs.
+    :keyword dict instrumentation_options:
+        Per-library instrumentation enable/disable options.
+    :keyword bool enable_trace_based_sampling_for_logs:
+        Enable trace-based sampling for logs.
+    :keyword dict browser_sdk_loader_config:
+        Browser SDK loader configuration.
     :rtype: None
     """
     # Resolve connection string from kwarg or env var
