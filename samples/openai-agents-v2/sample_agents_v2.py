@@ -16,12 +16,6 @@ OpenAIAgentsInstrumentor().instrument()
 _endpoint = "<AZURE_OPENAI_ENDPOINT>"
 _api_key = "<AZURE_OPENAI_API_KEY>"
 
-client = OpenAI(
-    base_url=f"{_endpoint}",
-    api_key=_api_key
-)
-
-
 @function_tool
 def get_attractions(city: str) -> str:
     """Get popular attractions and things to do in a city."""
