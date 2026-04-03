@@ -20,7 +20,7 @@ from microsoft.opentelemetry._configure import (
 )
 
 TEST_CONNECTION_STRING = (
-    "InstrumentationKey=test-key;" "IngestionEndpoint=https://test.in.ai.azure.com/"
+    "InstrumentationKey=test-key;" + "IngestionEndpoint=https://test.in.ai.azure.com/"
 )
 
 

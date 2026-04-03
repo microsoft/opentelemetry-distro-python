@@ -42,6 +42,9 @@ max-line-length = 88
 disable = [
     "missing-function-docstring",
     "missing-module-docstring",
+    "import-outside-toplevel",
+    "import-error",
+    "no-name-in-module",
 ]
 
 [tool.pytest.ini_options]

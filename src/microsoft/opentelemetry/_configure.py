@@ -103,7 +103,6 @@ def _setup_azure_monitor(connection_string, **kwargs):
     are handled by ``configure_azure_monitor()`` internally.
     """
     try:
-        # pylint: disable=import-outside-toplevel
         from azure.monitor.opentelemetry import configure_azure_monitor
     except ImportError:
         _logger.warning(
