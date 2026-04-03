@@ -102,7 +102,8 @@ def _setup_azure_monitor(**kwargs):
 
     try:
         configure_azure_monitor(**kwargs)
-        _logger.info("Azure Monitor configured via azure-monitor-opentelemetry package")
+        msg = "Azure Monitor configured via azure-monitor-opentelemetry package"
+        _logger.info(msg)
     except Exception as ex:  # pylint: disable=broad-exception-caught
         _logger.warning(
             "Failed to configure Azure Monitor: %s",
