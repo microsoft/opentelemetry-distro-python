@@ -61,8 +61,7 @@ if __name__ == "__main__":
             exit_code = max(exit_code, e.returncode)
 
     # Lint samples if they exist
-    # TODO: Uncomment this once distro config has been replaced
-    """samples_dir = os.path.join(package_dir, "samples")
+    samples_dir = os.path.join(package_dir, "samples")
     if os.path.exists(samples_dir):
         try:
             samples_cmd = [*commands, samples_dir]
@@ -70,5 +69,5 @@ if __name__ == "__main__":
             check_call(samples_cmd)
         except CalledProcessError as e:
             logging.error("pylint failed on samples with exit code %s", e.returncode)
-            exit_code = max(exit_code, e.returncode)"""
+            exit_code = max(exit_code, e.returncode)
     sys.exit(exit_code)

@@ -52,8 +52,7 @@ if __name__ == "__main__":
         src_code_error = e
 
     # Check samples if they exist
-    # TODO: Enables this once distro config has been replaced
-    """sample_code_error = None
+    sample_code_error = None
     samples_dir = os.path.join(package_dir, "samples")
     if os.path.exists(samples_dir):
         sample_code = [
@@ -66,7 +65,7 @@ if __name__ == "__main__":
             logging.info("Running mypy on samples: %s", sample_code)
             check_call(sample_code)
         except CalledProcessError as e:
-            sample_code_error = e"""
+            sample_code_error = e
 
     # Check tests if they exist
     test_code_error = None
