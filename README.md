@@ -38,9 +38,6 @@ configure_microsoft_opentelemetry(
 | `disable_performance_counters` | `bool` | `False` | Disable performance counter collection. |
 | `disable_offline_storage` | `bool` | `False` | Disable offline retry storage for failed telemetry. |
 | `storage_directory` | `str` | `None` | Custom directory for offline telemetry storage. |
-| `sampling_ratio` | `float` | `1.0` | Fixed-percentage sampling ratio (0–1). |
-| `traces_per_second` | `float` | `5.0` | Rate-limited sampling target. |
-| `sampler` | `str` | `None` | Sampler type name (e.g. `microsoft.rate_limited`). |
 | `resource` | `Resource` | auto | OpenTelemetry Resource. |
 | `span_processors` | `list` | `[]` | Additional span processors. |
 | `log_record_processors` | `list` | `[]` | Additional log record processors. |

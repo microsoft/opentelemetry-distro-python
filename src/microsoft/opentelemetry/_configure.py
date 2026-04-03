@@ -54,12 +54,6 @@ def configure_microsoft_opentelemetry(**kwargs) -> None:
         Additional log record processors.
     :keyword list metric_readers: Additional metric readers.
     :keyword list views: Metric views.
-    :keyword float sampling_ratio:
-        Fixed-percentage sampling ratio (0-1).
-    :keyword float traces_per_second:
-        Rate-limited sampling target.
-    :keyword str sampler:
-        Sampler type name (e.g. ``microsoft.rate_limited``).
     :keyword str logger_name: Logger name for log collection.
     :keyword logging_formatter: Formatter for collected logs.
     :keyword dict instrumentation_options:
