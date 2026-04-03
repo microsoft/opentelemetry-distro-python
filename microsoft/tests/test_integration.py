@@ -82,13 +82,13 @@ class TestEnvironmentVariableConfiguration(unittest.TestCase):
         az_mock.assert_called_once()
 
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
-    def test_no_connection_string_warns(self, az_mock):
+    def test_no_connection_string_logs_info(self, az_mock):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("APPLICATIONINSIGHTS_CONNECTION_STRING", None)
-            with self.assertLogs("microsoft.opentelemetry._configure", level="WARNING") as cm:
+            with self.assertLogs("microsoft.opentelemetry._configure", level="INFO") as cm:
                 configure_microsoft_opentelemetry()
         az_mock.assert_not_called()
-        self.assertTrue(any("connection_string" in msg for msg in cm.output))
+        self.assertTrue(any("not configured" in msg for msg in cm.output))
 
 
 if __name__ == "__main__":

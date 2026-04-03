@@ -48,6 +48,7 @@ def configure_microsoft_opentelemetry(**kwargs) -> None:
 
     # Determine whether Azure Monitor export should be enabled
     enable_azure_monitor = kwargs.pop(ENABLE_AZURE_MONITOR_EXPORTER_ARG, None)
+    explicitly_set = enable_azure_monitor is not None
     if enable_azure_monitor is None:
         enable_azure_monitor = connection_string is not None
     elif enable_azure_monitor and connection_string is None:
@@ -59,10 +60,14 @@ def configure_microsoft_opentelemetry(**kwargs) -> None:
         enable_azure_monitor = False
 
     if not enable_azure_monitor:
-        _logger.warning(
-            "No azure_monitor_connection_string provided. "
-            "Provide a connection string or set APPLICATIONINSIGHTS_CONNECTION_STRING env var."
-        )
+        if explicitly_set:
+            _logger.info("Azure Monitor exporter explicitly disabled.")
+        else:
+            _logger.info(
+                "Azure Monitor exporter not configured. "
+                "To enable, provide azure_monitor_connection_string or set "
+                "APPLICATIONINSIGHTS_CONNECTION_STRING env var."
+            )
         return
 
     _setup_azure_monitor(connection_string=connection_string, **kwargs)
