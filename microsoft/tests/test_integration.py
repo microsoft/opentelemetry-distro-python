@@ -20,8 +20,7 @@ from microsoft.opentelemetry._configure import (
 )
 
 TEST_CONNECTION_STRING = (
-    "InstrumentationKey=test-key;"
-    "IngestionEndpoint=https://test.in.ai.azure.com/"
+    "InstrumentationKey=test-key;" "IngestionEndpoint=https://test.in.ai.azure.com/"
 )
 
 
@@ -33,23 +32,28 @@ class TestPublicAPISurface(unittest.TestCase):
 
     def test_configure_importable_from_package_root(self):
         from microsoft.opentelemetry import configure_microsoft_opentelemetry as fn
+
         self.assertTrue(callable(fn))
 
     def test_version_accessible(self):
         from microsoft.opentelemetry import __version__
+
         self.assertIsInstance(__version__, str)
         self.assertTrue(len(__version__) > 0)
 
     def test_all_exports_only_configure(self):
         from microsoft.opentelemetry import __all__
+
         self.assertEqual(__all__, ["configure_microsoft_opentelemetry"])
 
     def test_constants_reexported(self):
         from microsoft.opentelemetry._constants import CONNECTION_STRING_ARG
+
         self.assertIsInstance(CONNECTION_STRING_ARG, str)
 
     def test_types_reexported(self):
         from microsoft.opentelemetry._types import ConfigurationValue
+
         self.assertIsNotNone(ConfigurationValue)
 
 
@@ -61,7 +65,9 @@ class TestAzureMonitorImportError(unittest.TestCase):
 
     def test_warns_when_azure_monitor_not_installed(self):
         with patch.dict("sys.modules", {"azure.monitor.opentelemetry": None}):
-            with self.assertLogs("microsoft.opentelemetry._configure", level="WARNING") as cm:
+            with self.assertLogs(
+                "microsoft.opentelemetry._configure", level="WARNING"
+            ) as cm:
                 _setup_azure_monitor(connection_string=TEST_CONNECTION_STRING)
             self.assertTrue(
                 any("not installed" in msg for msg in cm.output),
@@ -85,7 +91,9 @@ class TestEnvironmentVariableConfiguration(unittest.TestCase):
     def test_no_connection_string_logs_info(self, az_mock):
         with patch.dict(os.environ, {}, clear=False):
             os.environ.pop("APPLICATIONINSIGHTS_CONNECTION_STRING", None)
-            with self.assertLogs("microsoft.opentelemetry._configure", level="INFO") as cm:
+            with self.assertLogs(
+                "microsoft.opentelemetry._configure", level="INFO"
+            ) as cm:
                 configure_microsoft_opentelemetry()
         az_mock.assert_not_called()
         self.assertTrue(any("not configured" in msg for msg in cm.output))

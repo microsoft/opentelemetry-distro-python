@@ -4,16 +4,12 @@
 # license information.
 # --------------------------------------------------------------------------
 
-# Import shared constants from azure-monitor-opentelemetry to avoid duplication.
-from azure.monitor.opentelemetry._constants import (  # noqa: F401
-    DISTRO_VERSION_ARG,
-)
-
-# --------------------Microsoft Distro Overrides------------------------------------------
+# --- Microsoft Distro Overrides ---
 
 # The microsoft distro uses a different connection string parameter name
-# to distinguish it from the azure-monitor-opentelemetry "connection_string" parameter.
-# The microsoft distro remaps this to "connection_string" when delegating to configure_azure_monitor().
+# to distinguish it from the azure-monitor-opentelemetry "connection_string"
+# parameter. The microsoft distro remaps this to "connection_string" when
+# delegating to configure_azure_monitor().
 CONNECTION_STRING_ARG = "azure_monitor_connection_string"
 
 # Azure Monitor Exporter

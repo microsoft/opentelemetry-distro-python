@@ -21,7 +21,9 @@ from microsoft.opentelemetry._configure import (
 )
 
 TEST_RESOURCE = Resource({"service.name": "test-service"})
-TEST_CONNECTION_STRING = "InstrumentationKey=test-key;IngestionEndpoint=https://test.in.ai.azure.com/"
+TEST_CONNECTION_STRING = (
+    "InstrumentationKey=test-key;IngestionEndpoint=https://test.in.ai.azure.com/"
+)
 
 
 class TestConfigureMicrosoftOpenTelemetry(unittest.TestCase):
@@ -138,6 +140,7 @@ class TestSetupAzureMonitor(unittest.TestCase):
     def test_exception_handled_gracefully(self, cam_mock):
         """If configure_azure_monitor raises, it is caught and logged."""
         from microsoft.opentelemetry._configure import _setup_azure_monitor
+
         # Should not raise
         _setup_azure_monitor(connection_string=TEST_CONNECTION_STRING)
 
@@ -159,7 +162,9 @@ class TestConnectionStringRemapping(unittest.TestCase):
         configure_microsoft_opentelemetry()
         azure_monitor_mock.assert_not_called()
 
-    @patch.dict("os.environ", {"APPLICATIONINSIGHTS_CONNECTION_STRING": TEST_CONNECTION_STRING})
+    @patch.dict(
+        "os.environ", {"APPLICATIONINSIGHTS_CONNECTION_STRING": TEST_CONNECTION_STRING}
+    )
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
     def test_env_var_connection_string_enables_azure_monitor(self, azure_monitor_mock):
         """APPLICATIONINSIGHTS_CONNECTION_STRING env var auto-enables Azure Monitor."""

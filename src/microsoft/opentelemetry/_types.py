@@ -4,7 +4,19 @@
 # license information.
 # --------------------------------------------------------------------------
 
-# Re-export ConfigurationValue from azure-monitor-opentelemetry to avoid duplication
-from azure.monitor.opentelemetry._types import ConfigurationValue
+from typing import Any, Sequence, Union
+
+ConfigurationValue = Union[
+    str,
+    bool,
+    int,
+    float,
+    Any,  # Resource, MetricReader, View, etc.
+    Sequence[str],
+    Sequence[bool],
+    Sequence[int],
+    Sequence[float],
+    Sequence[Any],
+]
 
 __all__ = ["ConfigurationValue"]
