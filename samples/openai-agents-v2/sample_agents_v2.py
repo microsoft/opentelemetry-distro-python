@@ -1,5 +1,5 @@
 import os
-from azure.monitor.opentelemetry._configure import configure_azure_monitor
+from azure.monitor.opentelemetry import configure_azure_monitor
 
 os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] = "true"
 
