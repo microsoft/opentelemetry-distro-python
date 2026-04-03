@@ -1,6 +1,6 @@
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation. All rights reserved.
-# Licensed under the MIT License. See License in the project root for
+# Licensed under the MIT License. See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
 from logging import getLogger
@@ -93,4 +93,4 @@ def _setup_azure_monitor(connection_string, **kwargs):
         configure_azure_monitor(connection_string=connection_string, **kwargs)
         _logger.info("Azure Monitor configured via azure-monitor-opentelemetry package")
     except Exception as ex:
-        _logger.warning("Failed to configure Azure Monitor: %s", ex)
+        _logger.warning("Failed to configure Azure Monitor: %s", ex, exc_info=True)
