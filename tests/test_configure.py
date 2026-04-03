@@ -22,9 +22,7 @@ from microsoft.opentelemetry._configure import (
 )
 
 TEST_RESOURCE = Resource({"service.name": "test-service"})
-TEST_CONNECTION_STRING = (
-    "InstrumentationKey=test-key;IngestionEndpoint=https://test.in.ai.azure.com/"
-)
+TEST_CONNECTION_STRING = "InstrumentationKey=test-key;IngestionEndpoint=https://test.in.ai.azure.com/"
 
 
 class TestConfigureMicrosoftOpenTelemetry(unittest.TestCase):

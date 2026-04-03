@@ -73,9 +73,7 @@ def configure_microsoft_opentelemetry(**kwargs) -> None:
     )
 
     # Determine whether Azure Monitor export should be disabled
-    disable_azure_monitor_exporter = kwargs.pop(
-        DISABLE_AZURE_MONITOR_EXPORTER_ARG, False
-    )
+    disable_azure_monitor_exporter = kwargs.pop(DISABLE_AZURE_MONITOR_EXPORTER_ARG, False)
 
     if disable_azure_monitor_exporter:
         _logger.info("Azure Monitor exporter explicitly disabled.")
