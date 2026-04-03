@@ -13,8 +13,8 @@ from openai import AsyncAzureOpenAI, OpenAI
 OpenAIAgentsInstrumentor().instrument()
 
 # If using Azure OpenAI, set the endpoint, API key, if using OPENAI_API_KEY environment variable, you can skip this
-_endpoint = "https://naarkalg-sw.cognitiveservices.azure.com/"
-_api_key = "7zDjM2U9SmuZ91yn7U8DJxkiNCxCb1EqjLCP88huNMj7dgCX8SPaJQQJ99BFACfhMk5XJ3w3AAAAACOGXTTJ"
+_endpoint = "<AZURE_OPENAI_ENDPOINT>"
+_api_key = "<AZURE_OPENAI_API_KEY>"
 
 client = OpenAI(
     base_url=f"{_endpoint}",
