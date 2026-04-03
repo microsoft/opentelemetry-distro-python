@@ -10,6 +10,9 @@ from microsoft.opentelemetry._constants import (
     DISABLE_AZURE_MONITOR_EXPORTER_ARG,
     CONNECTION_STRING_ARG,
 )
+from microsoft.opentelemetry._utils.configurations import (
+    remap_disable_to_enable,
+)
 
 _logger = getLogger(__name__)
 
@@ -55,8 +58,8 @@ def configure_microsoft_opentelemetry(**kwargs) -> None:
         connection_string = environ.get(_ENV_CONNECTION_STRING)
 
     # Remap disable_* kwargs to enable_* for configure_azure_monitor()
-    _remap_disable_to_enable(kwargs, "disable_live_metrics", "enable_live_metrics")
-    _remap_disable_to_enable(
+    remap_disable_to_enable(kwargs, "disable_live_metrics", "enable_live_metrics")
+    remap_disable_to_enable(
         kwargs, "disable_performance_counters", "enable_performance_counters"
     )
 
@@ -88,12 +91,6 @@ def configure_microsoft_opentelemetry(**kwargs) -> None:
         return
 
     _setup_azure_monitor(connection_string=connection_string, **kwargs)
-
-
-def _remap_disable_to_enable(kwargs, disable_key, enable_key):
-    """Convert a disable_* kwarg to enable_* for configure_azure_monitor."""
-    if disable_key in kwargs:
-        kwargs[enable_key] = not kwargs.pop(disable_key)
 
 
 def _setup_azure_monitor(connection_string, **kwargs):
