@@ -60,11 +60,11 @@ if __name__ == "__main__":
             logging.error("pylint failed on tests with exit code %s", e.returncode)
             exit_code = max(exit_code, e.returncode)
 
-    # Lint samples if they exist
+    # Lint samples if they exist (disable import-error since samples have their own dependencies)
     samples_dir = os.path.join(package_dir, "samples")
     if os.path.exists(samples_dir):
         try:
-            samples_cmd = [*commands, samples_dir]
+            samples_cmd = [*commands, "--disable=import-error", samples_dir]
             logging.info("Running pylint on samples: %s", samples_cmd)
             check_call(samples_cmd)
         except CalledProcessError as e:
