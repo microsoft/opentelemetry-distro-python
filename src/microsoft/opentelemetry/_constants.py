@@ -13,4 +13,4 @@
 CONNECTION_STRING_ARG = "azure_monitor_connection_string"
 
 # Azure Monitor Exporter
-ENABLE_AZURE_MONITOR_EXPORTER_ARG = "enable_azure_monitor_export"
+DISABLE_AZURE_MONITOR_EXPORTER_ARG = "disable_azure_monitor_exporter"

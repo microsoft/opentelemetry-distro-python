@@ -21,10 +21,26 @@ from microsoft.opentelemetry import configure_microsoft_opentelemetry
 
 configure_microsoft_opentelemetry(
 	azure_monitor_connection_string="InstrumentationKey=...;IngestionEndpoint=...",
-	enable_otlp_export=True,
-	enable_genai_openai_instrumentation=True,
 )
 ```
+
+### Available Configuration Options
+
+| Keyword argument | Type | Default | Description |
+|---|---|---|---|
+| `azure_monitor_connection_string` | `str` | `None` | Connection string for Application Insights. Also read from `APPLICATIONINSIGHTS_CONNECTION_STRING` env var. |
+| `disable_azure_monitor_exporter` | `bool` | `False` | Explicitly disable Azure Monitor export. |
+| `disable_live_metrics` | `bool` | `False` | Disable live metrics collection. |
+| `disable_performance_counters` | `bool` | `False` | Disable performance counter collection. |
+| `sampling_ratio` | `float` | `1.0` | Fixed-percentage sampling ratio (0–1). |
+| `traces_per_second` | `float` | `5.0` | Rate-limited sampling target. |
+| `resource` | `Resource` | auto | OpenTelemetry Resource. |
+| `span_processors` | `list` | `[]` | Additional span processors. |
+| `log_record_processors` | `list` | `[]` | Additional log record processors. |
+| `metric_readers` | `list` | `[]` | Additional metric readers. |
+| `views` | `list` | `[]` | Metric views. |
+| `logger_name` | `str` | `None` | Logger name for log collection. |
+| `logging_formatter` | `Formatter` | `None` | Formatter for collected logs. |
 
 ## Planned Scope
 
@@ -56,8 +72,10 @@ The POC also describes this execution model:
 
 ## Current Repository Layout
 
-- `src/` package source
-- `tests/` test suite
+- `src/microsoft/opentelemetry/` distro package source
+- `microsoft/tests/` distro unit and integration tests
+- `tests/` smoke tests
+- `azure-monitor-opentelemetry/` Azure Monitor OpenTelemetry source (vendored)
 - `pyproject.toml` project metadata and dependencies
 - `PLANNING.md` implementation plan and open questions
 

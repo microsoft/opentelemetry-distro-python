@@ -7,7 +7,7 @@ from logging import getLogger
 from os import environ
 
 from microsoft.opentelemetry._constants import (
-    ENABLE_AZURE_MONITOR_EXPORTER_ARG,
+    DISABLE_AZURE_MONITOR_EXPORTER_ARG,
     CONNECTION_STRING_ARG,
 )
 
@@ -28,13 +28,13 @@ def configure_microsoft_opentelemetry(**kwargs) -> None:
 
     :keyword str azure_monitor_connection_string:
         Connection string for Application Insights resource.
-    :keyword bool enable_azure_monitor_export:
-        Explicitly enable/disable Azure Monitor.
-        Defaults to True when a connection string is available.
-    :keyword bool enable_live_metrics:
-        Enable live metrics. Defaults to True.
-    :keyword bool enable_performance_counters:
-        Enable performance counters. Defaults to True.
+    :keyword bool disable_azure_monitor_exporter:
+        Explicitly disable Azure Monitor export.
+        Defaults to False when a connection string is available.
+    :keyword bool disable_live_metrics:
+        Disable live metrics. Defaults to False.
+    :keyword bool disable_performance_counters:
+        Disable performance counters. Defaults to False.
     :keyword resource: OpenTelemetry Resource.
     :keyword list span_processors: Additional span processors.
     :keyword list log_record_processors:
@@ -54,12 +54,18 @@ def configure_microsoft_opentelemetry(**kwargs) -> None:
     if connection_string is None:
         connection_string = environ.get(_ENV_CONNECTION_STRING)
 
-    # Determine whether Azure Monitor export should be enabled
-    enable_azure_monitor = kwargs.pop(ENABLE_AZURE_MONITOR_EXPORTER_ARG, None)
-    explicitly_set = enable_azure_monitor is not None
-    if enable_azure_monitor is None:
-        enable_azure_monitor = connection_string is not None
-    elif enable_azure_monitor and connection_string is None:
+    # Remap disable_* kwargs to enable_* for configure_azure_monitor()
+    _remap_disable_to_enable(kwargs, "disable_live_metrics", "enable_live_metrics")
+    _remap_disable_to_enable(
+        kwargs, "disable_performance_counters", "enable_performance_counters"
+    )
+
+    # Determine whether Azure Monitor export should be disabled
+    disable_azure_monitor = kwargs.pop(DISABLE_AZURE_MONITOR_EXPORTER_ARG, None)
+    explicitly_set = disable_azure_monitor is not None
+    if disable_azure_monitor is None:
+        disable_azure_monitor = connection_string is None
+    elif not disable_azure_monitor and connection_string is None:
         _logger.warning(
             "Azure Monitor exporter enabled but no "
             "azure_monitor_connection_string provided. "
@@ -67,20 +73,27 @@ def configure_microsoft_opentelemetry(**kwargs) -> None:
             "APPLICATIONINSIGHTS_CONNECTION_STRING env var. "
             "Disabling Azure Monitor exporter."
         )
-        enable_azure_monitor = False
+        disable_azure_monitor = True
 
-    if not enable_azure_monitor:
+    if disable_azure_monitor:
         if explicitly_set:
             _logger.info("Azure Monitor exporter explicitly disabled.")
         else:
             _logger.info(
                 "Azure Monitor exporter not configured. "
-                "To enable, provide azure_monitor_connection_string or set "
+                "To enable, provide "
+                "azure_monitor_connection_string or set "
                 "APPLICATIONINSIGHTS_CONNECTION_STRING env var."
             )
         return
 
     _setup_azure_monitor(connection_string=connection_string, **kwargs)
+
+
+def _remap_disable_to_enable(kwargs, disable_key, enable_key):
+    """Convert a disable_* kwarg to enable_* for configure_azure_monitor."""
+    if disable_key in kwargs:
+        kwargs[enable_key] = not kwargs.pop(disable_key)
 
 
 def _setup_azure_monitor(connection_string, **kwargs):
