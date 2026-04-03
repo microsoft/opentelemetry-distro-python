@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   quality:
-    name: Black and Pylint
+    name: Black, Pylint, Mypy, and Pyright
     runs-on: ubuntu-latest
 
     steps:
@@ -31,6 +31,12 @@ jobs:
 
       - name: Lint with Pylint
         run: pylint src tests
+
+      - name: Typecheck with Mypy
+        run: mypy src
+
+      - name: Typecheck with Pyright
+        run: pyright src
 
   tests:
     name: Pytest (${{ matrix.python-version }})
