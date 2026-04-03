@@ -8,7 +8,6 @@ from os import environ
 
 from microsoft.opentelemetry._constants import (
     DISABLE_AZURE_MONITOR_EXPORTER_ARG,
-    CONNECTION_STRING_ARG,
 )
 from microsoft.opentelemetry._utils.configurations import (
     remap_disable_to_enable,
@@ -17,6 +16,14 @@ from microsoft.opentelemetry._utils.configurations import (
 _logger = getLogger(__name__)
 
 _ENV_CONNECTION_STRING = "APPLICATIONINSIGHTS_CONNECTION_STRING"
+
+
+def _has_connection_string(**kwargs):
+    """Check if a connection string is available via kwarg or env var."""
+    return (
+        kwargs.get("connection_string") is not None
+        or environ.get(_ENV_CONNECTION_STRING) is not None
+    )
 
 
 def configure_microsoft_opentelemetry(**kwargs) -> None:
@@ -29,8 +36,10 @@ def configure_microsoft_opentelemetry(**kwargs) -> None:
     All configuration defaults are handled by
     ``configure_azure_monitor()`` internally.
 
-    :keyword str azure_monitor_connection_string:
+    :keyword str connection_string:
         Connection string for Application Insights resource.
+        Also read from ``APPLICATIONINSIGHTS_CONNECTION_STRING``
+        env var by ``configure_azure_monitor()``.
     :keyword bool disable_azure_monitor_exporter:
         Explicitly disable Azure Monitor export.
         Defaults to False when a connection string is available.
@@ -72,27 +81,25 @@ def configure_microsoft_opentelemetry(**kwargs) -> None:
         Browser SDK loader configuration.
     :rtype: None
     """
-    # Resolve connection string from kwarg or env var
-    connection_string = kwargs.pop(CONNECTION_STRING_ARG, None)
-    if connection_string is None:
-        connection_string = environ.get(_ENV_CONNECTION_STRING)
-
     # Remap disable_* kwargs to enable_* for configure_azure_monitor()
     remap_disable_to_enable(kwargs, "disable_live_metrics", "enable_live_metrics")
     remap_disable_to_enable(
-        kwargs, "disable_performance_counters", "enable_performance_counters"
+        kwargs,
+        "disable_performance_counters",
+        "enable_performance_counters",
     )
 
     # Determine whether Azure Monitor export should be disabled
     disable_azure_monitor = kwargs.pop(DISABLE_AZURE_MONITOR_EXPORTER_ARG, None)
     explicitly_set = disable_azure_monitor is not None
+    has_conn_str = _has_connection_string(**kwargs)
     if disable_azure_monitor is None:
-        disable_azure_monitor = connection_string is None
-    elif not disable_azure_monitor and connection_string is None:
+        disable_azure_monitor = not has_conn_str
+    elif not disable_azure_monitor and not has_conn_str:
         _logger.warning(
             "Azure Monitor exporter enabled but no "
-            "azure_monitor_connection_string provided. "
-            "Set azure_monitor_connection_string or "
+            "connection_string provided. "
+            "Set connection_string or "
             "APPLICATIONINSIGHTS_CONNECTION_STRING env var. "
             "Disabling Azure Monitor exporter."
         )
@@ -104,20 +111,19 @@ def configure_microsoft_opentelemetry(**kwargs) -> None:
         else:
             _logger.info(
                 "Azure Monitor exporter not configured. "
-                "To enable, provide "
-                "azure_monitor_connection_string or set "
+                "To enable, provide connection_string or set "
                 "APPLICATIONINSIGHTS_CONNECTION_STRING env var."
             )
         return
 
-    _setup_azure_monitor(connection_string=connection_string, **kwargs)
+    _setup_azure_monitor(**kwargs)
 
 
-def _setup_azure_monitor(connection_string, **kwargs):
-    """Delegate full Azure Monitor setup to the azure-monitor-opentelemetry package.
+def _setup_azure_monitor(**kwargs):
+    """Delegate full Azure Monitor setup to azure-monitor-opentelemetry.
 
-    All configuration defaults (resource, sampling, instrumentations, etc.)
-    are handled by ``configure_azure_monitor()`` internally.
+    All configuration defaults (resource, sampling, instrumentations,
+    etc.) are handled by ``configure_azure_monitor()`` internally.
     """
     try:
         from azure.monitor.opentelemetry import configure_azure_monitor
@@ -130,7 +136,11 @@ def _setup_azure_monitor(connection_string, **kwargs):
         return
 
     try:
-        configure_azure_monitor(connection_string=connection_string, **kwargs)
+        configure_azure_monitor(**kwargs)
         _logger.info("Azure Monitor configured via azure-monitor-opentelemetry package")
     except Exception as ex:  # pylint: disable=broad-exception-caught
-        _logger.warning("Failed to configure Azure Monitor: %s", ex, exc_info=True)
+        _logger.warning(
+            "Failed to configure Azure Monitor: %s",
+            ex,
+            exc_info=True,
+        )

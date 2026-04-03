@@ -34,7 +34,7 @@ class TestConfigureMicrosoftOpenTelemetry(unittest.TestCase):
     def test_azure_monitor_enabled_with_connection_string(self, azure_monitor_mock):
         """Providing a connection string auto-enables Azure Monitor."""
         configure_microsoft_opentelemetry(
-            azure_monitor_connection_string=TEST_CONNECTION_STRING,
+            connection_string=TEST_CONNECTION_STRING,
         )
         azure_monitor_mock.assert_called_once_with(
             connection_string=TEST_CONNECTION_STRING,
@@ -42,15 +42,15 @@ class TestConfigureMicrosoftOpenTelemetry(unittest.TestCase):
 
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
     def test_azure_monitor_disabled_without_connection_string(self, azure_monitor_mock):
-        """Without a connection string, a warning is logged and setup is skipped."""
+        """Without a connection string, setup is skipped."""
         configure_microsoft_opentelemetry()
         azure_monitor_mock.assert_not_called()
 
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
     def test_extra_kwargs_forwarded(self, azure_monitor_mock):
-        """Extra kwargs are forwarded through to _setup_azure_monitor."""
+        """Extra kwargs are forwarded to _setup_azure_monitor."""
         configure_microsoft_opentelemetry(
-            azure_monitor_connection_string=TEST_CONNECTION_STRING,
+            connection_string=TEST_CONNECTION_STRING,
             sampling_ratio=0.5,
             logger_name="test",
         )
@@ -62,28 +62,29 @@ class TestConfigureMicrosoftOpenTelemetry(unittest.TestCase):
 
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
     def test_explicit_enable_without_connection_string_warns(self, azure_monitor_mock):
-        """Explicitly enabling Azure Monitor without a connection string disables it."""
-        configure_microsoft_opentelemetry(disable_azure_monitor_exporter=False)
+        """Explicitly enabling without a connection string disables it."""
+        configure_microsoft_opentelemetry(
+            disable_azure_monitor_exporter=False,
+        )
         azure_monitor_mock.assert_not_called()
 
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
     def test_explicit_disable_with_connection_string(self, azure_monitor_mock):
         """Explicitly disabling Azure Monitor skips setup."""
         configure_microsoft_opentelemetry(
-            azure_monitor_connection_string=TEST_CONNECTION_STRING,
+            connection_string=TEST_CONNECTION_STRING,
             disable_azure_monitor_exporter=True,
         )
         azure_monitor_mock.assert_not_called()
 
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
-    def test_microsoft_only_keys_not_forwarded(self, azure_monitor_mock):
-        """Microsoft-only keys are consumed, not forwarded."""
+    def test_disable_key_not_forwarded(self, azure_monitor_mock):
+        """disable_azure_monitor_exporter is consumed, not forwarded."""
         configure_microsoft_opentelemetry(
-            azure_monitor_connection_string=TEST_CONNECTION_STRING,
+            connection_string=TEST_CONNECTION_STRING,
             disable_azure_monitor_exporter=False,
         )
         actual_kwargs = azure_monitor_mock.call_args[1]
-        self.assertNotIn("azure_monitor_connection_string", actual_kwargs)
         self.assertNotIn("disable_azure_monitor_exporter", actual_kwargs)
 
 
@@ -162,7 +163,7 @@ class TestDisableToEnableRemapping(unittest.TestCase):
     def test_disable_live_metrics_remapped(self, azure_monitor_mock):
         """disable_live_metrics=True becomes enable_live_metrics=False."""
         configure_microsoft_opentelemetry(
-            azure_monitor_connection_string=TEST_CONNECTION_STRING,
+            connection_string=TEST_CONNECTION_STRING,
             disable_live_metrics=True,
         )
         actual_kwargs = azure_monitor_mock.call_args[1]
@@ -173,7 +174,7 @@ class TestDisableToEnableRemapping(unittest.TestCase):
     def test_disable_performance_counters_remapped(self, azure_monitor_mock):
         """disable_performance_counters=True remaps correctly."""
         configure_microsoft_opentelemetry(
-            azure_monitor_connection_string=TEST_CONNECTION_STRING,
+            connection_string=TEST_CONNECTION_STRING,
             disable_performance_counters=True,
         )
         actual_kwargs = azure_monitor_mock.call_args[1]
@@ -184,48 +185,51 @@ class TestDisableToEnableRemapping(unittest.TestCase):
     def test_disable_false_remapped_to_enable_true(self, azure_monitor_mock):
         """disable_live_metrics=False becomes enable_live_metrics=True."""
         configure_microsoft_opentelemetry(
-            azure_monitor_connection_string=TEST_CONNECTION_STRING,
+            connection_string=TEST_CONNECTION_STRING,
             disable_live_metrics=False,
         )
         actual_kwargs = azure_monitor_mock.call_args[1]
         self.assertEqual(actual_kwargs["enable_live_metrics"], True)
 
 
-class TestConnectionStringRemapping(unittest.TestCase):
-    """Tests that azure_monitor_connection_string is correctly handled."""
+class TestConnectionStringHandling(unittest.TestCase):
+    """Tests that connection_string is correctly handled."""
 
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
     def test_connection_string_enables_azure_monitor(self, azure_monitor_mock):
-        """Providing azure_monitor_connection_string auto-enables Azure Monitor."""
+        """Providing connection_string auto-enables Azure Monitor."""
         configure_microsoft_opentelemetry(
-            azure_monitor_connection_string=TEST_CONNECTION_STRING,
+            connection_string=TEST_CONNECTION_STRING,
         )
         azure_monitor_mock.assert_called_once()
 
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
-    def test_no_connection_string_does_not_call_azure_monitor(self, azure_monitor_mock):
-        """Without a connection string, Azure Monitor setup is not called."""
+    def test_no_connection_string_does_not_call(self, azure_monitor_mock):
+        """Without a connection string, Azure Monitor is not called."""
         configure_microsoft_opentelemetry()
         azure_monitor_mock.assert_not_called()
 
     @patch.dict(
-        "os.environ", {"APPLICATIONINSIGHTS_CONNECTION_STRING": TEST_CONNECTION_STRING}
+        "os.environ",
+        {"APPLICATIONINSIGHTS_CONNECTION_STRING": TEST_CONNECTION_STRING},
     )
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
-    def test_env_var_connection_string_enables_azure_monitor(self, azure_monitor_mock):
-        """APPLICATIONINSIGHTS_CONNECTION_STRING env var auto-enables Azure Monitor."""
+    def test_env_var_enables_azure_monitor(self, azure_monitor_mock):
+        """Env var auto-enables Azure Monitor."""
         configure_microsoft_opentelemetry()
         azure_monitor_mock.assert_called_once()
 
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
-    def test_connection_string_remapped(self, azure_monitor_mock):
-        """azure_monitor_connection_string is remapped to connection_string."""
+    def test_connection_string_passed_through(self, azure_monitor_mock):
+        """connection_string is passed through to _setup_azure_monitor."""
         configure_microsoft_opentelemetry(
-            azure_monitor_connection_string=TEST_CONNECTION_STRING,
+            connection_string=TEST_CONNECTION_STRING,
         )
         actual_kwargs = azure_monitor_mock.call_args[1]
-        self.assertEqual(actual_kwargs["connection_string"], TEST_CONNECTION_STRING)
-        self.assertNotIn("azure_monitor_connection_string", actual_kwargs)
+        self.assertEqual(
+            actual_kwargs["connection_string"],
+            TEST_CONNECTION_STRING,
+        )
 
 
 if __name__ == "__main__":

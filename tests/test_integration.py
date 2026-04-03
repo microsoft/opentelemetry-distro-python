@@ -47,9 +47,11 @@ class TestPublicAPISurface(unittest.TestCase):
         self.assertEqual(__all__, ["configure_microsoft_opentelemetry"])
 
     def test_constants_reexported(self):
-        from microsoft.opentelemetry._constants import CONNECTION_STRING_ARG
+        from microsoft.opentelemetry._constants import (
+            DISABLE_AZURE_MONITOR_EXPORTER_ARG,
+        )
 
-        self.assertIsInstance(CONNECTION_STRING_ARG, str)
+        self.assertIsInstance(DISABLE_AZURE_MONITOR_EXPORTER_ARG, str)
 
     def test_types_reexported(self):
         from microsoft.opentelemetry._types import ConfigurationValue

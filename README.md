@@ -20,7 +20,7 @@ Intended API shape:
 from microsoft.opentelemetry import configure_microsoft_opentelemetry
 
 configure_microsoft_opentelemetry(
-	azure_monitor_connection_string="InstrumentationKey=...;IngestionEndpoint=...",
+	connection_string="InstrumentationKey=...;IngestionEndpoint=...",
 )
 ```
 
@@ -28,7 +28,7 @@ configure_microsoft_opentelemetry(
 
 | Keyword argument | Type | Default | Description |
 |---|---|---|---|
-| `azure_monitor_connection_string` | `str` | `None` | Connection string for Application Insights. Also read from `APPLICATIONINSIGHTS_CONNECTION_STRING` env var. |
+| `connection_string` | `str` | `None` | Connection string for Application Insights. Also read from `APPLICATIONINSIGHTS_CONNECTION_STRING` env var. |
 | `disable_azure_monitor_exporter` | `bool` | `False` | Explicitly disable Azure Monitor export. |
 | `credential` | `TokenCredential` | `None` | Azure AD token credential for authentication. |
 | `disable_logging` | `bool` | `False` | Disable the logging pipeline. |
