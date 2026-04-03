@@ -48,4 +48,4 @@ disable = [
 ]
 
 [tool.pytest.ini_options]
-testpaths = ["tests", "microsoft/tests"]
+testpaths = ["tests"]
