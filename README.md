@@ -49,6 +49,35 @@ configure_microsoft_opentelemetry(
 | `enable_trace_based_sampling_for_logs` | `bool` | `False` | Enable trace-based sampling for logs. |
 | `browser_sdk_loader_config` | `dict` | `None` | Browser SDK loader configuration. |
 
+### Sampling Configuration
+
+Sampling is configured via standard OpenTelemetry environment variables:
+
+| Environment variable | Description |
+|---|---|
+| `OTEL_TRACES_SAMPLER` | Sampler type to use (see supported values below). |
+| `OTEL_TRACES_SAMPLER_ARG` | Argument for the sampler (e.g. sample ratio or traces per second). |
+
+**Supported sampler values for `OTEL_TRACES_SAMPLER`:**
+
+| Value | Description |
+|---|---|
+| `always_on` | Sample every trace. |
+| `always_off` | Drop every trace. |
+| `trace_id_ratio` | Sample a fixed percentage based on trace ID. Set ratio with `OTEL_TRACES_SAMPLER_ARG` (0–1). |
+| `parentbased_always_on` | Parent-based, defaults to always on. |
+| `parentbased_always_off` | Parent-based, defaults to always off. |
+| `parentbased_trace_id_ratio` | Parent-based with trace ID ratio fallback. |
+| `microsoft.fixed_percentage` | Azure Monitor fixed-percentage sampler. Set ratio with `OTEL_TRACES_SAMPLER_ARG` (0–1). |
+| `microsoft.rate_limited` | Azure Monitor rate-limited sampler. Set target with `OTEL_TRACES_SAMPLER_ARG` (traces per second, default 5). |
+
+**Example:**
+
+```bash
+export OTEL_TRACES_SAMPLER=trace_id_ratio
+export OTEL_TRACES_SAMPLER_ARG=0.1
+```
+
 ## Planned Scope
 
 - Azure Monitor exporter support
