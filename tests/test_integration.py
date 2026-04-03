@@ -10,7 +10,6 @@ Validates public API surface, Azure Monitor delegation, environment variable
 handling, and error paths.
 """
 
-import os
 import unittest
 from unittest.mock import patch
 
@@ -76,29 +75,23 @@ class TestAzureMonitorImportError(unittest.TestCase):
             )
 
 
-# -- Environment Variable Handling -----------------------------------------
+# -- Default Behavior -------------------------------------------------------
 
 
-class TestEnvironmentVariableConfiguration(unittest.TestCase):
-    """Tests for env var driven configuration."""
+class TestDefaultBehavior(unittest.TestCase):
+    """Tests that Azure Monitor is enabled by default."""
 
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
-    def test_connection_string_env_var_enables_azure_monitor(self, az_mock):
-        env = {"APPLICATIONINSIGHTS_CONNECTION_STRING": TEST_CONNECTION_STRING}
-        with patch.dict(os.environ, env, clear=False):
-            configure_microsoft_opentelemetry()
+    def test_enabled_by_default_no_args(self, az_mock):
+        configure_microsoft_opentelemetry()
         az_mock.assert_called_once()
 
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
-    def test_no_connection_string_logs_info(self, az_mock):
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("APPLICATIONINSIGHTS_CONNECTION_STRING", None)
-            with self.assertLogs(
-                "microsoft.opentelemetry._configure", level="INFO"
-            ) as cm:
-                configure_microsoft_opentelemetry()
+    def test_disabled_when_explicitly_set(self, az_mock):
+        configure_microsoft_opentelemetry(
+            disable_azure_monitor_exporter=True,
+        )
         az_mock.assert_not_called()
-        self.assertTrue(any("not configured" in msg for msg in cm.output))
 
 
 if __name__ == "__main__":

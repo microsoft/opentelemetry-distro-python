@@ -4,7 +4,6 @@
 # license information.
 # --------------------------------------------------------------------------
 from logging import getLogger
-from os import environ
 
 from microsoft.opentelemetry._constants import (
     DISABLE_AZURE_MONITOR_EXPORTER_ARG,
@@ -14,16 +13,6 @@ from microsoft.opentelemetry._utils.configurations import (
 )
 
 _logger = getLogger(__name__)
-
-_ENV_CONNECTION_STRING = "APPLICATIONINSIGHTS_CONNECTION_STRING"
-
-
-def _has_connection_string(**kwargs):
-    """Check if a connection string is available via kwarg or env var."""
-    return (
-        kwargs.get("connection_string") is not None
-        or environ.get(_ENV_CONNECTION_STRING) is not None
-    )
 
 
 def configure_microsoft_opentelemetry(**kwargs) -> None:
@@ -90,30 +79,12 @@ def configure_microsoft_opentelemetry(**kwargs) -> None:
     )
 
     # Determine whether Azure Monitor export should be disabled
-    disable_azure_monitor = kwargs.pop(DISABLE_AZURE_MONITOR_EXPORTER_ARG, None)
-    explicitly_set = disable_azure_monitor is not None
-    has_conn_str = _has_connection_string(**kwargs)
-    if disable_azure_monitor is None:
-        disable_azure_monitor = not has_conn_str
-    elif not disable_azure_monitor and not has_conn_str:
-        _logger.warning(
-            "Azure Monitor exporter enabled but no "
-            "connection_string provided. "
-            "Set connection_string or "
-            "APPLICATIONINSIGHTS_CONNECTION_STRING env var. "
-            "Disabling Azure Monitor exporter."
-        )
-        disable_azure_monitor = True
+    disable_azure_monitor_exporter = kwargs.pop(
+        DISABLE_AZURE_MONITOR_EXPORTER_ARG, False
+    )
 
-    if disable_azure_monitor:
-        if explicitly_set:
-            _logger.info("Azure Monitor exporter explicitly disabled.")
-        else:
-            _logger.info(
-                "Azure Monitor exporter not configured. "
-                "To enable, provide connection_string or set "
-                "APPLICATIONINSIGHTS_CONNECTION_STRING env var."
-            )
+    if disable_azure_monitor_exporter:
+        _logger.info("Azure Monitor exporter explicitly disabled.")
         return
 
     _setup_azure_monitor(**kwargs)
