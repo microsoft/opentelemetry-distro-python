@@ -14,7 +14,6 @@ import unittest
 from unittest.mock import patch
 
 from microsoft.opentelemetry._configure import (
-    _setup_azure_monitor,
     use_microsoft_opentelemetry,
 )
 
