@@ -24,9 +24,7 @@ _logger = logging.getLogger("azure.monitor.opentelemetry._diagnostics")
 _DIAGNOSTIC_LOGGER_FILE_NAME = "applicationinsights-extension.log"
 _SITE_NAME = _env_var_or_default("WEBSITE_SITE_NAME")
 _SUBSCRIPTION_ID_ENV_VAR = _env_var_or_default("WEBSITE_OWNER_NAME")
-_SUBSCRIPTION_ID = (
-    _SUBSCRIPTION_ID_ENV_VAR.split("+")[0] if _SUBSCRIPTION_ID_ENV_VAR else None
-)
+_SUBSCRIPTION_ID = _SUBSCRIPTION_ID_ENV_VAR.split("+")[0] if _SUBSCRIPTION_ID_ENV_VAR else None
 # This logger is used for logging the diagnostic logs themselves to a log file
 _diagnostic_file_logger = logging.getLogger(__name__)
 _diagnostic_file_logger.propagate = False
@@ -95,12 +93,8 @@ class AzureDiagnosticLogging:
                             # Multi-thread can create a race condition for creating the log file
                             except FileExistsError:
                                 pass
-                        f_handler = logging.FileHandler(
-                            join(_DIAGNOSTIC_LOG_PATH, _DIAGNOSTIC_LOGGER_FILE_NAME)
-                        )
-                        formatter = logging.Formatter(
-                            fmt=log_format, datefmt="%Y-%m-%dT%H:%M:%S"
-                        )
+                        f_handler = logging.FileHandler(join(_DIAGNOSTIC_LOG_PATH, _DIAGNOSTIC_LOGGER_FILE_NAME))
+                        formatter = logging.Formatter(fmt=log_format, datefmt="%Y-%m-%dT%H:%M:%S")
                         f_handler.setFormatter(formatter)
                         _diagnostic_file_logger.addHandler(f_handler)
                         cls._initialized = True

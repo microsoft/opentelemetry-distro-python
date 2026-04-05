@@ -80,57 +80,69 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
 class TestSetupAzureMonitor(unittest.TestCase):
     """Tests for _setup_azure_monitor() delegation."""
 
-    @patch("microsoft.opentelemetry._configure.configure_azure_monitor")
-    def test_delegates_to_configure_azure_monitor(self, mock_configure):
+    def _make_mock_modules(self):
+        """Create mock azure.monitor.opentelemetry module hierarchy."""
+        mock_module = MagicMock()
+        return {
+            "azure": MagicMock(),
+            "azure.monitor": MagicMock(),
+            "azure.monitor.opentelemetry": mock_module,
+        }, mock_module
+
+    def test_delegates_to_configure_azure_monitor(self):
         """_setup_azure_monitor calls configure_azure_monitor with the given kwargs."""
-        from microsoft.opentelemetry._configure import _setup_azure_monitor
+        mods, mock_module = self._make_mock_modules()
+        with patch.dict(sys.modules, mods):
+            from microsoft.opentelemetry._configure import _setup_azure_monitor
 
-        _setup_azure_monitor(
-            connection_string=TEST_CONNECTION_STRING,
-            resource=TEST_RESOURCE,
-        )
-        mock_configure.assert_called_once_with(
-            connection_string=TEST_CONNECTION_STRING,
-            resource=TEST_RESOURCE,
-        )
+            _setup_azure_monitor(
+                connection_string=TEST_CONNECTION_STRING,
+                resource=TEST_RESOURCE,
+            )
+            mock_module.configure_azure_monitor.assert_called_once_with(
+                connection_string=TEST_CONNECTION_STRING,
+                resource=TEST_RESOURCE,
+            )
 
-    @patch("microsoft.opentelemetry._configure.configure_azure_monitor")
-    def test_forwards_standard_config_keys(self, mock_configure):
+    def test_forwards_standard_config_keys(self):
         """Standard config keys (resource, sampling, processors, etc.) are forwarded."""
-        from microsoft.opentelemetry._configure import _setup_azure_monitor
+        mods, mock_module = self._make_mock_modules()
+        with patch.dict(sys.modules, mods):
+            from microsoft.opentelemetry._configure import _setup_azure_monitor
 
-        _setup_azure_monitor(
-            connection_string=TEST_CONNECTION_STRING,
-            resource=TEST_RESOURCE,
-            disable_tracing=False,
-            disable_logging=False,
-            disable_metrics=False,
-            span_processors=["sp1"],
-            log_record_processors=["lrp1"],
-            metric_readers=["mr1"],
-            views=["v1"],
-            enable_live_metrics=True,
-            enable_performance_counters=True,
-            sampling_ratio=0.5,
-            logger_name="test",
-        )
-        actual_kwargs = mock_configure.call_args[1]
+            _setup_azure_monitor(
+                connection_string=TEST_CONNECTION_STRING,
+                resource=TEST_RESOURCE,
+                disable_tracing=False,
+                disable_logging=False,
+                disable_metrics=False,
+                span_processors=["sp1"],
+                log_record_processors=["lrp1"],
+                metric_readers=["mr1"],
+                views=["v1"],
+                enable_live_metrics=True,
+                enable_performance_counters=True,
+                sampling_ratio=0.5,
+                logger_name="test",
+            )
+            actual_kwargs = mock_module.configure_azure_monitor.call_args[1]
 
-        self.assertEqual(actual_kwargs["connection_string"], TEST_CONNECTION_STRING)
-        self.assertEqual(actual_kwargs["resource"], TEST_RESOURCE)
-        self.assertEqual(actual_kwargs["disable_tracing"], False)
-        self.assertEqual(actual_kwargs["span_processors"], ["sp1"])
-        self.assertEqual(actual_kwargs["sampling_ratio"], 0.5)
-        self.assertEqual(actual_kwargs["logger_name"], "test")
+            self.assertEqual(actual_kwargs["connection_string"], TEST_CONNECTION_STRING)
+            self.assertEqual(actual_kwargs["resource"], TEST_RESOURCE)
+            self.assertEqual(actual_kwargs["disable_tracing"], False)
+            self.assertEqual(actual_kwargs["span_processors"], ["sp1"])
+            self.assertEqual(actual_kwargs["sampling_ratio"], 0.5)
+            self.assertEqual(actual_kwargs["logger_name"], "test")
 
-    @patch("microsoft.opentelemetry._configure.configure_azure_monitor")
-    def test_exception_handled_gracefully(self, mock_configure):
+    def test_exception_handled_gracefully(self):
         """If configure_azure_monitor raises, it is caught and logged."""
-        mock_configure.side_effect = Exception("config error")
-        from microsoft.opentelemetry._configure import _setup_azure_monitor
+        mods, mock_module = self._make_mock_modules()
+        mock_module.configure_azure_monitor.side_effect = Exception("config error")
+        with patch.dict(sys.modules, mods):
+            from microsoft.opentelemetry._configure import _setup_azure_monitor
 
-        # Should not raise
-        _setup_azure_monitor(connection_string=TEST_CONNECTION_STRING)
+            # Should not raise
+            _setup_azure_monitor(connection_string=TEST_CONNECTION_STRING)
 
 
 class TestEnableKwargsPassthrough(unittest.TestCase):

@@ -174,17 +174,13 @@ def _setup_tracing(configurations: Dict[str, ConfigurationValue]):
     elif SAMPLING_RATIO_ARG in configurations:
         sampling_ratio = configurations[SAMPLING_RATIO_ARG]
         tracer_provider = TracerProvider(
-            sampler=ApplicationInsightsSampler(
-                sampling_ratio=cast(float, sampling_ratio)
-            ),
+            sampler=ApplicationInsightsSampler(sampling_ratio=cast(float, sampling_ratio)),
             resource=resource,
         )
     else:
         traces_per_second = configurations[SAMPLING_TRACES_PER_SECOND_ARG]
         tracer_provider = TracerProvider(
-            sampler=RateLimitedSampler(
-                target_spans_per_second_limit=cast(float, traces_per_second)
-            ),
+            sampler=RateLimitedSampler(target_spans_per_second_limit=cast(float, traces_per_second)),
             resource=resource,
         )
 
@@ -240,13 +236,9 @@ def _setup_logging(configurations: Dict[str, ConfigurationValue]):
         )
 
         resource: Resource = configurations[RESOURCE_ARG]  # type: ignore
-        enable_performance_counters_config = configurations[
-            ENABLE_PERFORMANCE_COUNTERS_ARG
-        ]
+        enable_performance_counters_config = configurations[ENABLE_PERFORMANCE_COUNTERS_ARG]
         logger_provider = LoggerProvider(resource=resource)
-        enable_trace_based_sampling_for_logs = configurations[
-            ENABLE_TRACE_BASED_SAMPLING_ARG
-        ]
+        enable_trace_based_sampling_for_logs = configurations[ENABLE_TRACE_BASED_SAMPLING_ARG]
         for custom_log_record_processor in configurations[LOG_RECORD_PROCESSORS_ARG]:  # type: ignore
             logger_provider.add_log_record_processor(custom_log_record_processor)  # type: ignore
         if configurations.get(ENABLE_LIVE_METRICS_ARG):
@@ -258,9 +250,7 @@ def _setup_logging(configurations: Dict[str, ConfigurationValue]):
         log_record_exporter = AzureMonitorLogExporter(**configurations)
         log_record_processor = _AzureBatchLogRecordProcessor(
             log_record_exporter,
-            {
-                "enable_trace_based_sampling_for_logs": enable_trace_based_sampling_for_logs
-            },
+            {"enable_trace_based_sampling_for_logs": enable_trace_based_sampling_for_logs},
         )
         logger_provider.add_log_record_processor(log_record_processor)
         set_logger_provider(logger_provider)
@@ -315,11 +305,7 @@ def _setup_live_metrics(configurations):
 class _EntryPointDistFinder:
     @cached_property
     def _mapping(self):
-        return {
-            self._key_for(ep): dist
-            for dist in distributions()
-            for ep in dist.entry_points
-        }
+        return {self._key_for(ep): dist for dist in distributions() for ep in dist.entry_points}
 
     def dist_for(self, entry_point: EntryPoint):
         dist = getattr(entry_point, "dist", None)
@@ -433,9 +419,7 @@ def _setup_browser_sdk_loader(configurations: Dict[str, ConfigurationValue]):
     """
     try:
         # Get browser SDK loader configuration
-        browser_sdk_loader_config_value = configurations.get(
-            BROWSER_SDK_LOADER_CONFIG_ARG
-        )
+        browser_sdk_loader_config_value = configurations.get(BROWSER_SDK_LOADER_CONFIG_ARG)
         if isinstance(browser_sdk_loader_config_value, dict):
             browser_sdk_loader_config = browser_sdk_loader_config_value
         else:
@@ -453,15 +437,11 @@ def _setup_browser_sdk_loader(configurations: Dict[str, ConfigurationValue]):
             str, configurations.get("connection_string", "")
         )
         if not connection_string or not isinstance(connection_string, str):
-            _logger.debug(
-                "No valid connection string - skipping browser SDK loader setup"
-            )
+            _logger.debug("No valid connection string - skipping browser SDK loader setup")
             return
 
         # Create BrowserSDKConfig object
-        browser_config = BrowserSDKConfig(
-            enabled=enabled, connection_string=connection_string
-        )
+        browser_config = BrowserSDKConfig(enabled=enabled, connection_string=connection_string)
 
         # Setup snippet injection for supported frameworks
         setup_snippet_injection(browser_config)

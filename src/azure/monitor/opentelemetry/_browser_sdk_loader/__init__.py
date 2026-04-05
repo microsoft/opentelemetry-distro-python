@@ -50,14 +50,10 @@ def _setup_django_injection(config: BrowserSDKConfig) -> None:
             from django.conf import settings  # pylint: disable=import-error
 
             if not settings.configured:
-                _logger.debug(
-                    "Django not configured - skipping middleware registration"
-                )
+                _logger.debug("Django not configured - skipping middleware registration")
                 return
         except Exception:  # pylint: disable=broad-exception-caught
-            _logger.debug(
-                "Cannot access Django settings - skipping middleware registration"
-            )
+            _logger.debug("Cannot access Django settings - skipping middleware registration")
             return
         # Try to dynamically register our middleware
         _register_django_middleware(config)
@@ -76,26 +72,20 @@ def _register_django_middleware(config: BrowserSDKConfig) -> None:
         from django.conf import settings  # pylint: disable=import-error
 
         # Check if our middleware is already in the middleware list
-        middleware_path = (
-            f"{__name__}.django_middleware.ApplicationInsightsWebSnippetMiddleware"
-        )
+        middleware_path = f"{__name__}.django_middleware.ApplicationInsightsWebSnippetMiddleware"
         if hasattr(settings, "MIDDLEWARE"):
             middleware_list = list(settings.MIDDLEWARE)
             if middleware_path not in middleware_list:
                 # Add our middleware to the end of the list
                 middleware_list.append(middleware_path)
                 settings.MIDDLEWARE = middleware_list
-                _logger.debug(
-                    "Added Application Insights middleware to Django MIDDLEWARE"
-                )
+                _logger.debug("Added Application Insights middleware to Django MIDDLEWARE")
         elif hasattr(settings, "MIDDLEWARE_CLASSES"):  # Legacy Django support
             middleware_list = list(settings.MIDDLEWARE_CLASSES)
             if middleware_path not in middleware_list:
                 middleware_list.append(middleware_path)
                 settings.MIDDLEWARE_CLASSES = middleware_list
-                _logger.debug(
-                    "Added Application Insights middleware to Django MIDDLEWARE_CLASSES"
-                )
+                _logger.debug("Added Application Insights middleware to Django MIDDLEWARE_CLASSES")
         # Store configuration globally for the middleware to access
         _store_django_config(config)
     except Exception as ex:  # pylint: disable=broad-exception-caught
@@ -115,8 +105,6 @@ def _store_django_config(config: BrowserSDKConfig) -> None:
         # Store config in Django settings for middleware to access
         if not hasattr(settings, "AZURE_MONITOR_WEB_SNIPPET_CONFIG"):
             settings.AZURE_MONITOR_WEB_SNIPPET_CONFIG = config
-            _logger.debug(
-                "Stored Application Insights configuration in Django settings"
-            )
+            _logger.debug("Stored Application Insights configuration in Django settings")
     except Exception as ex:  # pylint: disable=broad-exception-caught
         _logger.debug("Failed to store Django configuration: %s", ex, exc_info=True)

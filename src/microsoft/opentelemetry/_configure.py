@@ -5,8 +5,6 @@
 # --------------------------------------------------------------------------
 from logging import getLogger
 
-from azure.monitor.opentelemetry import configure_azure_monitor
-
 from microsoft.opentelemetry._constants import (
     DISABLE_AZURE_MONITOR_EXPORTER_ARG,
 )
@@ -79,6 +77,15 @@ def _setup_azure_monitor(**kwargs):
     All configuration defaults (resource, sampling, instrumentations,
     etc.) are handled by ``configure_azure_monitor()`` internally.
     """
+    try:
+        from azure.monitor.opentelemetry import configure_azure_monitor
+    except ImportError:
+        _logger.warning(
+            "azure-monitor-opentelemetry dependencies not available. "
+            "Install with: pip install microsoft-opentelemetry[azure-monitor]"
+        )
+        return
+
     try:
         configure_azure_monitor(**kwargs)
         _logger.info("Azure Monitor configured via azure-monitor-opentelemetry package")

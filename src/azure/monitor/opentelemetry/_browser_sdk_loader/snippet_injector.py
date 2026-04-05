@@ -93,18 +93,10 @@ class WebSnippetInjector:
         # Regex patterns for detecting existing Web SDK - more specific to avoid false positives
         self._existing_sdk_patterns = [
             # Look for actual JavaScript variables/objects, not just text content
-            re.compile(
-                r"\bappInsights\s*[=\.]", re.IGNORECASE
-            ),  # appInsights= or appInsights.
-            re.compile(
-                r"\bApplicationInsights\s*[=\.]", re.IGNORECASE
-            ),  # ApplicationInsights= or ApplicationInsights.
-            re.compile(
-                r"window\[.*appInsights.*\]", re.IGNORECASE
-            ),  # window["appInsights"] patterns
-            re.compile(
-                r"Microsoft\.ApplicationInsights", re.IGNORECASE
-            ),  # Microsoft.ApplicationInsights namespace
+            re.compile(r"\bappInsights\s*[=\.]", re.IGNORECASE),  # appInsights= or appInsights.
+            re.compile(r"\bApplicationInsights\s*[=\.]", re.IGNORECASE),  # ApplicationInsights= or ApplicationInsights.
+            re.compile(r"window\[.*appInsights.*\]", re.IGNORECASE),  # window["appInsights"] patterns
+            re.compile(r"Microsoft\.ApplicationInsights", re.IGNORECASE),  # Microsoft.ApplicationInsights namespace
             # Look for actual script URLs
             re.compile(r"ai\.2\.min\.js", re.IGNORECASE),
             re.compile(r"js\.monitor\.azure\.com", re.IGNORECASE),
@@ -170,16 +162,10 @@ class WebSnippetInjector:
             # Find insertion point (before </head> or <body>)
             insertion_point = self._find_insertion_point(html_content)
             if insertion_point == -1:
-                _logger.warning(
-                    "Could not find suitable insertion point for web snippet"
-                )
+                _logger.warning("Could not find suitable insertion point for web snippet")
                 return content
             # Insert snippet
-            modified_html = (
-                html_content[:insertion_point]
-                + snippet
-                + html_content[insertion_point:]
-            )
+            modified_html = html_content[:insertion_point] + snippet + html_content[insertion_point:]
             return modified_html.encode(encoding)
         except Exception as ex:  # pylint: disable=broad-exception-caught
             _logger.warning("Failed to inject web snippet: %s", ex, exc_info=True)
@@ -205,18 +191,14 @@ class WebSnippetInjector:
         """
         try:
             # Use cached decompressed content if available, otherwise decompress
-            decompressed_content = self._get_decompressed_content(
-                content, content_encoding
-            )
+            decompressed_content = self._get_decompressed_content(content, content_encoding)
             # Auto-detect encoding if not specified and content was compressed
             detected_encoding = content_encoding
             if not content_encoding and decompressed_content != content:
                 # Content was decompressed, try to detect which format was used
                 for enc in ["gzip", "br", "deflate"]:
                     try:
-                        test_compressed = self._compress_content(
-                            decompressed_content, enc
-                        )
+                        test_compressed = self._compress_content(decompressed_content, enc)
                         if test_compressed == content:
                             detected_encoding = enc
                             break
@@ -230,9 +212,7 @@ class WebSnippetInjector:
             modified_content = self.inject_snippet(decompressed_content, encoding)
             # Recompress if original was compressed
             if detected_encoding:
-                compressed_content = self._compress_content(
-                    modified_content, detected_encoding
-                )
+                compressed_content = self._compress_content(modified_content, detected_encoding)
                 return compressed_content, detected_encoding
             return modified_content, None
         except Exception as ex:  # pylint: disable=broad-exception-caught
@@ -252,14 +232,10 @@ class WebSnippetInjector:
         if self._web_sdk_snippet_cache is None:
             config_dict = self.config.to_dict()
             config_json = self._dict_to_js_object(config_dict.get("cfg", {}))
-            self._web_sdk_snippet_cache = _WEB_SDK_SNIPPET_TEMPLATE.replace(
-                "{CONFIG_PLACEHOLDER}", config_json
-            )
+            self._web_sdk_snippet_cache = _WEB_SDK_SNIPPET_TEMPLATE.replace("{CONFIG_PLACEHOLDER}", config_json)
         return self._web_sdk_snippet_cache
 
-    def _get_decompressed_content(
-        self, content: bytes, content_encoding: Optional[str] = None
-    ) -> bytes:
+    def _get_decompressed_content(self, content: bytes, content_encoding: Optional[str] = None) -> bytes:
         """Get decompressed content with caching to avoid redundant decompression.
 
         :param content: Content bytes to decompress if needed.
@@ -277,10 +253,7 @@ class WebSnippetInjector:
         # For compressed content or when encoding is specified, use caching
         cache_key = (hash(content), content_encoding)
         # Return cached result if available
-        if (
-            self._cache_key == cache_key
-            and self._decompressed_content_cache is not None
-        ):
+        if self._cache_key == cache_key and self._decompressed_content_cache is not None:
             return self._decompressed_content_cache
         # Decompress content based on encoding header
         decompressed_content = self._decompress_content(content, content_encoding)
@@ -329,9 +302,7 @@ class WebSnippetInjector:
         self._decompressed_content_cache = None
         self._cache_key = None
 
-    def _has_existing_web_sdk(
-        self, content: bytes, content_encoding: Optional[str] = None
-    ) -> bool:
+    def _has_existing_web_sdk(self, content: bytes, content_encoding: Optional[str] = None) -> bool:
         """Check if Web SDK is already present in the HTML, handling compressed content.
 
         :param content: HTML content bytes to check for existing Web SDK.
@@ -359,9 +330,7 @@ class WebSnippetInjector:
         except Exception:  # pylint: disable=broad-exception-caught
             return False
 
-    def _has_existing_web_sdk_from_decompressed(
-        self, decompressed_content: bytes
-    ) -> bool:
+    def _has_existing_web_sdk_from_decompressed(self, decompressed_content: bytes) -> bool:
         """Check if Web SDK is already present in decompressed HTML content.
 
         :param decompressed_content: Decompressed HTML content bytes to scan for Web SDK patterns.
@@ -372,9 +341,7 @@ class WebSnippetInjector:
         try:
             # Convert decompressed content to string and check for patterns
             content_str = decompressed_content.decode("utf-8", errors="ignore")
-            return any(
-                pattern.search(content_str) for pattern in self._existing_sdk_patterns
-            )
+            return any(pattern.search(content_str) for pattern in self._existing_sdk_patterns)
         except Exception:  # pylint: disable=broad-exception-caught
             return False
 
@@ -429,9 +396,7 @@ class WebSnippetInjector:
                 else:
                     result = _ZLIB_MODULE.decompress(content)
         except Exception as ex:  # pylint: disable=broad-exception-caught
-            _logger.warning(
-                "Failed to decompress content with encoding %s: %s", encoding, ex
-            )
+            _logger.warning("Failed to decompress content with encoding %s: %s", encoding, ex)
         return result
 
     def _compress_content(self, content: bytes, encoding: str) -> bytes:
@@ -460,9 +425,7 @@ class WebSnippetInjector:
                 else:
                     result = _ZLIB_MODULE.compress(content)
         except Exception as ex:  # pylint: disable=broad-exception-caught
-            _logger.warning(
-                "Failed to compress content with encoding %s: %s", encoding, ex
-            )
+            _logger.warning("Failed to compress content with encoding %s: %s", encoding, ex)
         return result
 
     def _format_config_value(self, value):
