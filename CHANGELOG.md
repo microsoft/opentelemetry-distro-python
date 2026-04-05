@@ -5,8 +5,8 @@
 ### Added
 
 - Added `azure-monitor-opentelemetry` package source for Azure Monitor OpenTelemetry distro integration.
-- Added `microsoft.opentelemetry` distro configuration with `configure_microsoft_opentelemetry()` entry point for Azure Monitor.
-- Added `disable_live_metrics` and `disable_performance_counters` kwargs with automatic remapping to the `enable_*` form expected by `configure_azure_monitor()`.
+- Added `microsoft.opentelemetry` distro configuration with `use_microsoft_opentelemetry()` entry point for Azure Monitor.
+- Added `enable_live_metrics` and `enable_performance_counters` kwargs passed directly to `configure_azure_monitor()`.
 
 ### Changed
 

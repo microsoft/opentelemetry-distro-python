@@ -4,11 +4,11 @@
 # license information.
 # -------------------------------------------------------------------------
 
-from microsoft.opentelemetry._configure import configure_microsoft_opentelemetry
+from microsoft.opentelemetry._configure import use_microsoft_opentelemetry
 
 from ._version import VERSION
 
 __all__ = [
-    "configure_microsoft_opentelemetry",
+    "use_microsoft_opentelemetry",
 ]
 __version__ = VERSION

@@ -14,7 +14,7 @@ api_key = "<AZURE_OPENAI_API_KEY>"
 
 configure_azure_monitor() # TODO: This will be replaced with the opentelemetry distro
 """
-configure_microsoft_opentelemetry(
+use_microsoft_opentelemetry(
     connection_string="InstrumentationKey=...",
     enable_genai_langchain=True,
 )

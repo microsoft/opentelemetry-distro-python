@@ -17,9 +17,9 @@ The target package should reduce fragmented setup across multiple observability 
 Intended API shape:
 
 ```python
-from microsoft.opentelemetry import configure_microsoft_opentelemetry
+from microsoft.opentelemetry import use_microsoft_opentelemetry
 
-configure_microsoft_opentelemetry(
+use_microsoft_opentelemetry(
 	connection_string="InstrumentationKey=...;IngestionEndpoint=...",
 )
 ```
@@ -34,8 +34,8 @@ configure_microsoft_opentelemetry(
 | `disable_logging` | `bool` | `False` | Disable the logging pipeline. |
 | `disable_tracing` | `bool` | `False` | Disable the tracing pipeline. |
 | `disable_metrics` | `bool` | `False` | Disable the metrics pipeline. |
-| `disable_live_metrics` | `bool` | `False` | Disable live metrics collection. |
-| `disable_performance_counters` | `bool` | `False` | Disable performance counter collection. |
+| `enable_live_metrics` | `bool` | `True` | Enable live metrics collection. |
+| `enable_performance_counters` | `bool` | `True` | Enable performance counter collection. |
 | `disable_offline_storage` | `bool` | `False` | Disable offline retry storage for failed telemetry. |
 | `storage_directory` | `str` | `None` | Custom directory for offline telemetry storage. |
 | `resource` | `Resource` | auto | OpenTelemetry Resource. |

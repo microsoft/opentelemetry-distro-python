@@ -5,17 +5,16 @@
 # --------------------------------------------------------------------------
 from logging import getLogger
 
+from azure.monitor.opentelemetry import configure_azure_monitor
+
 from microsoft.opentelemetry._constants import (
     DISABLE_AZURE_MONITOR_EXPORTER_ARG,
-)
-from microsoft.opentelemetry._utils.configurations import (
-    remap_disable_to_enable,
 )
 
 _logger = getLogger(__name__)
 
 
-def configure_microsoft_opentelemetry(**kwargs) -> None:
+def use_microsoft_opentelemetry(**kwargs) -> None:
     """Configure OpenTelemetry with Azure Monitor support.
 
     This function delegates to ``configure_azure_monitor()`` from the
@@ -40,10 +39,10 @@ def configure_microsoft_opentelemetry(**kwargs) -> None:
         Disable the tracing pipeline. Defaults to False.
     :keyword bool disable_metrics:
         Disable the metrics pipeline. Defaults to False.
-    :keyword bool disable_live_metrics:
-        Disable live metrics. Defaults to False.
-    :keyword bool disable_performance_counters:
-        Disable performance counters. Defaults to False.
+    :keyword bool enable_live_metrics:
+        Enable live metrics. Defaults to True.
+    :keyword bool enable_performance_counters:
+        Enable performance counters. Defaults to True.
     :keyword bool disable_offline_storage:
         Disable offline retry storage. Defaults to False.
     :keyword str storage_directory:
@@ -64,14 +63,6 @@ def configure_microsoft_opentelemetry(**kwargs) -> None:
         Browser SDK loader configuration.
     :rtype: None
     """
-    # Remap disable_* kwargs to enable_* for configure_azure_monitor()
-    remap_disable_to_enable(kwargs, "disable_live_metrics", "enable_live_metrics")
-    remap_disable_to_enable(
-        kwargs,
-        "disable_performance_counters",
-        "enable_performance_counters",
-    )
-
     # Determine whether Azure Monitor export should be disabled
     disable_azure_monitor_exporter = kwargs.pop(DISABLE_AZURE_MONITOR_EXPORTER_ARG, False)
 
@@ -89,19 +80,8 @@ def _setup_azure_monitor(**kwargs):
     etc.) are handled by ``configure_azure_monitor()`` internally.
     """
     try:
-        from azure.monitor.opentelemetry import configure_azure_monitor
-    except ImportError:
-        _logger.warning(
-            "azure-monitor-opentelemetry package not installed. "
-            "Install with: pip install azure-monitor-opentelemetry "
-            "or: pip install microsoft-opentelemetry[azure-monitor]"
-        )
-        return
-
-    try:
         configure_azure_monitor(**kwargs)
-        msg = "Azure Monitor configured via azure-monitor-opentelemetry package"
-        _logger.info(msg)
+        _logger.info("Azure Monitor configured via azure-monitor-opentelemetry package")
     except Exception as ex:  # pylint: disable=broad-exception-caught
         _logger.warning(
             "Failed to configure Azure Monitor: %s",
