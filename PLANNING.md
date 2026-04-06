@@ -108,7 +108,11 @@ Design guidelines for the internal instrumentation:
 - Follow OpenTelemetry GenAI semantic conventions so the output is compatible with any OTel-compliant backend
 - Structure the code as a standard OpenTelemetry instrumentor (implement `BaseInstrumentor`) so it can be swapped out cleanly
 - Keep the instrumentation in a clearly marked internal module (e.g., `_langchain/`) with explicit documentation that it is temporary
-- When the upstream OpenTelemetry contrib LangChain instrumentation is published to PyPI, migrate to it and deprecate the internal version
+- Migration to the upstream OpenTelemetry contrib LangChain instrumentation should only happen when **all** of the following criteria are met:
+  1. The upstream package is published to PyPI
+  2. The upstream instrumentation follows the **latest** OpenTelemetry GenAI semantic conventions (not an outdated or draft version)
+  3. The upstream instrumentation is functionally mature and in good shape (stable API, reasonable test coverage, no critical open bugs)
+- Simply being available on PyPI is not sufficient — an upstream instrumentation that uses outdated semantic conventions or has significant quality gaps should not replace the internal version
 - Track upstream progress and maintain a checklist of gaps between the internal implementation and the contrib version
 
 
@@ -134,15 +138,47 @@ The A365 observability runtime will be **migrated as code into this repository**
 - Validate that existing A365 telemetry pipelines continue to work under the new distro setup with the in-repo code
 - Coordinate with the A365 team on dual maintenance during the transition period (similar to the Azure Monitor Distro approach)
 
-## Phase 7: Testing
+## Phase 7: SDKStats (Statsbeat) Decoupling
 
-- Unit tests for configuration parsing and defaults
-- Unit tests for exporter and instrumentation enablement combinations
-- Tests for environment-variable driven setup
-- Tests for missing optional dependencies and graceful failures
+The SDK self-telemetry feature (statsbeat) currently lives in the Azure Monitor Exporter package (`azure.monitor.opentelemetry.exporter.statsbeat`) and is only active when the Azure Monitor Exporter is configured. This creates a gap for customers who use the distro exclusively for A365 scenarios — they lose SDK health and usage telemetry because statsbeat is never initialized without the Azure Monitor export path.
+
+### Goal
+
+Provide SDK self-telemetry (statsbeat) as a standalone capability that works regardless of which export backends are enabled, so A365-only customers still get SDK usage metrics, error rates, and health diagnostics.
+
+### Work Items
+
+- Migrate the core statsbeat logic into this repository under a backend-agnostic internal module (e.g., `_statsbeat/`)
+- Decouple statsbeat initialization from the Azure Monitor Exporter — it should be triggered by the distro setup regardless of which exporters are active
+- Define a pluggable transport layer so statsbeat data can be emitted to different backends:
+  - Azure Monitor ingestion (current behavior, for customers using Azure Monitor)
+  - A365 telemetry pipeline (for A365-only customers)
+  - OTLP endpoint (for customers using only OTLP export)
+- Preserve backward compatibility: when Azure Monitor Exporter is present, statsbeat should behave identically to the current implementation
+- Ensure statsbeat tracks usage metrics relevant to all enabled features (A365 exporter, OTLP export, GenAI instrumentations) — not just Azure Monitor-specific features
+- Update the browser SDK loader statsbeat integration (`_browser_sdk_loader/snippet_injector.py`) to use the in-repo statsbeat module instead of importing from the exporter package
+- Add configuration options to control statsbeat behavior:
+  - Enable/disable statsbeat globally
+  - Select statsbeat transport backend(s)
+  - Configure statsbeat endpoint when not using the default Azure Monitor ingestion
+- Validate that existing Azure Monitor statsbeat consumers see no behavioral change after the migration
+- Coordinate with the Azure Monitor Exporter team on deprecation of the statsbeat module in the exporter package once the in-repo version is stable
+
+## Phase 8: Integration and End-to-End Testing
+
+Unit tests are expected to be written alongside every phase — each phase must include comprehensive unit test coverage for its own code. This phase focuses exclusively on integration and end-to-end tests that validate cross-phase interactions and full pipeline behavior.
+
+- Integration tests for the full `use_microsoft_opentelemetry()` setup across exporter combinations (Azure Monitor only, OTLP only, A365 only, all combined)
+- End-to-end tests that verify telemetry flows from instrumented code through providers, processors, and exporters to a mock backend
+- Integration tests for configuration interactions (e.g., enabling A365 + Azure Monitor together, conflicting environment variables, exporter-optional paths)
+- End-to-end tests for auto-instrumentation scenarios (distro entry point wires everything correctly)
+- Integration tests for GenAI instrumentations producing expected spans through the full pipeline
+- End-to-end tests for statsbeat emitting self-telemetry across different transport backends
+- Integration tests for graceful degradation when optional dependencies are missing at runtime
 - Smoke tests for the public import path and basic configuration call
+- End-to-end sample-app-based tests that exercise the sample applications from Phase 9 as validation fixtures
 
-## Phase 8: Documentation and Sample Apps
+## Phase 9: Documentation and Sample Apps
 
 - Add quick start examples for Azure Monitor only, OTLP only, and combined setups
 - Document supported parameters and environment variables
@@ -162,7 +198,7 @@ Provide runnable sample apps covering the main scenarios:
 - **A365 agent workload** — Sample demonstrating A365 exporter, Microsoft Agent Framework instrumentation, and baggage extensions
 - **GenAI multi-framework** — App combining multiple GenAI instrumentations (e.g., OpenAI + LangChain)
 
-## Phase 9: External Instrumentation Normalization
+## Phase 10: External Instrumentation Normalization
 
 - Define a normalization layer that can consume telemetry from third-party GenAI instrumentations (Traceloop, Arize, etc.) and align it to the expected semantic conventions
 - Map external instrumentation span attributes and naming to OpenTelemetry GenAI semantic conventions
