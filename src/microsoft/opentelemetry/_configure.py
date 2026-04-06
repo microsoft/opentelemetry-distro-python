@@ -6,7 +6,8 @@
 from logging import getLogger
 
 from microsoft.opentelemetry._constants import (
-    DISABLE_AZURE_MONITOR_EXPORTER_ARG,
+    ENABLE_AZURE_MONITOR_ARG,
+    _AZURE_MONITOR_KWARG_MAP,
 )
 
 _logger = getLogger(__name__)
@@ -22,29 +23,31 @@ def use_microsoft_opentelemetry(**kwargs) -> None:
     All configuration defaults are handled by
     ``configure_azure_monitor()`` internally.
 
-    :keyword str connection_string:
+    :keyword bool enable_azure_monitor:
+        Enable Azure Monitor export.
+        Defaults to True when a connection string is available.
+    :keyword str azure_monitor_connection_string:
         Connection string for Application Insights resource.
         Also read from ``APPLICATIONINSIGHTS_CONNECTION_STRING``
         env var by ``configure_azure_monitor()``.
-    :keyword bool disable_azure_monitor_exporter:
-        Explicitly disable Azure Monitor export.
-        Defaults to False when a connection string is available.
-    :keyword credential:
+    :keyword azure_monitor_exporter_credential:
         Azure AD token credential for authentication.
+    :keyword bool azure_monitor_enable_live_metrics:
+        Enable live metrics. Defaults to True.
+    :keyword bool azure_monitor_enable_performance_counters:
+        Enable performance counters. Defaults to True.
+    :keyword bool azure_monitor_exporter_disable_offline_storage:
+        Disable offline retry storage. Defaults to False.
+    :keyword str azure_monitor_exporter_storage_directory:
+        Custom directory for offline telemetry storage.
+    :keyword dict azure_monitor_browser_sdk_loader_config:
+        Browser SDK loader configuration.
     :keyword bool disable_logging:
         Disable the logging pipeline. Defaults to False.
     :keyword bool disable_tracing:
         Disable the tracing pipeline. Defaults to False.
     :keyword bool disable_metrics:
         Disable the metrics pipeline. Defaults to False.
-    :keyword bool enable_live_metrics:
-        Enable live metrics. Defaults to True.
-    :keyword bool enable_performance_counters:
-        Enable performance counters. Defaults to True.
-    :keyword bool disable_offline_storage:
-        Disable offline retry storage. Defaults to False.
-    :keyword str storage_directory:
-        Custom directory for offline telemetry storage.
     :keyword resource: OpenTelemetry Resource.
     :keyword list span_processors: Additional span processors.
     :keyword list log_record_processors:
@@ -57,18 +60,23 @@ def use_microsoft_opentelemetry(**kwargs) -> None:
         Per-library instrumentation enable/disable options.
     :keyword bool enable_trace_based_sampling_for_logs:
         Enable trace-based sampling for logs.
-    :keyword dict browser_sdk_loader_config:
-        Browser SDK loader configuration.
     :rtype: None
     """
-    # Determine whether Azure Monitor export should be disabled
-    disable_azure_monitor_exporter = kwargs.pop(DISABLE_AZURE_MONITOR_EXPORTER_ARG, False)
+    enable_azure_monitor = kwargs.pop(ENABLE_AZURE_MONITOR_ARG, True)
 
-    if disable_azure_monitor_exporter:
+    if not enable_azure_monitor:
         _logger.info("Azure Monitor exporter explicitly disabled.")
         return
 
-    _setup_azure_monitor(**kwargs)
+    # Remap azure_monitor_ prefixed kwargs to internal names
+    remapped = {}
+    for key, value in kwargs.items():
+        if key in _AZURE_MONITOR_KWARG_MAP:
+            remapped[_AZURE_MONITOR_KWARG_MAP[key]] = value
+        else:
+            remapped[key] = value
+
+    _setup_azure_monitor(**remapped)
 
 
 def _setup_azure_monitor(**kwargs):

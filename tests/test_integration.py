@@ -44,10 +44,10 @@ class TestPublicAPISurface(unittest.TestCase):
 
     def test_constants_reexported(self):
         from microsoft.opentelemetry._constants import (
-            DISABLE_AZURE_MONITOR_EXPORTER_ARG,
+            ENABLE_AZURE_MONITOR_ARG,
         )
 
-        self.assertIsInstance(DISABLE_AZURE_MONITOR_EXPORTER_ARG, str)
+        self.assertIsInstance(ENABLE_AZURE_MONITOR_ARG, str)
 
     def test_types_reexported(self):
         from microsoft.opentelemetry._types import ConfigurationValue
@@ -69,7 +69,7 @@ class TestDefaultBehavior(unittest.TestCase):
     @patch("microsoft.opentelemetry._configure._setup_azure_monitor")
     def test_disabled_when_explicitly_set(self, az_mock):
         use_microsoft_opentelemetry(
-            disable_azure_monitor_exporter=True,
+            enable_azure_monitor=False,
         )
         az_mock.assert_not_called()
 

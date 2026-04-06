@@ -20,7 +20,7 @@ Intended API shape:
 from microsoft.opentelemetry import use_microsoft_opentelemetry
 
 use_microsoft_opentelemetry(
-	connection_string="InstrumentationKey=...;IngestionEndpoint=...",
+	azure_monitor_connection_string="InstrumentationKey=...;IngestionEndpoint=...",
 )
 ```
 
@@ -28,16 +28,17 @@ use_microsoft_opentelemetry(
 
 | Keyword argument | Type | Default | Description |
 |---|---|---|---|
-| `connection_string` | `str` | `None` | Connection string for Application Insights. Also read from `APPLICATIONINSIGHTS_CONNECTION_STRING` env var. |
-| `disable_azure_monitor_exporter` | `bool` | `False` | Explicitly disable Azure Monitor export. |
-| `credential` | `TokenCredential` | `None` | Azure AD token credential for authentication. |
+| `enable_azure_monitor` | `bool` | `True` | Enable Azure Monitor export. |
+| `azure_monitor_connection_string` | `str` | `None` | Connection string for Application Insights. Also read from `APPLICATIONINSIGHTS_CONNECTION_STRING` env var. |
+| `azure_monitor_exporter_credential` | `TokenCredential` | `None` | Azure AD token credential for authentication. |
+| `azure_monitor_enable_live_metrics` | `bool` | `True` | Enable live metrics collection. |
+| `azure_monitor_enable_performance_counters` | `bool` | `True` | Enable performance counter collection. |
+| `azure_monitor_exporter_disable_offline_storage` | `bool` | `False` | Disable offline retry storage for failed telemetry. |
+| `azure_monitor_exporter_storage_directory` | `str` | `None` | Custom directory for offline telemetry storage. |
+| `azure_monitor_browser_sdk_loader_config` | `dict` | `None` | Browser SDK loader configuration. |
 | `disable_logging` | `bool` | `False` | Disable the logging pipeline. |
 | `disable_tracing` | `bool` | `False` | Disable the tracing pipeline. |
 | `disable_metrics` | `bool` | `False` | Disable the metrics pipeline. |
-| `enable_live_metrics` | `bool` | `True` | Enable live metrics collection. |
-| `enable_performance_counters` | `bool` | `True` | Enable performance counter collection. |
-| `disable_offline_storage` | `bool` | `False` | Disable offline retry storage for failed telemetry. |
-| `storage_directory` | `str` | `None` | Custom directory for offline telemetry storage. |
 | `resource` | `Resource` | auto | OpenTelemetry Resource. |
 | `span_processors` | `list` | `[]` | Additional span processors. |
 | `log_record_processors` | `list` | `[]` | Additional log record processors. |
@@ -47,7 +48,6 @@ use_microsoft_opentelemetry(
 | `logging_formatter` | `Formatter` | `None` | Formatter for collected logs. |
 | `instrumentation_options` | `dict` | `None` | Per-library instrumentation enable/disable options. |
 | `enable_trace_based_sampling_for_logs` | `bool` | `False` | Enable trace-based sampling for logs. |
-| `browser_sdk_loader_config` | `dict` | `None` | Browser SDK loader configuration. |
 
 ### Sampling Configuration
 
@@ -105,15 +105,6 @@ The POC also describes this execution model:
 5. Enable standard instrumentations
 6. Enable Microsoft-specific observability instrumentations
 7. Enable GenAI contrib instrumentations
-
-## Current Repository Layout
-
-- `src/microsoft/opentelemetry/` distro package source
-- `microsoft/tests/` distro unit and integration tests
-- `tests/` smoke tests
-- `azure-monitor-opentelemetry/` Azure Monitor OpenTelemetry source (vendored)
-- `pyproject.toml` project metadata and dependencies
-- `PLANNING.md` implementation plan and open questions
 
 ## Development
 
