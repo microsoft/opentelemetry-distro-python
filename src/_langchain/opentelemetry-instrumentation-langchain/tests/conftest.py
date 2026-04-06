@@ -26,6 +26,7 @@ from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
 )
 
 
+# pylint: disable=protected-access, redefined-outer-name
 @pytest.fixture(scope="module", name="chat_openai_gpt_3_5_turbo_model")
 def fixture_chat_openai_gpt_3_5_turbo_model():
     llm = ChatOpenAI(
@@ -87,12 +88,14 @@ def start_instrumentation(
     meter_provider,
     logger_provider,
 ):
+    # pylint: disable=import-outside-toplevel
     # Ensure stability opt-in is set before the first call to _initialize()
     os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] = "gen_ai_latest_experimental"
     # Reset the cached initialization so the env var is picked up
     from opentelemetry.instrumentation._semconv import (
         _OpenTelemetrySemanticConventionStability,
     )
+
     _OpenTelemetrySemanticConventionStability._initialized = False
     _OpenTelemetrySemanticConventionStability._OTEL_SEMCONV_STABILITY_SIGNAL_MAPPING = {}
     _OpenTelemetrySemanticConventionStability._initialize()
@@ -180,9 +183,7 @@ class PrettyPrintJSONBody:
     @staticmethod
     def serialize(cassette_dict):
         cassette_dict = convert_body_to_literal(cassette_dict)
-        return yaml.dump(
-            cassette_dict, default_flow_style=False, allow_unicode=True
-        )
+        return yaml.dump(cassette_dict, default_flow_style=False, allow_unicode=True)
 
     @staticmethod
     def deserialize(cassette_string):
@@ -191,15 +192,13 @@ class PrettyPrintJSONBody:
 
 @pytest.fixture(scope="module", autouse=True)
 def fixture_vcr(vcr_config):
-    import vcr as vcrpy
+    import vcr as vcrpy  # pylint: disable=import-outside-toplevel
 
     my_vcr = vcrpy.VCR(**vcr_config)
     my_vcr.register_serializer("yaml", PrettyPrintJSONBody)
     my_vcr.record_mode = "none"
     my_vcr.serializer = "yaml"
-    my_vcr.cassette_library_dir = os.path.join(
-        os.path.dirname(__file__), "cassettes"
-    )
+    my_vcr.cassette_library_dir = os.path.join(os.path.dirname(__file__), "cassettes")
     return my_vcr
 
 

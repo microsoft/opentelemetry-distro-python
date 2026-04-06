@@ -24,7 +24,7 @@ __all__ = ["_InvocationManager"]
 @dataclass
 class _InvocationState:
     invocation: GenAIInvocation
-    children: List[UUID] = field(default_factory=lambda: list())
+    children: List[UUID] = field(default_factory=lambda: [])  # pylint: disable=unnecessary-lambda
 
 
 class _InvocationManager:
@@ -32,7 +32,7 @@ class _InvocationManager:
         self,
     ) -> None:
         # Map from run_id -> _InvocationState, to keep track of invocations and parent/child relationships
-        # TODO: TTL cache to avoid memory leaks in long-running processes.
+        # TODO: TTL cache to avoid memory leaks in long-running processes. # pylint: disable=fixme
         self._invocations: Dict[UUID, _InvocationState] = {}
 
     def add_invocation_state(

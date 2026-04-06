@@ -14,7 +14,8 @@
 
 """
 Langchain instrumentation supporting `ChatOpenAI` and `ChatBedrock`, it can be enabled by
-using ``LangChainInstrumentor``. Other providers/LLMs may be supported in the future and telemetry for them is skipped for now.
+using ``LangChainInstrumentor``. Other providers/LLMs may be supported in the future and
+telemetry for them is skipped for now.
 
 Usage
 -----
@@ -57,11 +58,6 @@ class LangChainInstrumentor(BaseInstrumentor):
     to capture LLM telemetry.
     """
 
-    def __init__(
-        self,
-    ):
-        super().__init__()
-
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
@@ -96,19 +92,16 @@ class LangChainInstrumentor(BaseInstrumentor):
         # Clear the TelemetryHandler singleton so the next instrument() uses
         # the provided tracer_provider/meter_provider/logger_provider instead
         # of reusing the previous handler.
-        if (
-            getattr(get_telemetry_handler, "_default_handler", None)
-            is not None
-        ):
+        if getattr(get_telemetry_handler, "_default_handler", None) is not None:
             delattr(get_telemetry_handler, "_default_handler")
 
 
-class _BaseCallbackManagerInitWrapper:
+class _BaseCallbackManagerInitWrapper:  # pylint: disable=too-few-public-methods
     """
     Wrap the BaseCallbackManager __init__ to insert custom callback handler in the manager's handlers list.
     """
 
-    def __init__(
+    def __init__(  # pylint: disable=too-few-public-methods
         self, callback_handler: OpenTelemetryLangChainCallbackHandler
     ):
         self._otel_handler = callback_handler

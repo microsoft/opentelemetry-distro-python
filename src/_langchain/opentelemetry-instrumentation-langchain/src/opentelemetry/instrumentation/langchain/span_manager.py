@@ -31,7 +31,7 @@ __all__ = ["_SpanManager"]
 @dataclass
 class _SpanState:
     span: Span
-    children: List[UUID] = field(default_factory=lambda: list())
+    children: List[UUID] = field(default_factory=lambda: [])  # pylint: disable=unnecessary-lambda
 
 
 class _SpanManager:
@@ -42,7 +42,7 @@ class _SpanManager:
         self._tracer = tracer
 
         # Map from run_id -> _SpanState, to keep track of spans and parent/child relationships
-        # TODO: Use weak references or a TTL cache to avoid memory leaks in long-running processes. See #3735
+        # TODO: Use weak references or a TTL cache to avoid memory leaks in long-running processes. See #3735 # pylint: disable=fixme
         self.spans: Dict[UUID, _SpanState] = {}
 
     def _create_span(
@@ -56,9 +56,7 @@ class _SpanManager:
             parent_state = self.spans[parent_run_id]
             parent_span = parent_state.span
             ctx = set_span_in_context(parent_span)
-            span = self._tracer.start_span(
-                name=span_name, kind=kind, context=ctx
-            )
+            span = self._tracer.start_span(name=span_name, kind=kind, context=ctx)
             parent_state.children.append(run_id)
         else:
             # top-level or missing parent
@@ -111,7 +109,5 @@ class _SpanManager:
             # If the span does not exist, we cannot set the error status
             return
         span.set_status(Status(StatusCode.ERROR, str(error)))
-        span.set_attribute(
-            error_attributes.ERROR_TYPE, type(error).__qualname__
-        )
+        span.set_attribute(error_attributes.ERROR_TYPE, type(error).__qualname__)
         self.end_span(run_id)

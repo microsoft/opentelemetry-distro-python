@@ -35,9 +35,11 @@ from opentelemetry.util.genai.types import (
 )
 
 
+# pylint: disable=too-many-arguments, too-many-locals, too-many-branches, unused-argument
 class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
     """
-    A callback handler for LangChain that uses OpenTelemetry to create spans for LLM calls and chains, tools etc,. in future.
+    A callback handler for LangChain that uses OpenTelemetry to create spans for LLM calls and
+    chains, tools etc,. in future.
     """
 
     def __init__(self, telemetry_handler: TelemetryHandler) -> None:
@@ -45,7 +47,7 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
         self._telemetry_handler = telemetry_handler
         self._invocation_manager = _InvocationManager()
 
-    def on_chat_model_start(
+    def on_chat_model_start(  # pylint: disable=too-many-statements
         self,
         serialized: dict[str, Any],
         messages: list[list[BaseMessage]],
@@ -61,10 +63,7 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
             return
 
         if "invocation_params" in kwargs:
-            params = (
-                kwargs["invocation_params"].get("params")
-                or kwargs["invocation_params"]
-            )
+            params = kwargs["invocation_params"].get("params") or kwargs["invocation_params"]
         else:
             params = kwargs
 
@@ -73,7 +72,7 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
             "model_name",  # ChatOpenAI
             "model_id",  # ChatBedrock
         ):
-            if (model := (params or {}).get(model_tag)) is not None:
+            if (model := (params or {}).get(model_tag)) is not None:  # pylint: disable=no-else-break
                 request_model = model
                 break
             elif (model := (metadata or {}).get(model_tag)) is not None:
@@ -113,7 +112,7 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
                 max_tokens = metadata.get("ls_max_tokens")
 
         input_messages: list[InputMessage] = []
-        for sub_messages in messages:
+        for sub_messages in messages:  # pylint: disable=too-many-nested-blocks
             for message in sub_messages:
                 # Cast to Any to avoid type checking issues with LangChain's complex content type
                 raw_content: Any = message.content  # type: ignore[misc]
@@ -130,15 +129,9 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
                             # Safely extract text content from dict
                             text_value = item.get("text")  # type: ignore[misc]
                             if isinstance(text_value, str) and text_value:
-                                parts.append(
-                                    Text(content=text_value, type="text")
-                                )
+                                parts.append(Text(content=text_value, type="text"))
 
-                input_messages.append(
-                    InputMessage(
-                        parts=cast(list[MessagePart], parts), role=role
-                    )
-                )
+                input_messages.append(InputMessage(parts=cast(list[MessagePart], parts), role=role))
 
         llm_invocation = LLMInvocation(
             request_model=request_model,
@@ -152,9 +145,7 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
             temperature=temperature,
             max_tokens=max_tokens,
         )
-        llm_invocation = self._telemetry_handler.start_llm(
-            invocation=llm_invocation
-        )
+        llm_invocation = self._telemetry_handler.start_llm(invocation=llm_invocation)
         self._invocation_manager.add_invocation_state(
             run_id=run_id,
             parent_run_id=parent_run_id,
@@ -170,9 +161,7 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         llm_invocation = self._invocation_manager.get_invocation(run_id=run_id)
-        if llm_invocation is None or not isinstance(
-            llm_invocation, LLMInvocation
-        ):
+        if llm_invocation is None or not isinstance(llm_invocation, LLMInvocation):
             # If the invocation does not exist, we cannot set attributes or end it
             return
 
@@ -181,25 +170,14 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
             for chat_generation in generation:
                 # Get finish reason
                 finish_reason = "unknown"  # Default value
-                generation_info = getattr(
-                    chat_generation, "generation_info", None
-                )
+                generation_info = getattr(chat_generation, "generation_info", None)
                 if generation_info is not None:
-                    finish_reason = generation_info.get(
-                        "finish_reason", "unknown"
-                    )
+                    finish_reason = generation_info.get("finish_reason", "unknown")
 
                 if chat_generation.message:
                     # Get finish reason if generation_info is None above
-                    if (
-                        generation_info is None
-                        and chat_generation.message.response_metadata
-                    ):
-                        finish_reason = (
-                            chat_generation.message.response_metadata.get(
-                                "stopReason", "unknown"
-                            )
-                        )
+                    if generation_info is None and chat_generation.message.response_metadata:
+                        finish_reason = chat_generation.message.response_metadata.get("stopReason", "unknown")
 
                     # Get message content
                     parts = [
@@ -218,27 +196,17 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
 
                     # Get token usage if available
                     if chat_generation.message.usage_metadata:
-                        input_tokens = (
-                            chat_generation.message.usage_metadata.get(
-                                "input_tokens", 0
-                            )
-                        )
+                        input_tokens = chat_generation.message.usage_metadata.get("input_tokens", 0)
                         llm_invocation.input_tokens = input_tokens
 
-                        output_tokens = (
-                            chat_generation.message.usage_metadata.get(
-                                "output_tokens", 0
-                            )
-                        )
+                        output_tokens = chat_generation.message.usage_metadata.get("output_tokens", 0)
                         llm_invocation.output_tokens = output_tokens
 
         llm_invocation.output_messages = output_messages
 
         llm_output = getattr(response, "llm_output", None)
         if llm_output is not None:
-            response_model = llm_output.get("model_name") or llm_output.get(
-                "model"
-            )
+            response_model = llm_output.get("model_name") or llm_output.get("model")
             if response_model is not None:
                 llm_invocation.response_model_name = str(response_model)
 
@@ -246,9 +214,7 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
             if response_id is not None:
                 llm_invocation.response_id = str(response_id)
 
-        llm_invocation = self._telemetry_handler.stop_llm(
-            invocation=llm_invocation
-        )
+        llm_invocation = self._telemetry_handler.stop_llm(invocation=llm_invocation)
         if llm_invocation.span and not llm_invocation.span.is_recording():
             self._invocation_manager.delete_invocation_state(run_id=run_id)
 
@@ -261,15 +227,11 @@ class OpenTelemetryLangChainCallbackHandler(BaseCallbackHandler):
         **kwargs: Any,
     ) -> None:
         llm_invocation = self._invocation_manager.get_invocation(run_id=run_id)
-        if llm_invocation is None or not isinstance(
-            llm_invocation, LLMInvocation
-        ):
+        if llm_invocation is None or not isinstance(llm_invocation, LLMInvocation):
             # If the invocation does not exist, we cannot set attributes or end it
             return
 
         error_otel = Error(message=str(error), type=type(error))
-        llm_invocation = self._telemetry_handler.fail_llm(
-            invocation=llm_invocation, error=error_otel
-        )
+        llm_invocation = self._telemetry_handler.fail_llm(invocation=llm_invocation, error=error_otel)
         if llm_invocation.span and not llm_invocation.span.is_recording():
             self._invocation_manager.delete_invocation_state(run_id=run_id)
