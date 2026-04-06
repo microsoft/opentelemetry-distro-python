@@ -20,9 +20,9 @@ from opentelemetry.util._importlib_metadata import (  # pylint: disable=import-e
     entry_points,
 )
 
-from azure.monitor.opentelemetry._browser_sdk_loader import setup_snippet_injection
-from azure.monitor.opentelemetry._browser_sdk_loader._config import BrowserSDKConfig
-from azure.monitor.opentelemetry._constants import (
+from microsoft.azureMonitor._browser_sdk_loader import setup_snippet_injection
+from microsoft.azureMonitor._browser_sdk_loader._config import BrowserSDKConfig
+from microsoft.azureMonitor._constants import (
     _ALL_SUPPORTED_INSTRUMENTED_LIBRARIES,
     _AZURE_SDK_INSTRUMENTATION_NAME,
     BROWSER_SDK_LOADER_CONFIG_ARG,
@@ -44,7 +44,7 @@ from azure.monitor.opentelemetry._constants import (
     SAMPLING_ARG,
     SAMPLER_TYPE,
 )
-from azure.monitor.opentelemetry._types import ConfigurationValue
+from microsoft.azureMonitor._types import ConfigurationValue
 from azure.monitor.opentelemetry.exporter._quickpulse import (  # pylint: disable=import-error,no-name-in-module
     enable_live_metrics,
 )
@@ -69,16 +69,16 @@ from azure.monitor.opentelemetry.exporter._utils import (  # pylint: disable=imp
     _is_attach_enabled,
     _is_on_functions,
 )
-from azure.monitor.opentelemetry._diagnostics.diagnostic_logging import (
+from microsoft.azureMonitor._diagnostics.diagnostic_logging import (
     _DISTRO_DETECTS_ATTACH,
     AzureDiagnosticLogging,
 )
-from azure.monitor.opentelemetry._utils.configurations import (
+from microsoft.azureMonitor._utils.configurations import (
     _get_configurations,
     _is_instrumentation_enabled,
     _get_sampler_from_name,
 )
-from azure.monitor.opentelemetry._utils.instrumentation import (
+from microsoft.azureMonitor._utils.instrumentation import (
     get_dist_dependency_conflicts,
 )
 

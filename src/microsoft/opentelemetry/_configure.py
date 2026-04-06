@@ -78,7 +78,7 @@ def _setup_azure_monitor(**kwargs):
     etc.) are handled by ``configure_azure_monitor()`` internally.
     """
     try:
-        from azure.monitor.opentelemetry import configure_azure_monitor
+        from microsoft.azureMonitor import configure_azure_monitor
     except ImportError:
         _logger.warning(
             "azure-monitor-opentelemetry dependencies not available. "

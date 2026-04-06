@@ -7,7 +7,7 @@
 """Tests for use_microsoft_opentelemetry() -- Azure Monitor flow.
 
 Validates that the microsoft distro wrapper correctly delegates to
-configure_azure_monitor() from azure-monitor-opentelemetry.
+configure_azure_monitor() from monitor.azureMonitor.
 """
 
 import sys
@@ -81,12 +81,11 @@ class TestSetupAzureMonitor(unittest.TestCase):
     """Tests for _setup_azure_monitor() delegation."""
 
     def _make_mock_modules(self):
-        """Create mock azure.monitor.opentelemetry module hierarchy."""
+        """Create mock microsoft.azureMonitor module hierarchy."""
         mock_module = MagicMock()
         return {
-            "azure": MagicMock(),
-            "azure.monitor": MagicMock(),
-            "azure.monitor.opentelemetry": mock_module,
+            "microsoft": MagicMock(),
+            "microsoft.azureMonitor": mock_module,
         }, mock_module
 
     def test_delegates_to_configure_azure_monitor(self):

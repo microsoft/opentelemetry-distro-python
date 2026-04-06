@@ -9,13 +9,13 @@ from os import getpid, makedirs
 from os.path import exists, join
 from platform import node
 
-from azure.monitor.opentelemetry._utils import (
+from microsoft.azureMonitor._utils import (
     _EXTENSION_VERSION,
     _get_customer_ikey_from_env_var,
     _get_log_path,
     _is_diagnostics_enabled,
 )
-from azure.monitor.opentelemetry._version import VERSION
+from microsoft.azureMonitor._version import VERSION
 
 _MACHINE_NAME = node()
 _STATUS_LOG_PATH = _get_log_path(status_log_path=True)
