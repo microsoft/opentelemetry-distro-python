@@ -26,6 +26,14 @@ jobs:
 
       - name: Check formatting with Black
         run: tox -e black
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+          python -m pip install -e src/_langchain/opentelemetry-instrumentation-langchain
+
+      - name: Check formatting with Black
+        run: black --check src tests samples
 
       - name: Lint with Pylint
         run: tox -e pylint
