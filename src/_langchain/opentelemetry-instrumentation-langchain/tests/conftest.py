@@ -89,13 +89,18 @@ def start_instrumentation(
     logger_provider,
 ):
     # pylint: disable=import-outside-toplevel
-    # Ensure stability opt-in is set before the first call to _initialize()
-    os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] = "gen_ai_latest_experimental"
-    # Reset the cached initialization so the env var is picked up
     from opentelemetry.instrumentation._semconv import (
         _OpenTelemetrySemanticConventionStability,
     )
 
+    # Save prior state
+    prev_env = os.environ.get("OTEL_SEMCONV_STABILITY_OPT_IN")
+    prev_initialized = _OpenTelemetrySemanticConventionStability._initialized
+    prev_mapping = _OpenTelemetrySemanticConventionStability._OTEL_SEMCONV_STABILITY_SIGNAL_MAPPING.copy()
+
+    # Ensure stability opt-in is set before the first call to _initialize()
+    os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] = "gen_ai_latest_experimental"
+    # Reset the cached initialization so the env var is picked up
     _OpenTelemetrySemanticConventionStability._initialized = False
     _OpenTelemetrySemanticConventionStability._OTEL_SEMCONV_STABILITY_SIGNAL_MAPPING = {}
     _OpenTelemetrySemanticConventionStability._initialize()
@@ -109,6 +114,14 @@ def start_instrumentation(
 
     yield instrumentor
     instrumentor.uninstrument()
+
+    # Restore prior state
+    if prev_env is None:
+        os.environ.pop("OTEL_SEMCONV_STABILITY_OPT_IN", None)
+    else:
+        os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] = prev_env
+    _OpenTelemetrySemanticConventionStability._initialized = prev_initialized
+    _OpenTelemetrySemanticConventionStability._OTEL_SEMCONV_STABILITY_SIGNAL_MAPPING = prev_mapping
 
 
 @pytest.fixture(autouse=True)
