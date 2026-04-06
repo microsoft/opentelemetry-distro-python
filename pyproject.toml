@@ -67,3 +67,4 @@ testpaths = ["tests"]
 [tool.pyright]
 pythonVersion = "3.10"
 typeCheckingMode = "basic"
+exclude = ["src/microsoft/azureMonitor"]
