@@ -1,0 +1,218 @@
+"""Unit tests configuration module."""
+
+import json
+import os
+
+import pytest
+import yaml
+from langchain_openai import ChatOpenAI
+
+from opentelemetry.instrumentation.langchain import LangChainInstrumentor
+from opentelemetry.sdk._logs import LoggerProvider
+from opentelemetry.sdk._logs.export import (
+    InMemoryLogRecordExporter,
+    SimpleLogRecordProcessor,
+)
+from opentelemetry.sdk.metrics import (
+    MeterProvider,
+)
+from opentelemetry.sdk.metrics.export import (
+    InMemoryMetricReader,
+)
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import (
+    InMemorySpanExporter,
+)
+
+
+@pytest.fixture(scope="module", name="chat_openai_gpt_3_5_turbo_model")
+def fixture_chat_openai_gpt_3_5_turbo_model():
+    llm = ChatOpenAI(
+        model="gpt-3.5-turbo",
+        temperature=0.1,
+        max_tokens=100,
+        top_p=0.9,
+        frequency_penalty=0.5,
+        presence_penalty=0.5,
+        stop_sequences=["\n", "Human:", "AI:"],
+        seed=100,
+    )
+    yield llm
+
+
+@pytest.fixture(name="span_exporter")
+def fixture_span_exporter():
+    exporter = InMemorySpanExporter()
+    yield exporter
+
+
+@pytest.fixture(name="log_exporter")
+def fixture_log_exporter():
+    exporter = InMemoryLogRecordExporter()
+    yield exporter
+
+
+@pytest.fixture(name="metric_reader")
+def fixture_metric_reader():
+    exporter = InMemoryMetricReader()
+    yield exporter
+
+
+@pytest.fixture(name="tracer_provider")
+def fixture_tracer_provider(span_exporter):
+    provider = TracerProvider()
+    provider.add_span_processor(SimpleSpanProcessor(span_exporter))
+    return provider
+
+
+@pytest.fixture(name="logger_provider")
+def fixture_logger_provider(log_exporter):
+    provider = LoggerProvider()
+    provider.add_log_record_processor(SimpleLogRecordProcessor(log_exporter))
+    return provider
+
+
+@pytest.fixture(name="meter_provider")
+def fixture_meter_provider(metric_reader):
+    meter_provider = MeterProvider(
+        metric_readers=[metric_reader],
+    )
+    return meter_provider
+
+
+@pytest.fixture()
+def start_instrumentation(
+    tracer_provider,
+    meter_provider,
+    logger_provider,
+):
+    # Ensure stability opt-in is set before the first call to _initialize()
+    os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] = "gen_ai_latest_experimental"
+    # Reset the cached initialization so the env var is picked up
+    from opentelemetry.instrumentation._semconv import (
+        _OpenTelemetrySemanticConventionStability,
+    )
+    _OpenTelemetrySemanticConventionStability._initialized = False
+    _OpenTelemetrySemanticConventionStability._OTEL_SEMCONV_STABILITY_SIGNAL_MAPPING = {}
+    _OpenTelemetrySemanticConventionStability._initialize()
+
+    instrumentor = LangChainInstrumentor()
+    instrumentor.instrument(
+        tracer_provider=tracer_provider,
+        meter_provider=meter_provider,
+        logger_provider=logger_provider,
+    )
+
+    yield instrumentor
+    instrumentor.uninstrument()
+
+
+@pytest.fixture(autouse=True)
+def environment():
+    if not os.getenv("OPENAI_API_KEY"):
+        os.environ["OPENAI_API_KEY"] = "test_openai_api_key"
+
+
+@pytest.fixture(scope="module")
+def vcr_config():
+    return {
+        "filter_headers": [
+            ("cookie", "test_cookie"),
+            ("authorization", "Bearer test_openai_api_key"),
+            ("openai-organization", "test_openai_org_id"),
+            ("openai-project", "test_openai_project_id"),
+        ],
+        "decode_compressed_response": True,
+        "before_record_response": scrub_response_headers,
+    }
+
+
+class LiteralBlockScalar(str):
+    """Formats the string as a literal block scalar, preserving whitespace and
+    without interpreting escape characters"""
+
+
+def literal_block_scalar_presenter(dumper, data):
+    """Represents a scalar string as a literal block, via '|' syntax"""
+    return dumper.represent_scalar("tag:yaml.org,2002:str", data, style="|")
+
+
+yaml.add_representer(LiteralBlockScalar, literal_block_scalar_presenter)
+
+
+def process_string_value(string_value):
+    """Pretty-prints JSON or returns long strings as a LiteralBlockScalar"""
+    try:
+        json_data = json.loads(string_value)
+        return LiteralBlockScalar(json.dumps(json_data, indent=2))
+    except (ValueError, TypeError):
+        if len(string_value) > 80:
+            return LiteralBlockScalar(string_value)
+    return string_value
+
+
+def convert_body_to_literal(data):
+    """Searches the data for body strings, attempting to pretty-print JSON"""
+    if isinstance(data, dict):
+        for key, value in data.items():
+            # Handle response body case (e.g., response.body.string)
+            if key == "body" and isinstance(value, dict) and "string" in value:
+                value["string"] = process_string_value(value["string"])
+
+            # Handle request body case (e.g., request.body)
+            elif key == "body" and isinstance(value, str):
+                data[key] = process_string_value(value)
+
+            else:
+                convert_body_to_literal(value)
+
+    elif isinstance(data, list):
+        for idx, choice in enumerate(data):
+            data[idx] = convert_body_to_literal(choice)
+
+    return data
+
+
+class PrettyPrintJSONBody:
+    """This makes request and response body recordings more readable."""
+
+    @staticmethod
+    def serialize(cassette_dict):
+        cassette_dict = convert_body_to_literal(cassette_dict)
+        return yaml.dump(
+            cassette_dict, default_flow_style=False, allow_unicode=True
+        )
+
+    @staticmethod
+    def deserialize(cassette_string):
+        return yaml.load(cassette_string, Loader=yaml.Loader)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def fixture_vcr(vcr_config):
+    import vcr as vcrpy
+
+    my_vcr = vcrpy.VCR(**vcr_config)
+    my_vcr.register_serializer("yaml", PrettyPrintJSONBody)
+    my_vcr.record_mode = "none"
+    my_vcr.serializer = "yaml"
+    my_vcr.cassette_library_dir = os.path.join(
+        os.path.dirname(__file__), "cassettes"
+    )
+    return my_vcr
+
+
+@pytest.fixture()
+def vcr(fixture_vcr):
+    """Function-scoped vcr fixture that replaces pytest-recording's default one."""
+    return fixture_vcr
+
+
+def scrub_response_headers(response):
+    """
+    This scrubs sensitive response headers. Note they are case-sensitive!
+    """
+    response["headers"]["openai-organization"] = "test_openai_org_id"
+    response["headers"]["Set-Cookie"] = "test_set_cookie"
+    return response
