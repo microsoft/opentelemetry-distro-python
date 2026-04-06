@@ -118,14 +118,14 @@ pytest
 ## Reference
 
 - POC repo: https://github.com/hectorhdzg/microsoft-opentelemetry-poc
-- Planning document: [PLANNING.md](/c:/Repos/microsoft-opentelemetry-distro-python/PLANNING.md)
+- Planning document: [PLANNING.md](PLANNING.md)
 
 ## Repository Policies
 
-- [CODE_OF_CONDUCT.md](/c:/Repos/microsoft-opentelemetry-distro-python/CODE_OF_CONDUCT.md)
-- [CONTRIBUTING.md](/c:/Repos/microsoft-opentelemetry-distro-python/CONTRIBUTING.md)
-- [SECURITY.md](/c:/Repos/microsoft-opentelemetry-distro-python/SECURITY.md)
-- [SUPPORT.md](/c:/Repos/microsoft-opentelemetry-distro-python/SUPPORT.md)
-- [PRIVACY.md](/c:/Repos/microsoft-opentelemetry-distro-python/PRIVACY.md)
-- [NOTICE.md](/c:/Repos/microsoft-opentelemetry-distro-python/NOTICE.md)
-- [LICENSE](/c:/Repos/microsoft-opentelemetry-distro-python/LICENSE)
+- [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md)
+- [SECURITY.md](SECURITY.md)
+- [SUPPORT.md](SUPPORT.md)
+- [PRIVACY.md](PRIVACY.md)
+- [NOTICE.md](NOTICE.md)
+- [LICENSE](LICENSE)

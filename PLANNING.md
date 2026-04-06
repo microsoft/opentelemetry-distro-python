@@ -4,7 +4,7 @@ This document captures the minimum work needed to turn this repository into a wo
 
 ## Target Outcome
 
-Provide a Python package that exposes a single `configure_microsoft_opentelemetry()` entry point and can wire together:
+Provide a Python package that exposes a single `use_microsoft_opentelemetry()` entry point and can wire together:
 
 - Azure Monitor export
 - OTLP export
@@ -23,7 +23,7 @@ Provide a Python package that exposes a single `configure_microsoft_opentelemetr
 
 ## Phase 2: Configuration Surface
 
-- Define the `configure_microsoft_opentelemetry()` function signature
+- Define the `use_microsoft_opentelemetry()` function signature
 - Mirror the POC options that are core to the distro story
 - Separate stable public options from experimental ones
 - Add environment-variable parsing for all supported flags and endpoints
@@ -76,7 +76,7 @@ Provide a Python package that exposes a single `configure_microsoft_opentelemetr
 - Python version support:
   The POC notes broader distro support goals while the demo app required a newer Python version. This repo should define the actual supported range early.
 - Import path:
-  The POC examples use `from microsoft.opentelemetry import configure_microsoft_opentelemetry`, which may require namespace packaging decisions.
+  The POC examples use `from microsoft.opentelemetry import use_microsoft_opentelemetry`, which may require namespace packaging decisions.
 - Release strategy:
   The distro will need compatibility management across OpenTelemetry, Azure Monitor, and Microsoft-specific packages.
 
@@ -85,7 +85,7 @@ Provide a Python package that exposes a single `configure_microsoft_opentelemetr
 Build the smallest useful version first:
 
 1. Publish the intended import path
-2. Implement `configure_microsoft_opentelemetry()` with environment parsing
+2. Implement `use_microsoft_opentelemetry()` with environment parsing
 3. Support Azure Monitor and OTLP only
 4. Add one or two standard instrumentations behind flags
 5. Add tests for the main enablement paths
