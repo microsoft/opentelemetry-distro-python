@@ -167,9 +167,10 @@ class TestDjangoMiddleware(unittest.TestCase):
         mock_response.content = original_content
 
         # Mock the injector's methods
-        with patch.object(middleware._injector, "should_inject", return_value=True), patch.object(
-            middleware._injector, "inject_with_compression"
-        ) as mock_inject_with_compression:
+        with (
+            patch.object(middleware._injector, "should_inject", return_value=True),
+            patch.object(middleware._injector, "inject_with_compression") as mock_inject_with_compression,
+        ):
 
             modified_content = b"<html><head><script>injected</script></head><body>Test</body></html>"
             mock_inject_with_compression.return_value = (modified_content, None)
@@ -237,8 +238,9 @@ class TestDjangoMiddleware(unittest.TestCase):
         mock_response.content = original_content
 
         # Mock the injector to raise an exception
-        with patch.object(middleware._injector, "should_inject", return_value=True), patch.object(
-            middleware._injector, "inject_with_compression", side_effect=Exception("Injection failed")
+        with (
+            patch.object(middleware._injector, "should_inject", return_value=True),
+            patch.object(middleware._injector, "inject_with_compression", side_effect=Exception("Injection failed")),
         ):
 
             result = middleware.process_response(mock_request, mock_response)
@@ -274,9 +276,10 @@ class TestDjangoMiddleware(unittest.TestCase):
         mock_response.content = original_content
 
         # Mock the injector's methods
-        with patch.object(middleware._injector, "should_inject", return_value=True) as mock_should_inject, patch.object(
-            middleware._injector, "inject_with_compression"
-        ) as mock_inject_with_compression:
+        with (
+            patch.object(middleware._injector, "should_inject", return_value=True) as mock_should_inject,
+            patch.object(middleware._injector, "inject_with_compression") as mock_inject_with_compression,
+        ):
 
             modified_content = b"modified_gzip_content"
             new_encoding = "gzip"

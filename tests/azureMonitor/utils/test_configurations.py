@@ -52,7 +52,6 @@ from microsoft.azureMonitor._constants import (
 
 from microsoft.azureMonitor._version import VERSION
 
-
 TEST_DEFAULT_RESOURCE = Resource({"test.attributes.1": "test_value_1", "test.attributes.2": "test_value_2"})
 TEST_CUSTOM_RESOURCE = Resource({"test.attributes.2": "test_value_4", "test.attributes.3": "test_value_3"})
 TEST_MERGED_RESOURCE = Resource(

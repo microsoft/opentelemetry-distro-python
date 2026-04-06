@@ -11,7 +11,6 @@ from unittest.mock import patch
 
 import microsoft.azureMonitor._diagnostics.diagnostic_logging as diagnostic_logger
 
-
 TEST_SITE_NAME = "TEST_SITE_NAME"
 TEST_CUSTOMER_IKEY = "TEST_CUSTOMER_IKEY"
 TEST_EXTENSION_VERSION = "TEST_EXTENSION_VERSION"
@@ -168,11 +167,10 @@ class TestDiagnosticLogger:
         """Test that initialization fails gracefully when FileHandler creation raises an exception."""
         set_up(temp_file_path, is_diagnostics_enabled=True)
         # Mock FileHandler to raise an exception
-        with patch(
-            "microsoft.azureMonitor._diagnostics.diagnostic_logging.logging.FileHandler"
-        ) as mock_file_handler, patch(
-            "microsoft.azureMonitor._diagnostics.diagnostic_logging._logger"
-        ) as mock_logger:
+        with (
+            patch("microsoft.azureMonitor._diagnostics.diagnostic_logging.logging.FileHandler") as mock_file_handler,
+            patch("microsoft.azureMonitor._diagnostics.diagnostic_logging._logger") as mock_logger,
+        ):
             mock_file_handler.side_effect = OSError("Permission denied")
             # Attempt to log, which will trigger initialization
             diagnostic_logger.AzureDiagnosticLogging.info(MESSAGE1, "4200")
@@ -186,9 +184,11 @@ class TestDiagnosticLogger:
         """Test that initialization fails gracefully when makedirs raises a non-FileExistsError exception."""
         set_up(temp_file_path, is_diagnostics_enabled=True)
         # Mock makedirs to raise a PermissionError
-        with patch("microsoft.azureMonitor._diagnostics.diagnostic_logging.makedirs") as mock_makedirs, patch(
-            "microsoft.azureMonitor._diagnostics.diagnostic_logging.exists", return_value=False
-        ), patch("microsoft.azureMonitor._diagnostics.diagnostic_logging._logger") as mock_logger:
+        with (
+            patch("microsoft.azureMonitor._diagnostics.diagnostic_logging.makedirs") as mock_makedirs,
+            patch("microsoft.azureMonitor._diagnostics.diagnostic_logging.exists", return_value=False),
+            patch("microsoft.azureMonitor._diagnostics.diagnostic_logging._logger") as mock_logger,
+        ):
             mock_makedirs.side_effect = PermissionError("Permission denied")
             # Attempt to log, which will trigger initialization
             diagnostic_logger.AzureDiagnosticLogging.info(MESSAGE1, "4200")
@@ -202,11 +202,11 @@ class TestDiagnosticLogger:
         """Test that FileExistsError from makedirs is handled gracefully and initialization continues."""
         set_up(temp_file_path, is_diagnostics_enabled=True)
         # Mock makedirs to raise FileExistsError (this should be handled gracefully)
-        with patch("microsoft.azureMonitor._diagnostics.diagnostic_logging.makedirs") as mock_makedirs, patch(
-            "microsoft.azureMonitor._diagnostics.diagnostic_logging.exists", return_value=False
-        ), patch(
-            "microsoft.azureMonitor._diagnostics.diagnostic_logging._logger"
-        ) as mock_logger:  # pylint: disable=unused-variable
+        with (
+            patch("microsoft.azureMonitor._diagnostics.diagnostic_logging.makedirs") as mock_makedirs,
+            patch("microsoft.azureMonitor._diagnostics.diagnostic_logging.exists", return_value=False),
+            patch("microsoft.azureMonitor._diagnostics.diagnostic_logging._logger") as mock_logger,
+        ):  # pylint: disable=unused-variable
             mock_makedirs.side_effect = FileExistsError("Directory already exists")
             # Attempt to log, which will trigger initialization
             diagnostic_logger.AzureDiagnosticLogging.info(MESSAGE1, "4200")
@@ -218,11 +218,10 @@ class TestDiagnosticLogger:
         """Test that initialization fails gracefully when Formatter creation raises an exception."""
         set_up(temp_file_path, is_diagnostics_enabled=True)
         # Mock Formatter to raise an exception
-        with patch(
-            "microsoft.azureMonitor._diagnostics.diagnostic_logging.logging.Formatter"
-        ) as mock_formatter, patch(
-            "microsoft.azureMonitor._diagnostics.diagnostic_logging._logger"
-        ) as mock_logger:
+        with (
+            patch("microsoft.azureMonitor._diagnostics.diagnostic_logging.logging.Formatter") as mock_formatter,
+            patch("microsoft.azureMonitor._diagnostics.diagnostic_logging._logger") as mock_logger,
+        ):
             mock_formatter.side_effect = ValueError("Invalid format string")
             # Attempt to log, which will trigger initialization
             diagnostic_logger.AzureDiagnosticLogging.info(MESSAGE1, "4200")

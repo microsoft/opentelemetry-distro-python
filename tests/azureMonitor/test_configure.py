@@ -27,7 +27,6 @@ from microsoft.azureMonitor._configure import (
 )
 from microsoft.azureMonitor._diagnostics.diagnostic_logging import _DISTRO_DETECTS_ATTACH
 
-
 TEST_RESOURCE = Resource({"foo": "bar"})
 
 
@@ -976,9 +975,7 @@ class TestConfigure(unittest.TestCase):
         instrumentor_mock.instrument.assert_not_called()
         logger_mock.warning.assert_called_once()
 
-    @patch(
-        "microsoft.azureMonitor._configure._ALL_SUPPORTED_INSTRUMENTED_LIBRARIES", ("test_instr1", "test_instr2")
-    )
+    @patch("microsoft.azureMonitor._configure._ALL_SUPPORTED_INSTRUMENTED_LIBRARIES", ("test_instr1", "test_instr2"))
     @patch("microsoft.azureMonitor._configure._is_instrumentation_enabled")
     @patch("microsoft.azureMonitor._configure._logger")
     @patch("microsoft.azureMonitor._configure.get_dist_dependency_conflicts")
