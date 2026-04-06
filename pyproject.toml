@@ -94,4 +94,4 @@ testpaths = ["tests"]
 [tool.pyright]
 pythonVersion = "3.10"
 typeCheckingMode = "basic"
-ignore = ["tests/azureMonitor"]
+ignore = ["src/microsoft/azureMonitor", "tests/azureMonitor"]
