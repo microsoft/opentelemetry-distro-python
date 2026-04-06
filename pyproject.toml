@@ -36,7 +36,7 @@ target-version = ["py310"]
 
 [tool.pylint.main]
 py-version = "3.10"
-ignore-paths = ["src/microsoft/azureMonitor"]
+ignore-paths = ["src/microsoft/azureMonitor", "tests/azureMonitor"]
 
 [tool.pylint.format]
 max-line-length = 120
