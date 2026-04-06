@@ -39,6 +39,7 @@ test = [
   "opentelemetry-sdk ~= 1.40",
   "langchain-openai >= 0.3",
   "openai >= 1.0",
+  "PyYAML >= 6.0",
   "vcrpy >= 6.0",
   "pytest >= 8.0",
   "pytest-recording",
@@ -68,4 +69,5 @@ disable = [
     "missing-module-docstring",
     "import-error",
     "no-name-in-module",
+    "too-many-positional-arguments",
 ]
