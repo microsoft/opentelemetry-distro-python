@@ -13,7 +13,7 @@ from microsoft.opentelemetry._constants import (
 _logger = getLogger(__name__)
 
 
-def use_microsoft_opentelemetry(**kwargs) -> None:
+def use_microsoft_opentelemetry(**kwargs: object) -> None:
     """Configure OpenTelemetry with Azure Monitor support.
 
     This function delegates to ``configure_azure_monitor()`` from the
@@ -79,7 +79,7 @@ def use_microsoft_opentelemetry(**kwargs) -> None:
     _setup_azure_monitor(**remapped)
 
 
-def _setup_azure_monitor(**kwargs):
+def _setup_azure_monitor(**kwargs: object) -> None:
     """Delegate full Azure Monitor setup to azure-monitor-opentelemetry.
 
     All configuration defaults (resource, sampling, instrumentations,
