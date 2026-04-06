@@ -8,12 +8,17 @@ version = "0.1.0"
 description = "Minimal template for the Microsoft OpenTelemetry distro for Python"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "opentelemetry-sdk>=1.0",
+    "opentelemetry-api>=1.0",
+    "opentelemetry-instrumentation>=0.40b0",
+    "azure-monitor-opentelemetry-exporter>=1.0.0b21",
+    "azure-core>=1.28.0",
+]
 
 [project.optional-dependencies]
 test = [
     "pytest>=8.0",
-    "opentelemetry-sdk>=1.0",
 ]
 dev = [
     "black>=24.0",
@@ -36,7 +41,7 @@ target-version = ["py310"]
 
 [tool.pylint.main]
 py-version = "3.10"
-ignore-paths = ["src/microsoft/azureMonitor", "tests/azureMonitor"]
+ignore-paths = ["tests/azureMonitor"]
 
 [tool.pylint.format]
 max-line-length = 120
@@ -45,10 +50,20 @@ max-line-length = 120
 disable = [
     "missing-function-docstring",
     "missing-module-docstring",
+    "missing-class-docstring",
     "import-outside-toplevel",
     "import-error",
     "no-name-in-module",
     "duplicate-code",
+    "too-few-public-methods",
+    "too-many-arguments",
+    "too-many-positional-arguments",
+    "too-many-locals",
+    "wrong-import-order",
+    "ungrouped-imports",
+    "unknown-option-value",
+    "fixme",
+    "invalid-name",
 ]
 
 [tool.mypy]
@@ -59,7 +74,15 @@ disallow_untyped_defs = true
 namespace_packages = true
 explicit_package_bases = true
 mypy_path = "src"
-exclude = ["src/microsoft/azureMonitor"]
+
+[[tool.mypy.overrides]]
+module = "microsoft.azureMonitor.*"
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = "django.*"
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -67,4 +90,4 @@ testpaths = ["tests"]
 [tool.pyright]
 pythonVersion = "3.10"
 typeCheckingMode = "basic"
-exclude = ["src/microsoft/azureMonitor"]
+ignore = ["tests/azureMonitor"]
