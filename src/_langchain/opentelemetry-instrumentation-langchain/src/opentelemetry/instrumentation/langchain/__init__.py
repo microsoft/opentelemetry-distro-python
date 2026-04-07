@@ -42,7 +42,7 @@ from typing import Any, Callable, Collection
 from langchain_core.callbacks import BaseCallbackHandler
 from wrapt import wrap_function_wrapper  # type: ignore
 
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
+from opentelemetry.instrumentation.instrumentor import BaseInstrumentor  # type: ignore[attr-defined]
 from opentelemetry.instrumentation.langchain.callback_handler import (
     OpenTelemetryLangChainCallbackHandler,
 )
@@ -59,7 +59,7 @@ class LangChainInstrumentor(BaseInstrumentor):
     """
 
     def instrumentation_dependencies(self) -> Collection[str]:
-        return _instruments
+        return _instruments  # type: ignore[no-any-return]
 
     def _instrument(self, **kwargs: Any):
         """
