@@ -74,6 +74,7 @@ disallow_untyped_defs = true
 namespace_packages = true
 explicit_package_bases = true
 mypy_path = "src"
+exclude = ["src/_langchain"]
 
 [[tool.mypy.overrides]]
 module = "microsoft.azureMonitor.*"
@@ -87,7 +88,6 @@ module = [
     "opentelemetry.instrumentation.*",
 ]
 ignore_missing_imports = true
-exclude = ["src/_langchain"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
