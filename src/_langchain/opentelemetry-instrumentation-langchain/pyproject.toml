@@ -71,3 +71,8 @@ disable = [
     "no-name-in-module",
     "too-many-positional-arguments",
 ]
+
+[tool.pyright]
+pythonVersion = "3.9"
+typeCheckingMode = "basic"
+reportMissingImports = false
