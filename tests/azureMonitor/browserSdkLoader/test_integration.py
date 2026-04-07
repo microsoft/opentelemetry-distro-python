@@ -29,7 +29,10 @@ class TestBrowserSDKIntegration(unittest.TestCase):
             connection_string="InstrumentationKey=12345678-1234-1234-1234-123456789012",
             browser_sdk_loader_config={
                 "enabled": True,
-                "connection_string": "InstrumentationKey=12345678-1234-1234-1234-123456789012;IngestionEndpoint=https://test.in.applicationinsights.azure.com/",
+                "connection_string": (
+                    "InstrumentationKey=12345678-1234-1234-1234-123456789012"
+                    ";IngestionEndpoint=https://test.in.applicationinsights.azure.com/"
+                ),
             },
         )
 
@@ -40,7 +43,8 @@ class TestBrowserSDKIntegration(unittest.TestCase):
         self.assertTrue(call_args.enabled)
         self.assertEqual(
             call_args.connection_string,
-            "InstrumentationKey=12345678-1234-1234-1234-123456789012;IngestionEndpoint=https://test.in.applicationinsights.azure.com/",
+            "InstrumentationKey=12345678-1234-1234-1234-123456789012"
+            ";IngestionEndpoint=https://test.in.applicationinsights.azure.com/",
         )
 
     @patch("microsoft.azureMonitor._configure.setup_snippet_injection")
@@ -50,7 +54,10 @@ class TestBrowserSDKIntegration(unittest.TestCase):
 
         browser_config_dict = {
             "enabled": True,
-            "connection_string": "InstrumentationKey=12345678-1234-1234-1234-123456789012;IngestionEndpoint=https://test.in.applicationinsights.azure.com/",
+            "connection_string": (
+                "InstrumentationKey=12345678-1234-1234-1234-123456789012"
+                ";IngestionEndpoint=https://test.in.applicationinsights.azure.com/"
+            ),
         }
 
         # Configure with browser SDK config dict
@@ -63,7 +70,7 @@ class TestBrowserSDKIntegration(unittest.TestCase):
         mock_setup_snippet.assert_called_once()
 
         # Verify the argument passed is a BrowserSDKConfig instance
-        args, kwargs = mock_setup_snippet.call_args
+        args, _kwargs = mock_setup_snippet.call_args
         config_arg = args[0]
         self.assertIsInstance(config_arg, BrowserSDKConfig)
         self.assertTrue(config_arg.enabled)
@@ -142,20 +149,15 @@ class TestBrowserSDKIntegration(unittest.TestCase):
         self.assertIsNone(config.connection_string)
 
     @patch("microsoft.azureMonitor._configure._logger")
-    def test_invalid_browser_sdk_config_type(self, mock_logger):
+    def test_invalid_browser_sdk_config_type(self, _mock_logger):
         """Test handling of invalid browser SDK config types."""
-        from microsoft.azureMonitor._utils.configurations import _get_configurations
-
         # Test with invalid config type
         invalid_config = "invalid_string_config"
 
         # This should be handled gracefully
-        try:
-            configurations = {BROWSER_SDK_LOADER_CONFIG_ARG: invalid_config}
-            # The actual validation would happen in the setup function
-            self.assertIn(BROWSER_SDK_LOADER_CONFIG_ARG, configurations)
-        except Exception:
-            self.fail("Should handle invalid config types gracefully")
+        configurations = {BROWSER_SDK_LOADER_CONFIG_ARG: invalid_config}
+        # The actual validation would happen in the setup function
+        self.assertIn(BROWSER_SDK_LOADER_CONFIG_ARG, configurations)
 
 
 if __name__ == "__main__":

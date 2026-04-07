@@ -57,9 +57,7 @@ def search_activities(destination: str) -> str:
         "Tokyo": ["Sushi masterclass", "Ghibli Museum", "Hakone hot springs"],
         "Rome": ["Colosseum tour", "Pasta masterclass", "Trastevere walk"],
     }
-    items = activities.get(
-        destination, ["Sightseeing", "Local cuisine", "Museum visit"]
-    )
+    items = activities.get(destination, ["Sightseeing", "Local cuisine", "Museum visit"])
     return "\n".join(f"- {a}" for a in items)
 
 
@@ -83,13 +81,7 @@ activity_agent = create_react_agent(_make_llm(0.5), tools=[search_activities])
 def find_flights(origin: str, destination: str, date: str) -> str:
     """Delegate to the flight specialist agent to find flights."""
     result = flight_agent.invoke(
-        {
-            "messages": [
-                HumanMessage(
-                    content=f"Find flights from {origin} to {destination} on {date}."
-                )
-            ]
-        },
+        {"messages": [HumanMessage(content=f"Find flights from {origin} to {destination} on {date}.")]},
         config={"callbacks": [tracer]},
     )
     return result["messages"][-1].content
@@ -99,13 +91,7 @@ def find_flights(origin: str, destination: str, date: str) -> str:
 def find_hotels(destination: str, check_in: str, check_out: str) -> str:
     """Delegate to the hotel specialist agent to find hotels."""
     result = hotel_agent.invoke(
-        {
-            "messages": [
-                HumanMessage(
-                    content=f"Find a boutique hotel in {destination} from {check_in} to {check_out}."
-                )
-            ]
-        },
+        {"messages": [HumanMessage(content=f"Find a boutique hotel in {destination} from {check_in} to {check_out}.")]},
         config={"callbacks": [tracer]},
     )
     return result["messages"][-1].content
@@ -132,7 +118,7 @@ def main():
     session_id = str(uuid4())
     user_request = (
         "Plan a weekend trip to Paris from Seattle next month. "
-        "Find flights, a boutique hotel, and fun activities."
+        + "Find flights, a boutique hotel, and fun activities."
     )
 
     print("Travel Planner (Nested Agents)")
