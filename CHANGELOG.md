@@ -1,17 +1,36 @@
 # Release History
 
-## [0.1.0] - Unreleased
+## 0.1.0b1 (Unreleased)
 
 ### Features Added
+
+- Add Microsoft Opentelemetry Distro Configuration
+  ([#9](https://github.com/microsoft/opentelemetry-distro-python/pull/9))
+- Add langchain samples
+  ([#8](https://github.com/microsoft/opentelemetry-distro-python/pull/8))
+- Add azure-monitor-opentelemetry distro source
+  ([#7](https://github.com/microsoft/opentelemetry-distro-python/pull/7))
+- Added `azure-monitor-opentelemetry` package source for Azure Monitor OpenTelemetry distro integration.
+  ([#7](https://github.com/microsoft/opentelemetry-distro-python/pull/7))
 
 ### Breaking Changes
 
 ### Bugs Fixed
 
 ### Other Changes
-- Added `azure-monitor-opentelemetry` package source for Azure Monitor OpenTelemetry distro integration.
-- Added `microsoft.opentelemetry` distro configuration with `use_microsoft_opentelemetry()` entry point for Azure Monitor.
-- Added `azure_monitor_enable_live_metrics` and `azure_monitor_enable_performance_counters` kwargs passed directly to `configure_azure_monitor()`.
-- Renamed `disable_azure_monitor_exporter` kwarg to `enable_azure_monitor` (inverted, defaults to True).
-- Prefixed Azure Monitor-specific kwargs with `azure_monitor_` (e.g. `azure_monitor_connection_string`, `azure_monitor_exporter_credential`).
-- Project metadata, license, and documentation
+
+- Add support for local mypy, pylint, black checks
+  ([#14](https://github.com/microsoft/opentelemetry-distro-python/pull/14))
+- Add mypy and pyright checks
+  ([#15](https://github.com/microsoft/opentelemetry-distro-python/pull/15))
+- Fix lint and format on langchain samples
+  ([#16](https://github.com/microsoft/opentelemetry-distro-python/pull/16))
+- Update max length to 120
+  ([#17](https://github.com/microsoft/opentelemetry-distro-python/pull/17))
+- Add environment variables to README
+  ([#12](https://github.com/microsoft/opentelemetry-distro-python/pull/12))
+- Add PR build
+  ([#10](https://github.com/microsoft/opentelemetry-distro-python/pull/10))
+- Microsoft mandatory file
+  ([#2](https://github.com/microsoft/opentelemetry-distro-python/pull/2))
+
