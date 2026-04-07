@@ -42,8 +42,19 @@ jobs:
         working-directory: src/_langchain/opentelemetry-instrumentation-langchain
         run: tox -e pylint
 
-      - name: Typecheck with Mypy
-        run: tox -e mypy
+      - name: Typecheck with Mypy (root)
+        run: mypy src
+
+      - name: Typecheck with Mypy (langchain)
+        working-directory: src/_langchain/opentelemetry-instrumentation-langchain
+        run: mypy src --ignore-missing-imports --no-strict
+
+      - name: Typecheck with Pyright (root)
+        run: pyright src
+
+      - name: Typecheck with Pyright (langchain)
+        working-directory: src/_langchain/opentelemetry-instrumentation-langchain
+        run: pyright src
 
   tests:
     name: Pytest (${{ matrix.python-version }})
