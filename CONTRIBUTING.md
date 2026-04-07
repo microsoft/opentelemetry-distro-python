@@ -15,16 +15,36 @@ This project has adopted the [Microsoft Open Source Code of Conduct](https://ope
 ## Development Setup
 
 1. Create and activate a virtual environment.
-2. Install the project with development dependencies.
-3. Run formatting, linting, and tests before opening a pull request.
+2. Install tox and the development dependencies.
 
 ```bash
 python -m venv .venv
-.venv\Scripts\activate
-python -m pip install -e .[dev]
-black --check src tests
-pylint src tests
-pytest
+.venv\Scripts\activate        # Windows
+# source .venv/bin/activate   # Linux / macOS
+python -m pip install -e .[dev] tox
+```
+
+## Running Checks with Tox
+
+Run all environments at once or pick individual ones.
+
+```bash
+# Run everything (pylint, mypy, black, tests on Python 3.10-3.14)
+tox
+
+# Run a single check
+tox -e pylint       # Lint with pylint
+tox -e mypy         # Type-check with mypy
+tox -e black        # Format with black
+
+# Run tests on a specific Python version
+tox -e pytest-py312
+
+# Run tests on multiple Python versions
+tox -e pytest-py310,pytest-py311,pytest-py312,pytest-py313,pytest-py314
+
+# Pass extra arguments to pytest
+tox -e pytest-py312 -- -k test_name -v
 ```
 
 ## Pull Requests

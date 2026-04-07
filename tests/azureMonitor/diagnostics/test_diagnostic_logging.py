@@ -205,8 +205,8 @@ class TestDiagnosticLogger:
         with (
             patch("microsoft.azureMonitor._diagnostics.diagnostic_logging.makedirs") as mock_makedirs,
             patch("microsoft.azureMonitor._diagnostics.diagnostic_logging.exists", return_value=False),
-            patch("microsoft.azureMonitor._diagnostics.diagnostic_logging._logger") as mock_logger,
-        ):  # pylint: disable=unused-variable
+            patch("microsoft.azureMonitor._diagnostics.diagnostic_logging._logger"),
+        ):
             mock_makedirs.side_effect = FileExistsError("Directory already exists")
             # Attempt to log, which will trigger initialization
             diagnostic_logger.AzureDiagnosticLogging.info(MESSAGE1, "4200")

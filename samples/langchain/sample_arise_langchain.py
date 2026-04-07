@@ -13,9 +13,7 @@ from azure.monitor.opentelemetry import configure_azure_monitor
 
 from openinference.instrumentation.langchain import LangChainInstrumentor
 
-configure_azure_monitor(  # Replace with the opentelemetry distro
-    connection_string="InstrumentationKey=..."
-)
+configure_azure_monitor(connection_string="InstrumentationKey=...")  # Replace with the opentelemetry distro
 
 LangChainInstrumentor().instrument()
 
