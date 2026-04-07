@@ -47,7 +47,7 @@ jobs:
 
       - name: Typecheck with Mypy (langchain)
         working-directory: src/_langchain/opentelemetry-instrumentation-langchain
-        run: mypy src --ignore-missing-imports --no-strict
+        run: mypy src --ignore-missing-imports --allow-untyped-defs
 
       - name: Typecheck with Pyright (root)
         run: pyright src
