@@ -9,17 +9,17 @@ import threading
 from os import makedirs
 from os.path import exists, join
 
-from microsoft.opentelemetry.azureMonitor._utils import (
+from microsoft.opentelemetry._azureMonitor._utils import (
     _EXTENSION_VERSION,
     _env_var_or_default,
     _get_customer_ikey_from_env_var,
     _get_log_path,
     _is_diagnostics_enabled,
 )
-from microsoft.opentelemetry.azureMonitor._version import VERSION
+from microsoft.opentelemetry._azureMonitor._version import VERSION
 
 # This logger is used for logging messages about the setup of AzureDiagnosticLogging
-_logger = logging.getLogger("microsoft.opentelemetry.azureMonitor._diagnostics")
+_logger = logging.getLogger("microsoft.opentelemetry._azureMonitor._diagnostics")
 
 _DIAGNOSTIC_LOGGER_FILE_NAME = "applicationinsights-extension.log"
 _SITE_NAME = _env_var_or_default("WEBSITE_SITE_NAME")

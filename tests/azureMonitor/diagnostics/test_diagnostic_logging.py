@@ -9,7 +9,7 @@ from importlib import reload
 from json import loads
 from unittest.mock import patch
 
-import microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging as diagnostic_logger
+import microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging as diagnostic_logger
 
 TEST_SITE_NAME = "TEST_SITE_NAME"
 TEST_CUSTOMER_IKEY = "TEST_CUSTOMER_IKEY"
@@ -35,7 +35,7 @@ def check_file_for_messages(file_path, level, messages):
             json = loads(f.readline())
             assert json["time"]
             assert json["level"] == level
-            assert json["logger"] == "microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging"
+            assert json["logger"] == "microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging"
             assert json["message"] == message
             properties = json["properties"]
             assert properties["operation"] == "Startup"
@@ -70,27 +70,27 @@ def set_up(
     reload(diagnostic_logger)
     assert not diagnostic_logger.AzureDiagnosticLogging._initialized
     patch(
-        "microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging._DIAGNOSTIC_LOG_PATH",
+        "microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging._DIAGNOSTIC_LOG_PATH",
         os.path.dirname(file_path),
     ).start()
     patch(
-        "microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging._DIAGNOSTIC_LOGGER_FILE_NAME",
+        "microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging._DIAGNOSTIC_LOGGER_FILE_NAME",
         os.path.basename(file_path),
     ).start()
     patch(
-        "microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging._get_customer_ikey_from_env_var",
+        "microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging._get_customer_ikey_from_env_var",
         return_value=TEST_CUSTOMER_IKEY,
     ).start()
     patch(
-        "microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging._EXTENSION_VERSION",
+        "microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging._EXTENSION_VERSION",
         TEST_EXTENSION_VERSION,
     ).start()
     patch(
-        "microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging.VERSION",
+        "microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging.VERSION",
         TEST_VERSION,
     ).start()
     patch(
-        "microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging._is_diagnostics_enabled",
+        "microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging._is_diagnostics_enabled",
         return_value=is_diagnostics_enabled,
     ).start()
 
@@ -169,9 +169,9 @@ class TestDiagnosticLogger:
         # Mock FileHandler to raise an exception
         with (
             patch(
-                "microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging.logging.FileHandler"
+                "microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging.logging.FileHandler"
             ) as mock_file_handler,
-            patch("microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging._logger") as mock_logger,
+            patch("microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging._logger") as mock_logger,
         ):
             mock_file_handler.side_effect = OSError("Permission denied")
             # Attempt to log, which will trigger initialization
@@ -187,9 +187,9 @@ class TestDiagnosticLogger:
         set_up(temp_file_path, is_diagnostics_enabled=True)
         # Mock makedirs to raise a PermissionError
         with (
-            patch("microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging.makedirs") as mock_makedirs,
-            patch("microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging.exists", return_value=False),
-            patch("microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging._logger") as mock_logger,
+            patch("microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging.makedirs") as mock_makedirs,
+            patch("microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging.exists", return_value=False),
+            patch("microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging._logger") as mock_logger,
         ):
             mock_makedirs.side_effect = PermissionError("Permission denied")
             # Attempt to log, which will trigger initialization
@@ -205,9 +205,9 @@ class TestDiagnosticLogger:
         set_up(temp_file_path, is_diagnostics_enabled=True)
         # Mock makedirs to raise FileExistsError (this should be handled gracefully)
         with (
-            patch("microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging.makedirs") as mock_makedirs,
-            patch("microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging.exists", return_value=False),
-            patch("microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging._logger"),
+            patch("microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging.makedirs") as mock_makedirs,
+            patch("microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging.exists", return_value=False),
+            patch("microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging._logger"),
         ):
             mock_makedirs.side_effect = FileExistsError("Directory already exists")
             # Attempt to log, which will trigger initialization
@@ -222,9 +222,9 @@ class TestDiagnosticLogger:
         # Mock Formatter to raise an exception
         with (
             patch(
-                "microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging.logging.Formatter"
+                "microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging.logging.Formatter"
             ) as mock_formatter,
-            patch("microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging._logger") as mock_logger,
+            patch("microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging._logger") as mock_logger,
         ):
             mock_formatter.side_effect = ValueError("Invalid format string")
             # Attempt to log, which will trigger initialization

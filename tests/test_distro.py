@@ -190,11 +190,11 @@ class TestSetupAzureMonitor(unittest.TestCase):
     """Tests for _setup_azure_monitor() delegation."""
 
     def _make_mock_modules(self):
-        """Create mock microsoft.opentelemetry.azureMonitor module hierarchy."""
+        """Create mock microsoft.opentelemetry._azureMonitor module hierarchy."""
         mock_module = MagicMock()
         return {
             "microsoft": MagicMock(),
-            "microsoft.opentelemetry.azureMonitor": mock_module,
+            "microsoft.opentelemetry._azureMonitor": mock_module,
         }, mock_module
 
     def test_delegates_to_configure_azure_monitor(self):

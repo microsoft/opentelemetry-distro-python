@@ -8,10 +8,10 @@ import warnings
 from unittest import TestCase
 from unittest.mock import patch
 
-from microsoft.opentelemetry.azureMonitor._autoinstrumentation.configurator import (
+from microsoft.opentelemetry._azureMonitor._autoinstrumentation.configurator import (
     AzureMonitorConfigurator,
 )
-from microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging import (
+from microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging import (
     _ATTACH_FAILURE_CONFIGURATOR,
     _ATTACH_SUCCESS_CONFIGURATOR,
 )
@@ -20,12 +20,12 @@ from microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging import
 # pylint: disable=unused-argument
 @patch.dict("os.environ", {}, clear=True)
 class TestConfigurator(TestCase):
-    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.configurator.super")
-    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.configurator.ApplicationInsightsSampler")
+    @patch("microsoft.opentelemetry._azureMonitor._autoinstrumentation.configurator.super")
+    @patch("microsoft.opentelemetry._azureMonitor._autoinstrumentation.configurator.ApplicationInsightsSampler")
     @patch(
-        "microsoft.opentelemetry.azureMonitor._autoinstrumentation.configurator._is_attach_enabled", return_value=True
+        "microsoft.opentelemetry._azureMonitor._autoinstrumentation.configurator._is_attach_enabled", return_value=True
     )
-    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.configurator.AzureDiagnosticLogging")
+    @patch("microsoft.opentelemetry._azureMonitor._autoinstrumentation.configurator.AzureDiagnosticLogging")
     def test_configure(self, mock_diagnostics, attach_mock, sampler_mock, super_mock):
         sampler_mock.return_value = "TEST_SAMPLER"
         configurator = AzureMonitorConfigurator()
@@ -45,12 +45,12 @@ class TestConfigurator(TestCase):
         )
 
     @patch.dict("os.environ", {"OTEL_TRACES_SAMPLER_ARG": "0.5"}, clear=True)
-    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.configurator.super")
-    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.configurator.ApplicationInsightsSampler")
+    @patch("microsoft.opentelemetry._azureMonitor._autoinstrumentation.configurator.super")
+    @patch("microsoft.opentelemetry._azureMonitor._autoinstrumentation.configurator.ApplicationInsightsSampler")
     @patch(
-        "microsoft.opentelemetry.azureMonitor._autoinstrumentation.configurator._is_attach_enabled", return_value=True
+        "microsoft.opentelemetry._azureMonitor._autoinstrumentation.configurator._is_attach_enabled", return_value=True
     )
-    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.configurator.AzureDiagnosticLogging")
+    @patch("microsoft.opentelemetry._azureMonitor._autoinstrumentation.configurator.AzureDiagnosticLogging")
     def test_configure_sampler_arg(self, mock_diagnostics, attach_mock, sampler_mock, super_mock):
         sampler_mock.return_value = "TEST_SAMPLER"
         configurator = AzureMonitorConfigurator()
@@ -69,12 +69,12 @@ class TestConfigurator(TestCase):
             "Azure Monitor Configurator configured successfully.", _ATTACH_SUCCESS_CONFIGURATOR
         )
 
-    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.configurator.super")
-    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.configurator.ApplicationInsightsSampler")
+    @patch("microsoft.opentelemetry._azureMonitor._autoinstrumentation.configurator.super")
+    @patch("microsoft.opentelemetry._azureMonitor._autoinstrumentation.configurator.ApplicationInsightsSampler")
     @patch(
-        "microsoft.opentelemetry.azureMonitor._autoinstrumentation.configurator._is_attach_enabled", return_value=False
+        "microsoft.opentelemetry._azureMonitor._autoinstrumentation.configurator._is_attach_enabled", return_value=False
     )
-    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.configurator.AzureDiagnosticLogging")
+    @patch("microsoft.opentelemetry._azureMonitor._autoinstrumentation.configurator.AzureDiagnosticLogging")
     def test_configure_preview(self, mock_diagnostics, attach_mock, sampler_mock, super_mock):
         sampler_mock.return_value = "TEST_SAMPLER"
         configurator = AzureMonitorConfigurator()
@@ -91,11 +91,11 @@ class TestConfigurator(TestCase):
             "Azure Monitor Configurator configured successfully.", _ATTACH_SUCCESS_CONFIGURATOR
         )
 
-    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.configurator.super")
+    @patch("microsoft.opentelemetry._azureMonitor._autoinstrumentation.configurator.super")
     @patch(
-        "microsoft.opentelemetry.azureMonitor._autoinstrumentation.configurator._is_attach_enabled", return_value=True
+        "microsoft.opentelemetry._azureMonitor._autoinstrumentation.configurator._is_attach_enabled", return_value=True
     )
-    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.configurator.AzureDiagnosticLogging")
+    @patch("microsoft.opentelemetry._azureMonitor._autoinstrumentation.configurator.AzureDiagnosticLogging")
     def test_configure_exc(self, mock_diagnostics, attach_mock, super_mock):
         configurator = AzureMonitorConfigurator()
         super_mock()._configure.side_effect = Exception("Test Exception")

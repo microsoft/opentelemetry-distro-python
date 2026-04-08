@@ -8,7 +8,7 @@ import os
 from json import loads
 from unittest.mock import patch
 
-from microsoft.opentelemetry.azureMonitor._diagnostics.status_logger import (
+from microsoft.opentelemetry._azureMonitor._diagnostics.status_logger import (
     AzureStatusLogger,
     _get_status_logger_file_name,
 )
@@ -28,35 +28,35 @@ MESSAGE2 = "MESSAGE2"
 
 def set_up(file_path, is_diagnostics_enabled=True):
     patch(
-        "microsoft.opentelemetry.azureMonitor._diagnostics.status_logger._STATUS_LOG_PATH",
+        "microsoft.opentelemetry._azureMonitor._diagnostics.status_logger._STATUS_LOG_PATH",
         os.path.dirname(file_path),
     ).start()
     patch(
-        "microsoft.opentelemetry.azureMonitor._diagnostics.status_logger._get_status_logger_file_name",
+        "microsoft.opentelemetry._azureMonitor._diagnostics.status_logger._get_status_logger_file_name",
         return_value=os.path.basename(file_path),
     ).start()
     patch(
-        "microsoft.opentelemetry.azureMonitor._diagnostics.status_logger._get_customer_ikey_from_env_var",
+        "microsoft.opentelemetry._azureMonitor._diagnostics.status_logger._get_customer_ikey_from_env_var",
         return_value=TEST_CUSTOMER_IKEY,
     ).start()
     patch(
-        "microsoft.opentelemetry.azureMonitor._diagnostics.status_logger._EXTENSION_VERSION",
+        "microsoft.opentelemetry._azureMonitor._diagnostics.status_logger._EXTENSION_VERSION",
         TEST_EXTENSION_VERSION,
     ).start()
     patch(
-        "microsoft.opentelemetry.azureMonitor._diagnostics.status_logger.VERSION",
+        "microsoft.opentelemetry._azureMonitor._diagnostics.status_logger.VERSION",
         TEST_VERSION,
     ).start()
     patch(
-        "microsoft.opentelemetry.azureMonitor._diagnostics.status_logger._is_diagnostics_enabled",
+        "microsoft.opentelemetry._azureMonitor._diagnostics.status_logger._is_diagnostics_enabled",
         return_value=is_diagnostics_enabled,
     ).start()
     patch(
-        "microsoft.opentelemetry.azureMonitor._diagnostics.status_logger.getpid",
+        "microsoft.opentelemetry._azureMonitor._diagnostics.status_logger.getpid",
         return_value=TEST_PID,
     ).start()
     patch(
-        "microsoft.opentelemetry.azureMonitor._diagnostics.status_logger._MACHINE_NAME",
+        "microsoft.opentelemetry._azureMonitor._diagnostics.status_logger._MACHINE_NAME",
         TEST_MACHINE_NAME,
     ).start()
 
@@ -141,7 +141,7 @@ class TestStatusLogger:
         check_file_is_empty(temp_file_path)
 
     @patch(
-        "microsoft.opentelemetry.azureMonitor._diagnostics.status_logger._MACHINE_NAME",
+        "microsoft.opentelemetry._azureMonitor._diagnostics.status_logger._MACHINE_NAME",
         TEST_MACHINE_NAME,
     )
     def test_get_status_logger_file_name(self):

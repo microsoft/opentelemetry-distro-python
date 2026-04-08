@@ -19,20 +19,20 @@ from azure.core.tracing.ext.opentelemetry_span import OpenTelemetrySpan
 from azure.monitor.opentelemetry.exporter._utils import (  # pylint: disable=import-error,no-name-in-module
     _is_attach_enabled,
 )
-from microsoft.opentelemetry.azureMonitor._constants import (
+from microsoft.opentelemetry._azureMonitor._constants import (
     _AZURE_APP_SERVICE_RESOURCE_DETECTOR_NAME,
     _AZURE_SDK_INSTRUMENTATION_NAME,
     _PREVIEW_ENTRY_POINT_WARNING,
 )
-from microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging import (
+from microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging import (
     AzureDiagnosticLogging,
     _ATTACH_FAILURE_DISTRO,
     _ATTACH_SUCCESS_DISTRO,
 )
-from microsoft.opentelemetry.azureMonitor._diagnostics.status_logger import (
+from microsoft.opentelemetry._azureMonitor._diagnostics.status_logger import (
     AzureStatusLogger,
 )
-from microsoft.opentelemetry.azureMonitor._utils.configurations import (
+from microsoft.opentelemetry._azureMonitor._utils.configurations import (
     _get_otel_disabled_instrumentations,
 )
 

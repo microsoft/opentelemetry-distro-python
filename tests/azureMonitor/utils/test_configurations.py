@@ -32,12 +32,12 @@ from opentelemetry.environment_variables import (
     OTEL_TRACES_EXPORTER,
 )
 from opentelemetry.sdk.resources import Resource
-from microsoft.opentelemetry.azureMonitor._utils.configurations import (
+from microsoft.opentelemetry._azureMonitor._utils.configurations import (
     _get_configurations,
     _get_sampler_from_name,
 )
-from microsoft.opentelemetry.azureMonitor._constants import LOGGER_NAME_ENV_ARG, LOGGING_FORMAT_ENV_ARG
-from microsoft.opentelemetry.azureMonitor._constants import (
+from microsoft.opentelemetry._azureMonitor._constants import LOGGER_NAME_ENV_ARG, LOGGING_FORMAT_ENV_ARG
+from microsoft.opentelemetry._azureMonitor._constants import (
     RATE_LIMITED_SAMPLER,
     FIXED_PERCENTAGE_SAMPLER,
     ENABLE_TRACE_BASED_SAMPLING_ARG,
@@ -50,7 +50,7 @@ from microsoft.opentelemetry.azureMonitor._constants import (
     METRIC_READERS_ARG,
 )
 
-from microsoft.opentelemetry.azureMonitor._version import VERSION
+from microsoft.opentelemetry._azureMonitor._version import VERSION
 
 TEST_DEFAULT_RESOURCE = Resource({"test.attributes.1": "test_value_1", "test.attributes.2": "test_value_2"})
 TEST_CUSTOM_RESOURCE = Resource({"test.attributes.2": "test_value_4", "test.attributes.3": "test_value_3"})
@@ -63,7 +63,7 @@ TEST_MERGED_RESOURCE = Resource(
 class TestConfigurations(TestCase):
     @patch.dict("os.environ", {}, clear=True)
     @patch(
-        "microsoft.opentelemetry.azureMonitor._utils.configurations._PREVIEW_INSTRUMENTED_LIBRARIES",
+        "microsoft.opentelemetry._azureMonitor._utils.configurations._PREVIEW_INSTRUMENTED_LIBRARIES",
         ("previewlib1", "previewlib2"),
     )
     @patch("opentelemetry.sdk.resources.Resource.create", return_value=TEST_MERGED_RESOURCE)
@@ -248,7 +248,7 @@ class TestConfigurations(TestCase):
     )
     @patch("opentelemetry.sdk.resources.Resource.create", return_value=TEST_DEFAULT_RESOURCE)
     @patch(
-        "microsoft.opentelemetry.azureMonitor._utils.configurations._PREVIEW_INSTRUMENTED_LIBRARIES",
+        "microsoft.opentelemetry._azureMonitor._utils.configurations._PREVIEW_INSTRUMENTED_LIBRARIES",
         ("previewlib1", "previewlib2"),
     )
     def test_merge_instrumentation_options_conflict(self, resource_create_mock):
@@ -280,7 +280,7 @@ class TestConfigurations(TestCase):
 
     @patch.dict("os.environ", {}, clear=True)
     @patch(
-        "microsoft.opentelemetry.azureMonitor._utils.configurations._PREVIEW_INSTRUMENTED_LIBRARIES",
+        "microsoft.opentelemetry._azureMonitor._utils.configurations._PREVIEW_INSTRUMENTED_LIBRARIES",
         ("previewlib1", "previewlib2"),
     )
     @patch("opentelemetry.sdk.resources.Resource.create", return_value=TEST_DEFAULT_RESOURCE)
@@ -375,7 +375,7 @@ class TestConfigurations(TestCase):
         },
         clear=True,
     )
-    @patch("microsoft.opentelemetry.azureMonitor._utils.configurations._logger")
+    @patch("microsoft.opentelemetry._azureMonitor._utils.configurations._logger")
     def test_get_configurations_logging_format_env_var_invalid_format(self, mock_logger):
         configurations = _get_configurations()
 
