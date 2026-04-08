@@ -74,7 +74,6 @@ from microsoft.opentelemetry.azureMonitor._utils.configurations import (
     _get_sampler_from_name,
 )
 
-
 _logger = getLogger(__name__)
 
 

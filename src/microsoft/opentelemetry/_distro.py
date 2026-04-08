@@ -53,7 +53,7 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
 
     :keyword bool enable_azure_monitor:
         Enable Azure Monitor export.
-        Defaults to True when a connection string is available.
+        Defaults to True. Set to False to skip Azure Monitor setup.
     :keyword str azure_monitor_connection_string:
         Connection string for Application Insights resource.
     :keyword azure_monitor_exporter_credential:
@@ -174,8 +174,7 @@ def _setup_logging(
     """Create and register a LoggerProvider with user-supplied processors."""
     try:
         from opentelemetry._logs import set_logger_provider
-        from opentelemetry.sdk._logs import LoggerProvider
-        from opentelemetry.instrumentation.logging.handler import LoggingHandler
+        from opentelemetry.sdk._logs import LoggerProvider, LoggingHandler
     except ImportError:
         _logger.warning(
             "OpenTelemetry logging SDK not available. "
@@ -208,17 +207,17 @@ def _setup_logging(
 
 class _EntryPointDistFinder:
     @cached_property
-    def _mapping(self):
+    def _mapping(self) -> Dict[str, Any]:
         return {self._key_for(ep): dist for dist in distributions() for ep in dist.entry_points}
 
-    def dist_for(self, entry_point: EntryPoint):
+    def dist_for(self, entry_point: EntryPoint) -> Any:
         dist = getattr(entry_point, "dist", None)
         if dist:
             return dist
         return self._mapping.get(self._key_for(entry_point))
 
     @staticmethod
-    def _key_for(entry_point: EntryPoint):
+    def _key_for(entry_point: EntryPoint) -> str:
         return f"{entry_point.group}:{entry_point.name}:{entry_point.value}"
 
 

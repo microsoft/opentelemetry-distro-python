@@ -56,7 +56,7 @@ class DependencyConflict:
         self.required_any = required_any
         self.found_any = found_any
 
-    def __str__(self):
+    def __str__(self) -> str:
         if not self.required and (self.required_any or self.found_any):
             return (
                 f'DependencyConflict: requested any of the following: "{self.required_any}" '

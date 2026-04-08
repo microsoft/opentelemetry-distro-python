@@ -29,10 +29,6 @@ MESSAGE2 = "MESSAGE2"
 def set_up(file_path, is_diagnostics_enabled=True):
     patch(
         "microsoft.opentelemetry.azureMonitor._diagnostics.status_logger._STATUS_LOG_PATH",
-        file_path,
-    ).start()
-    patch(
-        "microsoft.opentelemetry.azureMonitor._diagnostics.status_logger._STATUS_LOG_PATH",
         os.path.dirname(file_path),
     ).start()
     patch(

@@ -49,7 +49,6 @@ class TestDjangoMiddleware(unittest.TestCase):
         )
 
     @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
-    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
     def test_configure_with_browser_sdk_config(self):
         """Test configure method with BrowserSDKConfig object."""
         from microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware import (
