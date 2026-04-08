@@ -278,8 +278,7 @@ def _setup_azure_monitor(**kwargs: object) -> None:
         from microsoft.opentelemetry._azureMonitor import configure_azure_monitor
     except ImportError:
         _logger.warning(
-            "Failed to import Azure Monitor components. "
-            "Verify azure-monitor-opentelemetry-exporter is installed."
+            "Failed to import Azure Monitor components. Verify azure-monitor-opentelemetry-exporter is installed."
         )
         return
 
