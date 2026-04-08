@@ -10,11 +10,11 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "azure-core<2.0.0,>=1.28.0",
-    "azure-monitor-opentelemetry-exporter~=1.0.0b31",
-    "opentelemetry-api~=1.26",
-    "opentelemetry-sdk~=1.26",
-    "opentelemetry-instrumentation~=0.47b0",
-    "opentelemetry-instrumentation-logging~=0.47b0",
+    "azure-monitor-opentelemetry-exporter~=1.0.0b49",
+    "opentelemetry-api==1.40",
+    "opentelemetry-sdk==1.40",
+    "opentelemetry-instrumentation==0.61b0",
+    "opentelemetry-instrumentation-logging==0.61b0",
 ]
 
 [project.optional-dependencies]
