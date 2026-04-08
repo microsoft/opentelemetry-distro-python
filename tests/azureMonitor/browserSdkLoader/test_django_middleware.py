@@ -7,7 +7,7 @@
 import unittest
 from unittest.mock import patch, Mock
 
-from microsoft.azureMonitor._browser_sdk_loader._config import BrowserSDKConfig
+from microsoft.opentelemetry.azureMonitor._browser_sdk_loader._config import BrowserSDKConfig
 
 
 class TestDjangoMiddleware(unittest.TestCase):
@@ -21,10 +21,10 @@ class TestDjangoMiddleware(unittest.TestCase):
             ";IngestionEndpoint=https://test.in.applicationinsights.azure.com/"
         )
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
     def test_middleware_initialization_django_available(self):
         """Test middleware initialization when Django is available."""
-        from microsoft.azureMonitor._browser_sdk_loader.django_middleware import (
+        from microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware import (
             ApplicationInsightsWebSnippetMiddleware,
         )
 
@@ -33,11 +33,11 @@ class TestDjangoMiddleware(unittest.TestCase):
         self.assertEqual(middleware.get_response, self.get_response_mock)
         self.assertIsNone(middleware._injector)
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", False)
-    @patch("microsoft.azureMonitor._browser_sdk_loader.django_middleware._logger")
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", False)
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware._logger")
     def test_middleware_initialization_django_not_available(self, mock_logger):
         """Test middleware initialization when Django is not available."""
-        from microsoft.azureMonitor._browser_sdk_loader.django_middleware import (
+        from microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware import (
             ApplicationInsightsWebSnippetMiddleware,
         )
 
@@ -48,11 +48,11 @@ class TestDjangoMiddleware(unittest.TestCase):
             "Django not available - ApplicationInsightsWebSnippetMiddleware will not function"
         )
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
-    @patch("microsoft.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
     def test_configure_with_browser_sdk_config(self):
         """Test configure method with BrowserSDKConfig object."""
-        from microsoft.azureMonitor._browser_sdk_loader.django_middleware import (
+        from microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware import (
             ApplicationInsightsWebSnippetMiddleware,
         )
 
@@ -66,10 +66,10 @@ class TestDjangoMiddleware(unittest.TestCase):
         assert middleware._injector is not None
         self.assertEqual(middleware._injector.config, config)
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
     def test_configure_with_dict_config(self):
         """Test configure method with dictionary configuration."""
-        from microsoft.azureMonitor._browser_sdk_loader.django_middleware import (
+        from microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware import (
             ApplicationInsightsWebSnippetMiddleware,
         )
 
@@ -84,10 +84,10 @@ class TestDjangoMiddleware(unittest.TestCase):
         self.assertTrue(middleware._injector.config.enabled)
         self.assertEqual(middleware._injector.config.connection_string, self.connection_string)
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
     def test_configure_with_connection_string_legacy(self):
         """Test configure method with connection string (legacy mode)."""
-        from microsoft.azureMonitor._browser_sdk_loader.django_middleware import (
+        from microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware import (
             ApplicationInsightsWebSnippetMiddleware,
         )
 
@@ -101,11 +101,11 @@ class TestDjangoMiddleware(unittest.TestCase):
         self.assertTrue(middleware._injector.config.enabled)
         self.assertEqual(middleware._injector.config.connection_string, self.connection_string)
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
-    @patch("microsoft.azureMonitor._browser_sdk_loader.django_middleware._logger")
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware._logger")
     def test_configure_with_invalid_config(self, mock_logger):
         """Test configure method with invalid configuration."""
-        from microsoft.azureMonitor._browser_sdk_loader.django_middleware import (
+        from microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware import (
             ApplicationInsightsWebSnippetMiddleware,
         )
 
@@ -118,10 +118,10 @@ class TestDjangoMiddleware(unittest.TestCase):
         mock_logger.error.assert_called_once()
         self.assertIsNone(middleware._injector)
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
     def test_process_response_no_injector(self):
         """Test process_response when no injector is configured."""
-        from microsoft.azureMonitor._browser_sdk_loader.django_middleware import (
+        from microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware import (
             ApplicationInsightsWebSnippetMiddleware,
         )
 
@@ -139,10 +139,10 @@ class TestDjangoMiddleware(unittest.TestCase):
         # Should return response unchanged
         self.assertEqual(result, mock_response)
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
     def test_process_response_with_injection(self):
         """Test process_response with successful injection."""
-        from microsoft.azureMonitor._browser_sdk_loader.django_middleware import (
+        from microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware import (
             ApplicationInsightsWebSnippetMiddleware,
         )
 
@@ -185,10 +185,10 @@ class TestDjangoMiddleware(unittest.TestCase):
             self.assertEqual(mock_response.content, modified_content)
             self.assertEqual(result, mock_response)
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
     def test_process_response_should_not_inject(self):
         """Test process_response when injection should not occur."""
-        from microsoft.azureMonitor._browser_sdk_loader.django_middleware import (
+        from microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware import (
             ApplicationInsightsWebSnippetMiddleware,
         )
 
@@ -214,11 +214,11 @@ class TestDjangoMiddleware(unittest.TestCase):
             self.assertEqual(mock_response.content, original_content)
             self.assertEqual(result, mock_response)
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
-    @patch("microsoft.azureMonitor._browser_sdk_loader.django_middleware._logger")
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware._logger")
     def test_process_response_injection_exception(self, mock_logger):
         """Test process_response handles injection exceptions gracefully."""
-        from microsoft.azureMonitor._browser_sdk_loader.django_middleware import (
+        from microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware import (
             ApplicationInsightsWebSnippetMiddleware,
         )
 
@@ -253,10 +253,10 @@ class TestDjangoMiddleware(unittest.TestCase):
             self.assertEqual(mock_response.content, original_content)
             self.assertEqual(result, mock_response)
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
     def test_process_response_with_content_encoding(self):
         """Test process_response handles compressed content."""
-        from microsoft.azureMonitor._browser_sdk_loader.django_middleware import (
+        from microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware import (
             ApplicationInsightsWebSnippetMiddleware,
         )
 
@@ -295,10 +295,10 @@ class TestDjangoMiddleware(unittest.TestCase):
             mock_inject_with_compression.assert_called_once_with(original_content, "gzip")
             self.assertEqual(result, mock_response)
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", False)
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", False)
     def test_process_response_django_not_available(self):
         """Test process_response when Django is not available."""
-        from microsoft.azureMonitor._browser_sdk_loader.django_middleware import (
+        from microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware import (
             ApplicationInsightsWebSnippetMiddleware,
         )
 
@@ -313,10 +313,10 @@ class TestDjangoMiddleware(unittest.TestCase):
         # Should return response unchanged
         self.assertEqual(result, mock_response)
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
     def test_configure_method_with_browser_sdk_config_object(self):
         """Test configure method handles BrowserSDKConfig objects correctly."""
-        from microsoft.azureMonitor._browser_sdk_loader.django_middleware import (
+        from microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware import (
             ApplicationInsightsWebSnippetMiddleware,
         )
 
@@ -333,10 +333,10 @@ class TestDjangoMiddleware(unittest.TestCase):
         self.assertTrue(middleware._injector.config.enabled)
         self.assertEqual(middleware._injector.config.connection_string, self.connection_string)
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware.DJANGO_AVAILABLE", True)
     def test_configure_method_with_mixed_config_types(self):
         """Test that configure method can handle both dict and BrowserSDKConfig objects."""
-        from microsoft.azureMonitor._browser_sdk_loader.django_middleware import (
+        from microsoft.opentelemetry.azureMonitor._browser_sdk_loader.django_middleware import (
             ApplicationInsightsWebSnippetMiddleware,
         )
 

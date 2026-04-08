@@ -10,18 +10,21 @@ from unittest import TestCase
 from unittest.mock import patch
 
 from azure.core.tracing.ext.opentelemetry_span import OpenTelemetrySpan
-from microsoft.azureMonitor._autoinstrumentation.distro import (
+from microsoft.opentelemetry.azureMonitor._autoinstrumentation.distro import (
     AzureMonitorDistro,
 )
-from microsoft.azureMonitor._diagnostics.diagnostic_logging import _ATTACH_FAILURE_DISTRO, _ATTACH_SUCCESS_DISTRO
+from microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging import (
+    _ATTACH_FAILURE_DISTRO,
+    _ATTACH_SUCCESS_DISTRO,
+)
 
 
 # pylint: disable=unused-argument
 class TestDistro(TestCase):
     @patch.dict("os.environ", {}, clear=True)
-    @patch("microsoft.azureMonitor._autoinstrumentation.distro._is_attach_enabled", return_value=True)
-    @patch("microsoft.azureMonitor._autoinstrumentation.distro.settings")
-    @patch("microsoft.azureMonitor._autoinstrumentation.distro.AzureDiagnosticLogging")
+    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.distro._is_attach_enabled", return_value=True)
+    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.distro.settings")
+    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.distro.AzureDiagnosticLogging")
     def test_configure(self, mock_diagnostics, azure_core_mock, attach_mock):
         distro = AzureMonitorDistro()
         with warnings.catch_warnings():
@@ -51,9 +54,9 @@ class TestDistro(TestCase):
         },
         clear=True,
     )
-    @patch("microsoft.azureMonitor._autoinstrumentation.distro._is_attach_enabled", return_value=True)
-    @patch("microsoft.azureMonitor._autoinstrumentation.distro.settings")
-    @patch("microsoft.azureMonitor._autoinstrumentation.distro.AzureDiagnosticLogging")
+    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.distro._is_attach_enabled", return_value=True)
+    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.distro.settings")
+    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.distro.AzureDiagnosticLogging")
     def test_configure_env_vars_set(self, mock_diagnostics, azure_core_mock, attach_mock):
         distro = AzureMonitorDistro()
         with warnings.catch_warnings():
@@ -76,9 +79,9 @@ class TestDistro(TestCase):
         )
 
     @patch.dict("os.environ", {"OTEL_PYTHON_DISABLED_INSTRUMENTATIONS": " flask,azure_sdk , urllib3"}, clear=True)
-    @patch("microsoft.azureMonitor._autoinstrumentation.distro._is_attach_enabled", return_value=True)
-    @patch("microsoft.azureMonitor._autoinstrumentation.distro.settings")
-    @patch("microsoft.azureMonitor._autoinstrumentation.distro.AzureDiagnosticLogging")
+    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.distro._is_attach_enabled", return_value=True)
+    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.distro.settings")
+    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.distro.AzureDiagnosticLogging")
     def test_configure_disable_azure_core(self, mock_diagnostics, azure_core_mock, attach_mock):
         distro = AzureMonitorDistro()
         with warnings.catch_warnings():
@@ -89,9 +92,9 @@ class TestDistro(TestCase):
         )
         self.assertNotEqual(azure_core_mock.tracing_implementation, OpenTelemetrySpan)
 
-    @patch("microsoft.azureMonitor._autoinstrumentation.distro._is_attach_enabled", return_value=False)
-    @patch("microsoft.azureMonitor._autoinstrumentation.distro.settings")
-    @patch("microsoft.azureMonitor._autoinstrumentation.distro.AzureDiagnosticLogging")
+    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.distro._is_attach_enabled", return_value=False)
+    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.distro.settings")
+    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.distro.AzureDiagnosticLogging")
     def test_configure_preview(self, mock_diagnostics, azure_core_mock, attach_mock):
         distro = AzureMonitorDistro()
         with self.assertWarns(Warning):
@@ -101,10 +104,10 @@ class TestDistro(TestCase):
         )
         self.assertEqual(azure_core_mock.tracing_implementation, OpenTelemetrySpan)
 
-    @patch("microsoft.azureMonitor._autoinstrumentation.distro._configure_auto_instrumentation")
-    @patch("microsoft.azureMonitor._autoinstrumentation.distro._is_attach_enabled", return_value=True)
-    @patch("microsoft.azureMonitor._autoinstrumentation.distro.settings")
-    @patch("microsoft.azureMonitor._autoinstrumentation.distro.AzureDiagnosticLogging")
+    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.distro._configure_auto_instrumentation")
+    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.distro._is_attach_enabled", return_value=True)
+    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.distro.settings")
+    @patch("microsoft.opentelemetry.azureMonitor._autoinstrumentation.distro.AzureDiagnosticLogging")
     def test_configure_exc(self, mock_diagnostics, azure_core_mock, attach_mock, configure_mock):
         distro = AzureMonitorDistro()
         configure_mock.side_effect = Exception("Test Exception")

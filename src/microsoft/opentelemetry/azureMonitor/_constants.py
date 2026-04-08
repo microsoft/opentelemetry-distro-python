@@ -11,25 +11,31 @@ try:
 except ImportError:
     _AZURE_MONITOR_DISTRO_VERSION_ARG = "distro_version"
 
+# Re-export generic OTel constants so existing azureMonitor code
+# can keep importing from here without breaking.
+from microsoft.opentelemetry._constants import (  # noqa: F401  pylint: disable=unused-import
+    DISABLE_LOGGING_ARG,
+    DISABLE_METRICS_ARG,
+    DISABLE_TRACING_ARG,
+    INSTRUMENTATION_OPTIONS_ARG,
+    LOGGER_NAME_ARG,
+    LOGGING_FORMATTER_ARG,
+    LOG_RECORD_PROCESSORS_ARG,
+    METRIC_READERS_ARG,
+    RESOURCE_ARG,
+    SPAN_PROCESSORS_ARG,
+    VIEWS_ARG,
+    _SUPPORTED_INSTRUMENTED_LIBRARIES,
+)
+
 # --------------------Distro Configuration------------------------------------------
 
 CONNECTION_STRING_ARG = "connection_string"
 ENABLE_LIVE_METRICS_ARG = "enable_live_metrics"
 DISABLE_AZURE_CORE_TRACING_ARG = "disable_azure_core_tracing"
-DISABLE_LOGGING_ARG = "disable_logging"
-DISABLE_METRICS_ARG = "disable_metrics"
-DISABLE_TRACING_ARG = "disable_tracing"
 ENABLE_PERFORMANCE_COUNTERS_ARG = "enable_performance_counters"
 DISTRO_VERSION_ARG = _AZURE_MONITOR_DISTRO_VERSION_ARG
-LOGGER_NAME_ARG = "logger_name"
-LOGGING_FORMATTER_ARG = "logging_formatter"
-INSTRUMENTATION_OPTIONS_ARG = "instrumentation_options"
-RESOURCE_ARG = "resource"
 SAMPLING_RATIO_ARG = "sampling_ratio"
-SPAN_PROCESSORS_ARG = "span_processors"
-LOG_RECORD_PROCESSORS_ARG = "log_record_processors"
-METRIC_READERS_ARG = "metric_readers"
-VIEWS_ARG = "views"
 RATE_LIMITED_SAMPLER = "microsoft.rate_limited"
 FIXED_PERCENTAGE_SAMPLER = "microsoft.fixed_percentage"
 SAMPLING_TRACES_PER_SECOND_ARG = "traces_per_second"
@@ -76,16 +82,7 @@ _PREVIEW_ENTRY_POINT_WARNING = "Autoinstrumentation for the Azure Monitor OpenTe
 
 # Opt-out
 _AZURE_SDK_INSTRUMENTATION_NAME = "azure_sdk"
-_FULLY_SUPPORTED_INSTRUMENTED_LIBRARIES = (
-    _AZURE_SDK_INSTRUMENTATION_NAME,
-    "django",
-    "fastapi",
-    "flask",
-    "psycopg2",
-    "requests",
-    "urllib",
-    "urllib3",
-)
+_FULLY_SUPPORTED_INSTRUMENTED_LIBRARIES = (_AZURE_SDK_INSTRUMENTATION_NAME,) + _SUPPORTED_INSTRUMENTED_LIBRARIES
 # Opt-in
 _PREVIEW_INSTRUMENTED_LIBRARIES = ()
 _ALL_SUPPORTED_INSTRUMENTED_LIBRARIES = _FULLY_SUPPORTED_INSTRUMENTED_LIBRARIES + _PREVIEW_INSTRUMENTED_LIBRARIES

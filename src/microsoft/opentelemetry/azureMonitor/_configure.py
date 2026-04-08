@@ -3,7 +3,6 @@
 # Licensed under the MIT License. See License in the project root for
 # license information.
 # --------------------------------------------------------------------------
-from functools import cached_property
 from logging import getLogger, Formatter
 from typing import Any, Dict, List, Optional, cast
 from opentelemetry.metrics import set_meter_provider
@@ -14,15 +13,11 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import set_tracer_provider
-from opentelemetry.util._importlib_metadata import (  # pylint: disable=import-error
-    EntryPoint,
-    distributions,
-    entry_points,
-)
 
-from microsoft.azureMonitor._browser_sdk_loader import setup_snippet_injection
-from microsoft.azureMonitor._browser_sdk_loader._config import BrowserSDKConfig
-from microsoft.azureMonitor._constants import (
+
+from microsoft.opentelemetry.azureMonitor._browser_sdk_loader import setup_snippet_injection
+from microsoft.opentelemetry.azureMonitor._browser_sdk_loader._config import BrowserSDKConfig
+from microsoft.opentelemetry.azureMonitor._constants import (
     _ALL_SUPPORTED_INSTRUMENTED_LIBRARIES,
     _AZURE_SDK_INSTRUMENTATION_NAME,
     BROWSER_SDK_LOADER_CONFIG_ARG,
@@ -44,7 +39,7 @@ from microsoft.azureMonitor._constants import (
     SAMPLING_ARG,
     SAMPLER_TYPE,
 )
-from microsoft.azureMonitor._types import ConfigurationValue
+from microsoft.opentelemetry.azureMonitor._types import ConfigurationValue
 from azure.monitor.opentelemetry.exporter._quickpulse import (  # pylint: disable=import-error,no-name-in-module
     enable_live_metrics,
 )
@@ -69,18 +64,16 @@ from azure.monitor.opentelemetry.exporter._utils import (  # pylint: disable=imp
     _is_attach_enabled,
     _is_on_functions,
 )
-from microsoft.azureMonitor._diagnostics.diagnostic_logging import (
+from microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging import (
     _DISTRO_DETECTS_ATTACH,
     AzureDiagnosticLogging,
 )
-from microsoft.azureMonitor._utils.configurations import (
+from microsoft.opentelemetry.azureMonitor._utils.configurations import (
     _get_configurations,
     _is_instrumentation_enabled,
     _get_sampler_from_name,
 )
-from microsoft.azureMonitor._utils.instrumentation import (
-    get_dist_dependency_conflicts,
-)
+
 
 _logger = getLogger(__name__)
 
@@ -154,10 +147,8 @@ def configure_azure_monitor(**kwargs) -> None:  # pylint: disable=C4758
     if not disable_logging:
         _setup_logging(configurations)
 
-    # Set up instrumentations
-    # Instrumentations need to be set up last so to use the global providers
-    # instantiated in the other setup steps
-    _setup_instrumentations(configurations)
+    # Set up Azure-specific instrumentations (azure_sdk)
+    _setup_azure_instrumentations(configurations)
 
     # Setup browser SDK loader for supported frameworks
     _setup_browser_sdk_loader(configurations)
@@ -198,26 +189,6 @@ def _setup_tracing(configurations: Dict[str, ConfigurationValue]):
     )
     tracer_provider.add_span_processor(bsp)
     set_tracer_provider(tracer_provider)
-
-    if _is_instrumentation_enabled(configurations, _AZURE_SDK_INSTRUMENTATION_NAME):
-        try:
-            from azure.core.settings import settings
-            from azure.core.tracing.ext.opentelemetry_span import OpenTelemetrySpan
-
-            settings.tracing_implementation = OpenTelemetrySpan
-        except ImportError as ex:
-            # This could possibly be due to breaking change in upstream OpenTelemetry
-            # Advise user to upgrade to latest OpenTelemetry version
-            _logger.warning(  # pylint: disable=do-not-log-exceptions-if-not-debug
-                "Exception occurred when importing Azure SDK Tracing."
-                "Please upgrade to the latest OpenTelemetry version: %s.",
-                ex,
-            )
-        except Exception as ex:  # pylint: disable=broad-except
-            _logger.warning(  # pylint: disable=do-not-log-exceptions-if-not-debug
-                "Exception occurred when setting Azure SDK Tracing: %s.",
-                ex,
-            )
 
 
 def _setup_logging(configurations: Dict[str, ConfigurationValue]):
@@ -302,54 +273,29 @@ def _setup_live_metrics(configurations):
     enable_live_metrics(**configurations)
 
 
-class _EntryPointDistFinder:
-    @cached_property
-    def _mapping(self):
-        return {self._key_for(ep): dist for dist in distributions() for ep in dist.entry_points}
+def _setup_azure_instrumentations(configurations: Dict[str, ConfigurationValue]):
+    """Set up Azure-specific instrumentations (Azure SDK tracing, AI instrumentors)."""
+    # Azure Core tracing
+    if not configurations[DISABLE_TRACING_ARG]:
+        if _is_instrumentation_enabled(configurations, _AZURE_SDK_INSTRUMENTATION_NAME):
+            try:
+                from azure.core.settings import settings
+                from azure.core.tracing.ext.opentelemetry_span import OpenTelemetrySpan
 
-    def dist_for(self, entry_point: EntryPoint):
-        dist = getattr(entry_point, "dist", None)
-        if dist:
-            return dist
-
-        return self._mapping.get(self._key_for(entry_point))
-
-    @staticmethod
-    def _key_for(entry_point: EntryPoint):
-        return f"{entry_point.group}:{entry_point.name}:{entry_point.value}"
-
-
-def _setup_instrumentations(configurations: Dict[str, ConfigurationValue]):
-    entry_point_finder = _EntryPointDistFinder()
-    # use pkg_resources for now until https://github.com/open-telemetry/opentelemetry-python/pull/3168 is merged
-    for entry_point in entry_points(group="opentelemetry_instrumentor"):
-        lib_name = entry_point.name
-        if lib_name not in _ALL_SUPPORTED_INSTRUMENTED_LIBRARIES:
-            continue
-        if not _is_instrumentation_enabled(configurations, lib_name):
-            _logger.debug("Instrumentation skipped for library %s", entry_point.name)
-            continue
-        try:
-            # Check if dependent libraries/version are installed
-            entry_point_dist = entry_point_finder.dist_for(entry_point)  # type: ignore
-            conflict = get_dist_dependency_conflicts(entry_point_dist)  # type: ignore
-            if conflict:
-                _logger.debug(
-                    "Skipping instrumentation %s: %s",
-                    entry_point.name,
-                    conflict,
+                settings.tracing_implementation = OpenTelemetrySpan
+            except ImportError as ex:
+                _logger.warning(
+                    "Exception occurred when importing Azure SDK Tracing."
+                    "Please upgrade to the latest OpenTelemetry version: %s.",
+                    ex,
                 )
-                continue
-            # Load the instrumentor via entrypoint
-            instrumentor: Any = entry_point.load()
-            # tell instrumentation to not run dep checks again as we already did it above
-            instrumentor().instrument(skip_dep_check=True)
-        except Exception as ex:  # pylint: disable=broad-except
-            _logger.warning(
-                "Exception occurred when instrumenting: %s.",
-                lib_name,
-                exc_info=ex,
-            )
+            except Exception as ex:  # pylint: disable=broad-except
+                _logger.warning(
+                    "Exception occurred when setting Azure SDK Tracing: %s.",
+                    ex,
+                )
+
+    # Additional Azure AI instrumentors
     _setup_additional_azure_sdk_instrumentations(configurations)
 
 

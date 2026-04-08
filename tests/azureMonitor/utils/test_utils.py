@@ -9,7 +9,7 @@ from os import environ
 from unittest import TestCase
 from unittest.mock import patch
 
-from microsoft.azureMonitor import _utils
+from microsoft.opentelemetry.azureMonitor import _utils
 
 TEST_VALUE = "TEST_VALUE"
 TEST_IKEY = "1234abcd-ab12-34cd-ab12-a23456abcdef"
@@ -118,14 +118,14 @@ class TestUtils(TestCase):
         self.assertFalse(_utils._is_diagnostics_enabled())
 
     @patch(
-        "microsoft.azureMonitor._utils.platform.system",
+        "microsoft.opentelemetry.azureMonitor._utils.platform.system",
         return_value="Linux",
     )
     def test_log_path_linux(self, mock_system):
         self.assertEqual(_utils._get_log_path(), "/var/log/applicationinsights")
 
     @patch(
-        "microsoft.azureMonitor._utils.platform.system",
+        "microsoft.opentelemetry.azureMonitor._utils.platform.system",
         return_value="Linux",
     )
     def test_status_log_path_linux(self, mock_system):
@@ -135,7 +135,7 @@ class TestUtils(TestCase):
         )
 
     @patch(
-        "microsoft.azureMonitor._utils.platform.system",
+        "microsoft.opentelemetry.azureMonitor._utils.platform.system",
         return_value="Windows",
     )
     @patch("pathlib.Path.home", return_value="\\HOME\\DIR")
@@ -146,7 +146,7 @@ class TestUtils(TestCase):
         )
 
     @patch(
-        "microsoft.azureMonitor._utils.platform.system",
+        "microsoft.opentelemetry.azureMonitor._utils.platform.system",
         return_value="Windows",
     )
     @patch("pathlib.Path.home", return_value="\\HOME\\DIR")
@@ -157,14 +157,14 @@ class TestUtils(TestCase):
         )
 
     @patch(
-        "microsoft.azureMonitor._utils.platform.system",
+        "microsoft.opentelemetry.azureMonitor._utils.platform.system",
         return_value="Window",
     )
     def test_log_path_other(self, mock_platform):
         self.assertIsNone(_utils._get_log_path())
 
     @patch(
-        "microsoft.azureMonitor._utils.platform.system",
+        "microsoft.opentelemetry.azureMonitor._utils.platform.system",
         return_value="linux",
     )
     def test_status_log_path_other(self, mock_platform):

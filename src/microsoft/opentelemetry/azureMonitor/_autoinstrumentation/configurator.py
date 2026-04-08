@@ -21,19 +21,19 @@ from azure.monitor.opentelemetry.exporter import (  # pylint: disable=import-err
 from azure.monitor.opentelemetry.exporter._utils import (  # pylint: disable=import-error,no-name-in-module
     _is_attach_enabled,
 )
-from microsoft.azureMonitor._constants import (
+from microsoft.opentelemetry.azureMonitor._constants import (
     _PREVIEW_ENTRY_POINT_WARNING,
     LOG_EXPORTER_NAMES_ARG,
     METRIC_EXPORTER_NAMES_ARG,
     SAMPLER_ARG,
     TRACE_EXPORTER_NAMES_ARG,
 )
-from microsoft.azureMonitor._diagnostics.diagnostic_logging import (
+from microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging import (
     AzureDiagnosticLogging,
     _ATTACH_FAILURE_CONFIGURATOR,
     _ATTACH_SUCCESS_CONFIGURATOR,
 )
-from microsoft.azureMonitor._diagnostics.status_logger import (
+from microsoft.opentelemetry.azureMonitor._diagnostics.status_logger import (
     AzureStatusLogger,
 )
 

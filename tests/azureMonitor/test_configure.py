@@ -16,7 +16,7 @@ from unittest.mock import Mock, call, patch
 
 from opentelemetry.sdk.resources import Resource
 
-from microsoft.azureMonitor._configure import (
+from microsoft.opentelemetry.azureMonitor._configure import (
     _send_attach_warning,
     _setup_instrumentations,
     _setup_live_metrics,
@@ -25,7 +25,7 @@ from microsoft.azureMonitor._configure import (
     _setup_tracing,
     configure_azure_monitor,
 )
-from microsoft.azureMonitor._diagnostics.diagnostic_logging import _DISTRO_DETECTS_ATTACH
+from microsoft.opentelemetry.azureMonitor._diagnostics.diagnostic_logging import _DISTRO_DETECTS_ATTACH
 
 TEST_RESOURCE = Resource({"foo": "bar"})
 
@@ -33,22 +33,22 @@ TEST_RESOURCE = Resource({"foo": "bar"})
 # pylint: disable=too-many-public-methods
 class TestConfigure(unittest.TestCase):
     @patch(
-        "microsoft.azureMonitor._configure._send_attach_warning",
+        "microsoft.opentelemetry.azureMonitor._configure._send_attach_warning",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_instrumentations",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_instrumentations",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_live_metrics",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_live_metrics",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_metrics",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_metrics",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_logging",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_logging",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_tracing",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_tracing",
     )
     def test_configure_azure_monitor(
         self,
@@ -71,22 +71,22 @@ class TestConfigure(unittest.TestCase):
         detect_attach_mock.assert_called_once()
 
     @patch(
-        "microsoft.azureMonitor._configure._setup_instrumentations",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_instrumentations",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_live_metrics",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_live_metrics",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_metrics",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_metrics",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_logging",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_logging",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_tracing",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_tracing",
     )
     @patch(
-        "microsoft.azureMonitor._configure._get_configurations",
+        "microsoft.opentelemetry.azureMonitor._configure._get_configurations",
     )
     def test_configure_azure_monitor_disable_tracing(
         self,
@@ -127,22 +127,22 @@ class TestConfigure(unittest.TestCase):
         self.assertLess(call_order.index("metrics"), call_order.index("logging"))
 
     @patch(
-        "microsoft.azureMonitor._configure._setup_instrumentations",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_instrumentations",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_live_metrics",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_live_metrics",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_metrics",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_metrics",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_logging",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_logging",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_tracing",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_tracing",
     )
     @patch(
-        "microsoft.azureMonitor._configure._get_configurations",
+        "microsoft.opentelemetry.azureMonitor._configure._get_configurations",
     )
     def test_configure_azure_monitor_disable_logging(
         self,
@@ -178,22 +178,22 @@ class TestConfigure(unittest.TestCase):
         self.assertLess(call_order.index("metrics"), call_order.index("tracing"))
 
     @patch(
-        "microsoft.azureMonitor._configure._setup_instrumentations",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_instrumentations",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_live_metrics",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_live_metrics",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_metrics",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_metrics",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_logging",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_logging",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_tracing",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_tracing",
     )
     @patch(
-        "microsoft.azureMonitor._configure._get_configurations",
+        "microsoft.opentelemetry.azureMonitor._configure._get_configurations",
     )
     def test_configure_azure_monitor_disable_metrics(
         self,
@@ -222,22 +222,22 @@ class TestConfigure(unittest.TestCase):
         instrumentation_mock.assert_called_once_with(configurations)
 
     @patch(
-        "microsoft.azureMonitor._configure._setup_instrumentations",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_instrumentations",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_live_metrics",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_live_metrics",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_metrics",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_metrics",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_logging",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_logging",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_tracing",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_tracing",
     )
     @patch(
-        "microsoft.azureMonitor._configure._get_configurations",
+        "microsoft.opentelemetry.azureMonitor._configure._get_configurations",
     )
     def test_configure_azure_monitor_enable_live_metrics(
         self,
@@ -274,22 +274,22 @@ class TestConfigure(unittest.TestCase):
         self.assertLess(call_order.index("metrics"), call_order.index("tracing"))
 
     @patch(
-        "microsoft.azureMonitor._configure._setup_instrumentations",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_instrumentations",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_live_metrics",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_live_metrics",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_metrics",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_metrics",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_logging",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_logging",
     )
     @patch(
-        "microsoft.azureMonitor._configure._setup_tracing",
+        "microsoft.opentelemetry.azureMonitor._configure._setup_tracing",
     )
     @patch(
-        "microsoft.azureMonitor._configure._get_configurations",
+        "microsoft.opentelemetry.azureMonitor._configure._get_configurations",
     )
     def test_configure_azure_monitor_disable_perf_counters(
         self,
@@ -318,23 +318,23 @@ class TestConfigure(unittest.TestCase):
         instrumentation_mock.assert_called_once_with(configurations)
 
     @patch(
-        "microsoft.azureMonitor._configure._PerformanceCountersSpanProcessor",
+        "microsoft.opentelemetry.azureMonitor._configure._PerformanceCountersSpanProcessor",
     )
     @patch(
-        "microsoft.azureMonitor._configure.BatchSpanProcessor",
+        "microsoft.opentelemetry.azureMonitor._configure.BatchSpanProcessor",
     )
     @patch(
-        "microsoft.azureMonitor._configure.AzureMonitorTraceExporter",
+        "microsoft.opentelemetry.azureMonitor._configure.AzureMonitorTraceExporter",
     )
     @patch(
-        "microsoft.azureMonitor._configure.set_tracer_provider",
+        "microsoft.opentelemetry.azureMonitor._configure.set_tracer_provider",
     )
     @patch(
-        "microsoft.azureMonitor._configure.TracerProvider",
+        "microsoft.opentelemetry.azureMonitor._configure.TracerProvider",
         autospec=True,
     )
     @patch(
-        "microsoft.azureMonitor._configure.ApplicationInsightsSampler",
+        "microsoft.opentelemetry.azureMonitor._configure.ApplicationInsightsSampler",
     )
     def test_setup_tracing(
         self,
@@ -368,7 +368,7 @@ class TestConfigure(unittest.TestCase):
             "span_processors": [custom_sp],
             "resource": TEST_RESOURCE,
         }
-        with patch("microsoft.azureMonitor._configure._is_instrumentation_enabled") as instr_mock:
+        with patch("microsoft.opentelemetry.azureMonitor._configure._is_instrumentation_enabled") as instr_mock:
             instr_mock.return_value = True
             with patch.dict(
                 "sys.modules",
@@ -391,23 +391,23 @@ class TestConfigure(unittest.TestCase):
                 pcsp_mock.assert_called_once_with()
 
     @patch(
-        "microsoft.azureMonitor._configure._PerformanceCountersSpanProcessor",
+        "microsoft.opentelemetry.azureMonitor._configure._PerformanceCountersSpanProcessor",
     )
     @patch(
-        "microsoft.azureMonitor._configure.BatchSpanProcessor",
+        "microsoft.opentelemetry.azureMonitor._configure.BatchSpanProcessor",
     )
     @patch(
-        "microsoft.azureMonitor._configure.AzureMonitorTraceExporter",
+        "microsoft.opentelemetry.azureMonitor._configure.AzureMonitorTraceExporter",
     )
     @patch(
-        "microsoft.azureMonitor._configure.set_tracer_provider",
+        "microsoft.opentelemetry.azureMonitor._configure.set_tracer_provider",
     )
     @patch(
-        "microsoft.azureMonitor._configure.TracerProvider",
+        "microsoft.opentelemetry.azureMonitor._configure.TracerProvider",
         autospec=True,
     )
     @patch(
-        "microsoft.azureMonitor._configure.RateLimitedSampler",
+        "microsoft.opentelemetry.azureMonitor._configure.RateLimitedSampler",
     )
     def test_setup_tracing_rate_limited_sampler(
         self,
@@ -441,7 +441,7 @@ class TestConfigure(unittest.TestCase):
             "span_processors": [custom_sp],
             "resource": TEST_RESOURCE,
         }
-        with patch("microsoft.azureMonitor._configure._is_instrumentation_enabled") as instr_mock:
+        with patch("microsoft.opentelemetry.azureMonitor._configure._is_instrumentation_enabled") as instr_mock:
             instr_mock.return_value = True
             with patch.dict(
                 "sys.modules",
@@ -464,23 +464,23 @@ class TestConfigure(unittest.TestCase):
                 pcsp_mock.assert_called_once_with()
 
     @patch(
-        "microsoft.azureMonitor._configure._PerformanceCountersSpanProcessor",
+        "microsoft.opentelemetry.azureMonitor._configure._PerformanceCountersSpanProcessor",
     )
     @patch(
-        "microsoft.azureMonitor._configure.BatchSpanProcessor",
+        "microsoft.opentelemetry.azureMonitor._configure.BatchSpanProcessor",
     )
     @patch(
-        "microsoft.azureMonitor._configure.AzureMonitorTraceExporter",
+        "microsoft.opentelemetry.azureMonitor._configure.AzureMonitorTraceExporter",
     )
     @patch(
-        "microsoft.azureMonitor._configure.set_tracer_provider",
+        "microsoft.opentelemetry.azureMonitor._configure.set_tracer_provider",
     )
     @patch(
-        "microsoft.azureMonitor._configure.TracerProvider",
+        "microsoft.opentelemetry.azureMonitor._configure.TracerProvider",
         autospec=True,
     )
     @patch(
-        "microsoft.azureMonitor._configure.ApplicationInsightsSampler",
+        "microsoft.opentelemetry.azureMonitor._configure.ApplicationInsightsSampler",
     )
     def test_setup_tracing_perf_counters_disabled(
         self,
@@ -514,7 +514,7 @@ class TestConfigure(unittest.TestCase):
             "span_processors": [custom_sp],
             "resource": TEST_RESOURCE,
         }
-        with patch("microsoft.azureMonitor._configure._is_instrumentation_enabled") as instr_mock:
+        with patch("microsoft.opentelemetry.azureMonitor._configure._is_instrumentation_enabled") as instr_mock:
             instr_mock.return_value = True
             with patch.dict(
                 "sys.modules",
@@ -534,8 +534,8 @@ class TestConfigure(unittest.TestCase):
                 self.assertEqual(settings_mock.tracing_implementation, opentelemetry_span_mock)
                 pcsp_mock.assert_not_called()
 
-    @patch("microsoft.azureMonitor._configure._PerformanceCountersLogRecordProcessor")
-    @patch("microsoft.azureMonitor._configure.getLogger")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._PerformanceCountersLogRecordProcessor")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.getLogger")
     def test_setup_logging(self, get_logger_mock, pclp_mock):
         lp_mock = Mock()
         set_logger_provider_mock = Mock()
@@ -600,9 +600,9 @@ class TestConfigure(unittest.TestCase):
         get_logger_mock.assert_called_once_with("test")
         logger_mock.addHandler.assert_called_once_with(logging_handler_init_mock)
 
-    @patch("microsoft.azureMonitor._configure._PerformanceCountersLogRecordProcessor")
-    @patch("microsoft.azureMonitor._configure.isinstance")
-    @patch("microsoft.azureMonitor._configure.getLogger")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._PerformanceCountersLogRecordProcessor")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.isinstance")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.getLogger")
     def test_setup_logging_duplicate_logger(self, get_logger_mock, instance_mock, pclp_mock):
         # Create all the necessary mocks
         lp_mock = Mock()
@@ -664,8 +664,8 @@ class TestConfigure(unittest.TestCase):
         # The logger already has a LoggingHandler, so addHandler should not be called
         logger_mock.addHandler.assert_not_called()
 
-    @patch("microsoft.azureMonitor._configure._PerformanceCountersLogRecordProcessor")
-    @patch("microsoft.azureMonitor._configure.getLogger")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._PerformanceCountersLogRecordProcessor")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.getLogger")
     def test_setup_logging_disable_performance_counters(self, get_logger_mock, pclp_mock):
         lp_mock = Mock()
         set_logger_provider_mock = Mock()
@@ -725,19 +725,19 @@ class TestConfigure(unittest.TestCase):
         logger_mock.addHandler.assert_called_once_with(logging_handler_init_mock)
 
     @patch(
-        "microsoft.azureMonitor._configure.enable_performance_counters",
+        "microsoft.opentelemetry.azureMonitor._configure.enable_performance_counters",
     )
     @patch(
-        "microsoft.azureMonitor._configure.PeriodicExportingMetricReader",
+        "microsoft.opentelemetry.azureMonitor._configure.PeriodicExportingMetricReader",
     )
     @patch(
-        "microsoft.azureMonitor._configure.AzureMonitorMetricExporter",
+        "microsoft.opentelemetry.azureMonitor._configure.AzureMonitorMetricExporter",
     )
     @patch(
-        "microsoft.azureMonitor._configure.set_meter_provider",
+        "microsoft.opentelemetry.azureMonitor._configure.set_meter_provider",
     )
     @patch(
-        "microsoft.azureMonitor._configure.MeterProvider",
+        "microsoft.opentelemetry.azureMonitor._configure.MeterProvider",
         autospec=True,
     )
     def test_setup_metrics(
@@ -773,19 +773,19 @@ class TestConfigure(unittest.TestCase):
         mock_enable_performance_counters.assert_called_once_with(meter_provider=mp_init_mock)
 
     @patch(
-        "microsoft.azureMonitor._configure.enable_performance_counters",
+        "microsoft.opentelemetry.azureMonitor._configure.enable_performance_counters",
     )
     @patch(
-        "microsoft.azureMonitor._configure.PeriodicExportingMetricReader",
+        "microsoft.opentelemetry.azureMonitor._configure.PeriodicExportingMetricReader",
     )
     @patch(
-        "microsoft.azureMonitor._configure.AzureMonitorMetricExporter",
+        "microsoft.opentelemetry.azureMonitor._configure.AzureMonitorMetricExporter",
     )
     @patch(
-        "microsoft.azureMonitor._configure.set_meter_provider",
+        "microsoft.opentelemetry.azureMonitor._configure.set_meter_provider",
     )
     @patch(
-        "microsoft.azureMonitor._configure.MeterProvider",
+        "microsoft.opentelemetry.azureMonitor._configure.MeterProvider",
         autospec=True,
     )
     def test_setup_metrics_views(
@@ -818,19 +818,19 @@ class TestConfigure(unittest.TestCase):
         mock_enable_performance_counters.assert_not_called()
 
     @patch(
-        "microsoft.azureMonitor._configure.enable_performance_counters",
+        "microsoft.opentelemetry.azureMonitor._configure.enable_performance_counters",
     )
     @patch(
-        "microsoft.azureMonitor._configure.PeriodicExportingMetricReader",
+        "microsoft.opentelemetry.azureMonitor._configure.PeriodicExportingMetricReader",
     )
     @patch(
-        "microsoft.azureMonitor._configure.AzureMonitorMetricExporter",
+        "microsoft.opentelemetry.azureMonitor._configure.AzureMonitorMetricExporter",
     )
     @patch(
-        "microsoft.azureMonitor._configure.set_meter_provider",
+        "microsoft.opentelemetry.azureMonitor._configure.set_meter_provider",
     )
     @patch(
-        "microsoft.azureMonitor._configure.MeterProvider",
+        "microsoft.opentelemetry.azureMonitor._configure.MeterProvider",
         autospec=True,
     )
     def test_setup_metrics_perf_counters_disabled(
@@ -862,7 +862,7 @@ class TestConfigure(unittest.TestCase):
         mock_enable_performance_counters.assert_not_called()
 
     @patch(
-        "microsoft.azureMonitor._configure.enable_live_metrics",
+        "microsoft.opentelemetry.azureMonitor._configure.enable_live_metrics",
     )
     def test_setup_live_metrics(
         self,
@@ -876,10 +876,10 @@ class TestConfigure(unittest.TestCase):
 
         enable_live_metrics_mock.assert_called_once_with(**configurations)
 
-    @patch("microsoft.azureMonitor._configure._ALL_SUPPORTED_INSTRUMENTED_LIBRARIES", ("test_instr2"))
-    @patch("microsoft.azureMonitor._configure._is_instrumentation_enabled")
-    @patch("microsoft.azureMonitor._configure.get_dist_dependency_conflicts")
-    @patch("microsoft.azureMonitor._configure.entry_points")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._ALL_SUPPORTED_INSTRUMENTED_LIBRARIES", ("test_instr2"))
+    @patch("microsoft.opentelemetry.azureMonitor._configure._is_instrumentation_enabled")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.get_dist_dependency_conflicts")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.entry_points")
     def test_setup_instrumentations_lib_not_supported(
         self,
         iter_mock,
@@ -903,10 +903,10 @@ class TestConfigure(unittest.TestCase):
         ep2_mock.load.assert_called_once()
         instrumentor_mock.instrument.assert_called_once()
 
-    @patch("microsoft.azureMonitor._configure._setup_additional_azure_sdk_instrumentations")
-    @patch("microsoft.azureMonitor._configure._ALL_SUPPORTED_INSTRUMENTED_LIBRARIES", ("azure_sdk"))
-    @patch("microsoft.azureMonitor._configure._is_instrumentation_enabled")
-    @patch("microsoft.azureMonitor._configure.entry_points")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._setup_additional_azure_sdk_instrumentations")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._ALL_SUPPORTED_INSTRUMENTED_LIBRARIES", ("azure_sdk"))
+    @patch("microsoft.opentelemetry.azureMonitor._configure._is_instrumentation_enabled")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.entry_points")
     def test_setup_instrumentations_additional_azure(
         self,
         iter_mock,
@@ -921,11 +921,11 @@ class TestConfigure(unittest.TestCase):
         _setup_instrumentations({})
         additional_instrumentations_mock.assert_called_once()
 
-    @patch("microsoft.azureMonitor._configure._ALL_SUPPORTED_INSTRUMENTED_LIBRARIES", ("test_instr"))
-    @patch("microsoft.azureMonitor._configure._is_instrumentation_enabled")
-    @patch("microsoft.azureMonitor._configure._logger")
-    @patch("microsoft.azureMonitor._configure.get_dist_dependency_conflicts")
-    @patch("microsoft.azureMonitor._configure.entry_points")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._ALL_SUPPORTED_INSTRUMENTED_LIBRARIES", ("test_instr"))
+    @patch("microsoft.opentelemetry.azureMonitor._configure._is_instrumentation_enabled")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._logger")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.get_dist_dependency_conflicts")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.entry_points")
     def test_setup_instrumentations_conflict(
         self,
         iter_mock,
@@ -948,11 +948,11 @@ class TestConfigure(unittest.TestCase):
         instrumentor_mock.instrument.assert_not_called()
         logger_mock.debug.assert_called_once()
 
-    @patch("microsoft.azureMonitor._configure._ALL_SUPPORTED_INSTRUMENTED_LIBRARIES", ("test_instr"))
-    @patch("microsoft.azureMonitor._configure._is_instrumentation_enabled")
-    @patch("microsoft.azureMonitor._configure._logger")
-    @patch("microsoft.azureMonitor._configure.get_dist_dependency_conflicts")
-    @patch("microsoft.azureMonitor._configure.entry_points")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._ALL_SUPPORTED_INSTRUMENTED_LIBRARIES", ("test_instr"))
+    @patch("microsoft.opentelemetry.azureMonitor._configure._is_instrumentation_enabled")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._logger")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.get_dist_dependency_conflicts")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.entry_points")
     def test_setup_instrumentations_exception(
         self,
         iter_mock,
@@ -975,11 +975,14 @@ class TestConfigure(unittest.TestCase):
         instrumentor_mock.instrument.assert_not_called()
         logger_mock.warning.assert_called_once()
 
-    @patch("microsoft.azureMonitor._configure._ALL_SUPPORTED_INSTRUMENTED_LIBRARIES", ("test_instr1", "test_instr2"))
-    @patch("microsoft.azureMonitor._configure._is_instrumentation_enabled")
-    @patch("microsoft.azureMonitor._configure._logger")
-    @patch("microsoft.azureMonitor._configure.get_dist_dependency_conflicts")
-    @patch("microsoft.azureMonitor._configure.entry_points")
+    @patch(
+        "microsoft.opentelemetry.azureMonitor._configure._ALL_SUPPORTED_INSTRUMENTED_LIBRARIES",
+        ("test_instr1", "test_instr2"),
+    )
+    @patch("microsoft.opentelemetry.azureMonitor._configure._is_instrumentation_enabled")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._logger")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.get_dist_dependency_conflicts")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.entry_points")
     def test_setup_instrumentations_disabled(
         self,
         iter_mock,
@@ -1005,10 +1008,10 @@ class TestConfigure(unittest.TestCase):
         instrumentor_mock.instrument.assert_called_once()
         logger_mock.debug.assert_called_once()
 
-    @patch("microsoft.azureMonitor._configure._logger")
-    @patch("microsoft.azureMonitor._configure.AzureDiagnosticLogging")
-    @patch("microsoft.azureMonitor._configure._is_on_functions")
-    @patch("microsoft.azureMonitor._configure._is_attach_enabled")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._logger")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.AzureDiagnosticLogging")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._is_on_functions")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._is_attach_enabled")
     def test_send_attach_warning_true(
         self,
         is_attach_enabled_mock,
@@ -1032,9 +1035,9 @@ class TestConfigure(unittest.TestCase):
             _DISTRO_DETECTS_ATTACH,
         )
 
-    @patch("microsoft.azureMonitor._configure.AzureDiagnosticLogging")
-    @patch("microsoft.azureMonitor._configure._is_on_functions")
-    @patch("microsoft.azureMonitor._configure._is_attach_enabled")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.AzureDiagnosticLogging")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._is_on_functions")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._is_attach_enabled")
     def test_send_attach_warning_false(
         self,
         is_attach_enabled_mock,
@@ -1046,9 +1049,9 @@ class TestConfigure(unittest.TestCase):
         _send_attach_warning()
         mock_diagnostics.warning.assert_not_called()
 
-    @patch("microsoft.azureMonitor._configure.AzureDiagnosticLogging")
-    @patch("microsoft.azureMonitor._configure._is_on_functions")
-    @patch("microsoft.azureMonitor._configure._is_attach_enabled")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.AzureDiagnosticLogging")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._is_on_functions")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._is_attach_enabled")
     def test_send_attach_warning_false_on_functions(
         self,
         is_attach_enabled_mock,

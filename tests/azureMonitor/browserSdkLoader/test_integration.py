@@ -8,8 +8,8 @@ import os
 import unittest
 from unittest.mock import patch
 
-from microsoft.azureMonitor._browser_sdk_loader._config import BrowserSDKConfig
-from microsoft.azureMonitor._constants import BROWSER_SDK_LOADER_CONFIG_ARG
+from microsoft.opentelemetry.azureMonitor._browser_sdk_loader._config import BrowserSDKConfig
+from microsoft.opentelemetry.azureMonitor._constants import BROWSER_SDK_LOADER_CONFIG_ARG
 
 
 class TestBrowserSDKIntegration(unittest.TestCase):
@@ -19,10 +19,10 @@ class TestBrowserSDKIntegration(unittest.TestCase):
         """Test that the browser SDK config argument constant is properly defined."""
         self.assertEqual(BROWSER_SDK_LOADER_CONFIG_ARG, "browser_sdk_loader_config")
 
-    @patch("microsoft.azureMonitor._configure.setup_snippet_injection")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.setup_snippet_injection")
     def test_configure_azure_monitor_with_browser_sdk_config(self, mock_setup_snippet):
         """Test configure_azure_monitor calls setup_snippet_injection with browser SDK config."""
-        from microsoft.azureMonitor import configure_azure_monitor
+        from microsoft.opentelemetry.azureMonitor import configure_azure_monitor
 
         # Configure with browser SDK config as a dictionary
         configure_azure_monitor(
@@ -47,10 +47,10 @@ class TestBrowserSDKIntegration(unittest.TestCase):
             ";IngestionEndpoint=https://test.in.applicationinsights.azure.com/",
         )
 
-    @patch("microsoft.azureMonitor._configure.setup_snippet_injection")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.setup_snippet_injection")
     def test_configure_azure_monitor_with_browser_sdk_dict(self, mock_setup_snippet):
         """Test configure_azure_monitor converts dict to BrowserSDKConfig."""
-        from microsoft.azureMonitor import configure_azure_monitor
+        from microsoft.opentelemetry.azureMonitor import configure_azure_monitor
 
         browser_config_dict = {
             "enabled": True,
@@ -76,10 +76,10 @@ class TestBrowserSDKIntegration(unittest.TestCase):
         self.assertTrue(config_arg.enabled)
         self.assertIn("InstrumentationKey=12345678", config_arg.connection_string)
 
-    @patch("microsoft.azureMonitor._configure.setup_snippet_injection")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.setup_snippet_injection")
     def test_configure_azure_monitor_no_browser_sdk_config(self, mock_setup_snippet):
         """Test configure_azure_monitor without browser SDK config."""
-        from microsoft.azureMonitor import configure_azure_monitor
+        from microsoft.opentelemetry.azureMonitor import configure_azure_monitor
 
         # Configure without browser SDK config
         configure_azure_monitor(connection_string="InstrumentationKey=12345678-1234-1234-1234-123456789012")
@@ -87,10 +87,10 @@ class TestBrowserSDKIntegration(unittest.TestCase):
         # Verify setup_snippet_injection was not called
         mock_setup_snippet.assert_not_called()
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.setup_snippet_injection")
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.setup_snippet_injection")
     def test_configure_azure_monitor_disabled_browser_sdk_config(self, mock_setup_snippet):
         """Test configure_azure_monitor with disabled browser SDK config."""
-        from microsoft.azureMonitor import configure_azure_monitor
+        from microsoft.opentelemetry.azureMonitor import configure_azure_monitor
 
         # Configure with disabled browser SDK config
         configure_azure_monitor(
@@ -101,11 +101,11 @@ class TestBrowserSDKIntegration(unittest.TestCase):
         # Should not call setup_snippet_injection when disabled
         mock_setup_snippet.assert_not_called()
 
-    @patch("microsoft.azureMonitor._configure.setup_snippet_injection")
+    @patch("microsoft.opentelemetry.azureMonitor._configure.setup_snippet_injection")
     def test_configure_azure_monitor_uses_env_connection_string_for_browser_loader(self, mock_setup_snippet):
         """Test browser SDK loader falls back to env connection string when not passed in kwargs."""
-        from microsoft.azureMonitor._configure import _setup_browser_sdk_loader
-        from microsoft.azureMonitor._utils.configurations import _get_configurations
+        from microsoft.opentelemetry.azureMonitor._configure import _setup_browser_sdk_loader
+        from microsoft.opentelemetry.azureMonitor._utils.configurations import _get_configurations
 
         env_connection_string = (
             "InstrumentationKey=12345678-1234-1234-1234-123456789012;"
@@ -148,7 +148,7 @@ class TestBrowserSDKIntegration(unittest.TestCase):
         self.assertTrue(config.enabled)
         self.assertIsNone(config.connection_string)
 
-    @patch("microsoft.azureMonitor._configure._logger")
+    @patch("microsoft.opentelemetry.azureMonitor._configure._logger")
     def test_invalid_browser_sdk_config_type(self, _mock_logger):
         """Test handling of invalid browser SDK config types."""
         # Test with invalid config type

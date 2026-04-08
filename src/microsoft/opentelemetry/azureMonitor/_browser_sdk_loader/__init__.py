@@ -6,7 +6,7 @@
 
 from logging import getLogger
 
-from microsoft.azureMonitor._browser_sdk_loader._config import BrowserSDKConfig
+from microsoft.opentelemetry.azureMonitor._browser_sdk_loader._config import BrowserSDKConfig
 
 _logger = getLogger(__name__)
 

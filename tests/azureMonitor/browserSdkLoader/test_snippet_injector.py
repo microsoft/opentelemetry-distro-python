@@ -8,8 +8,8 @@ import gzip
 import unittest
 from unittest.mock import patch
 
-from microsoft.azureMonitor._browser_sdk_loader._config import BrowserSDKConfig
-from microsoft.azureMonitor._browser_sdk_loader.snippet_injector import WebSnippetInjector
+from microsoft.opentelemetry.azureMonitor._browser_sdk_loader._config import BrowserSDKConfig
+from microsoft.opentelemetry.azureMonitor._browser_sdk_loader.snippet_injector import WebSnippetInjector
 
 
 class TestWebSnippetInjector(unittest.TestCase):
@@ -33,13 +33,13 @@ class TestWebSnippetInjector(unittest.TestCase):
         self.assertIsNone(self.injector._decompressed_content_cache)
         self.assertIsNone(self.injector._cache_key)
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.snippet_injector._mark_browser_loader_feature")
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.snippet_injector._mark_browser_loader_feature")
     def test_statsbeat_helper_called_when_enabled(self, mock_mark_feature):
         """Ensure statsbeat helper is invoked when the feature is enabled."""
         WebSnippetInjector(self.config)
         mock_mark_feature.assert_called_with(True)
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.snippet_injector._mark_browser_loader_feature")
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.snippet_injector._mark_browser_loader_feature")
     def test_statsbeat_helper_called_when_disabled(self, mock_mark_feature):
         """Ensure statsbeat helper receives False for disabled configs."""
         disabled_config = BrowserSDKConfig(enabled=False)
@@ -202,12 +202,12 @@ class TestWebSnippetInjector(unittest.TestCase):
         # Should return original content when encoding is unsupported
         self.assertEqual(result, content)
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.snippet_injector.HAS_BROTLI", False)
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.snippet_injector.HAS_BROTLI", False)
     def test_decompress_content_brotli_not_available(self):
         """Test _decompress_content when brotli is not available."""
         content = b"some content"
 
-        with patch("microsoft.azureMonitor._browser_sdk_loader.snippet_injector._logger") as mock_logger:
+        with patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.snippet_injector._logger") as mock_logger:
             result = self.injector._decompress_content(content, "br")
 
             # Should log warning and return original content
@@ -224,12 +224,12 @@ class TestWebSnippetInjector(unittest.TestCase):
         decompressed = gzip.decompress(result)
         self.assertEqual(decompressed, content)
 
-    @patch("microsoft.azureMonitor._browser_sdk_loader.snippet_injector.HAS_BROTLI", False)
+    @patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.snippet_injector.HAS_BROTLI", False)
     def test_compress_content_brotli_not_available(self):
         """Test _compress_content when brotli is not available."""
         content = b"some content"
 
-        with patch("microsoft.azureMonitor._browser_sdk_loader.snippet_injector._logger") as mock_logger:
+        with patch("microsoft.opentelemetry.azureMonitor._browser_sdk_loader.snippet_injector._logger") as mock_logger:
             result = self.injector._compress_content(content, "br")
 
             # Should log warning and return original content
