@@ -81,8 +81,8 @@ CONTEXT_ATTRIBUTES = (
     "llm.prompt_template.version",
 )
 
-
-class LangChainTracer(BaseTracer):
+# pylint: disable=broad-exception-caught
+class LangChainTracer(BaseTracer): # pylint: disable=too-many-ancestors
     _MAX_TRACKED_RUNS = 10000
 
     __slots__ = (
@@ -370,7 +370,7 @@ class LangChainTracer(BaseTracer):
             return serialized["name"]
         return "LangGraph"
 
-    def _aggregate_into_parent(self, run: Run) -> None:
+    def _aggregate_into_parent(self, run: Run) -> None: # pylint: disable=too-many-branches
         """Aggregate child run content into the parent agent span's content."""
         parent_id = run.parent_run_id
         if not parent_id:
@@ -475,7 +475,7 @@ def get_attributes_from_context() -> Iterator[tuple[str, AttributeValue]]:
             yield ctx_attr, cast(AttributeValue, val)
 
 
-def _update_span(span: Span, run: Run) -> LLMInvocation | None:
+def _update_span(span: Span, run: Run) -> LLMInvocation | None: # pylint: disable=inconsistent-return-statements
     """Update a non-agent span with run data.
 
     Returns the ``LLMInvocation`` for LLM runs (used for event emission
