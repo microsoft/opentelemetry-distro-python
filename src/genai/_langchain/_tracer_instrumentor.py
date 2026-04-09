@@ -92,8 +92,7 @@ class LangChainInstrumentor(BaseInstrumentor):
     def get_span(self, run_id: UUID) -> Span | None:
         if not self._tracer:
             return None
-        get_span_fn = getattr(self._tracer, "get_span", None)
-        return get_span_fn(run_id) if callable(get_span_fn) else None
+        return self._tracer.get_span(run_id)
 
     def get_ancestors(self, run_id: UUID) -> list[Span]:
         if not self._tracer:
