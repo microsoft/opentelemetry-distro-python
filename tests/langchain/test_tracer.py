@@ -24,8 +24,8 @@ from genai._langchain._utils import (
 )
 
 
-_NOW = datetime.datetime(2024, 6, 1, 12, 0, 0, tzinfo=datetime.UTC)
-_NOW_END = datetime.datetime(2024, 6, 1, 12, 0, 1, tzinfo=datetime.UTC)
+_NOW = datetime.datetime(2024, 6, 1, 12, 0, 0, tzinfo=datetime.timezone.utc)
+_NOW_END = datetime.datetime(2024, 6, 1, 12, 0, 1, tzinfo=datetime.timezone.utc)
 
 
 def _make_run(**kwargs):
