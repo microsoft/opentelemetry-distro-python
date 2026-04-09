@@ -73,9 +73,7 @@ KeyType = TypeVar("KeyType")
 ValueType = TypeVar("ValueType")
 
 
-def get_first_value(
-    mapping: Mapping[KeyType, ValueType], keys: Iterable[KeyType]
-) -> ValueType | None:
+def get_first_value(mapping: Mapping[KeyType, ValueType], keys: Iterable[KeyType]) -> ValueType | None:
     if not hasattr(mapping, "get"):
         return None
     return next(
@@ -254,9 +252,7 @@ def metadata(run: Run) -> Iterator[tuple[str, str]]:
     if not isinstance(meta, Mapping):
         return
     if session_id := (
-        meta.get(LANGCHAIN_SESSION_ID)
-        or meta.get(LANGCHAIN_CONVERSATION_ID)
-        or meta.get(LANGCHAIN_THREAD_ID)
+        meta.get(LANGCHAIN_SESSION_ID) or meta.get(LANGCHAIN_CONVERSATION_ID) or meta.get(LANGCHAIN_THREAD_ID)
     ):
         yield SESSION_ID_KEY, session_id
 
@@ -331,12 +327,7 @@ def model_name(
     outputs: Mapping[str, Any] | None,
     extra: Mapping[str, Any] | None,
 ) -> Iterator[tuple[str, str]]:
-    if (
-        outputs
-        and hasattr(outputs, "get")
-        and (llm_output := outputs.get("llm_output"))
-        and hasattr(llm_output, "get")
-    ):
+    if outputs and hasattr(outputs, "get") and (llm_output := outputs.get("llm_output")) and hasattr(llm_output, "get"):
         for key in ("model_name", "model"):
             if name := str(llm_output.get(key) or "").strip():
                 yield GEN_AI_REQUEST_MODEL_KEY, name
@@ -392,9 +383,7 @@ def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
         and hasattr(outputs, "get")
         and (llm_output := outputs.get("llm_output"))
         and hasattr(llm_output, "get")
-        and (
-            token_usage := get_first_value(llm_output, ("token_usage", "usage"))
-        )
+        and (token_usage := get_first_value(llm_output, ("token_usage", "usage")))
     ):
         return token_usage
     return None
@@ -407,9 +396,7 @@ def function_calls(outputs: Mapping[str, Any] | None) -> Iterator[tuple[str, str
     if not isinstance(outputs, Mapping):
         return
     try:
-        fc = deepcopy(
-            outputs["generations"][0][0]["message"]["kwargs"]["additional_kwargs"]["function_call"]
-        )
+        fc = deepcopy(outputs["generations"][0][0]["message"]["kwargs"]["additional_kwargs"]["function_call"])
     except Exception:
         return
     if not isinstance(fc, dict):

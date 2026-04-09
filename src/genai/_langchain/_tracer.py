@@ -135,8 +135,7 @@ class LangChainTracer(BaseTracer):
         with self._lock:
             parent_context = (
                 trace_api.set_span_in_context(parent)
-                if (parent_run_id := run.parent_run_id)
-                and (parent := self._spans_by_run.get(parent_run_id))
+                if (parent_run_id := run.parent_run_id) and (parent := self._spans_by_run.get(parent_run_id))
                 else (context_api.Context() if self._separate_trace_from_runtime_context else None)
             )
         start_time_utc_nano = as_utc_nano(run.start_time)
@@ -146,7 +145,11 @@ class LangChainTracer(BaseTracer):
         # Determine span name based on run type
         if is_agent:
             agent_name = self._resolve_agent_name(run)
-            span_name = f"{INVOKE_AGENT_OPERATION_NAME} {agent_name}" if agent_name else f"{INVOKE_AGENT_OPERATION_NAME} {run.name}"
+            span_name = (
+                f"{INVOKE_AGENT_OPERATION_NAME} {agent_name}"
+                if agent_name
+                else f"{INVOKE_AGENT_OPERATION_NAME} {run.name}"
+            )
         elif run.run_type.lower() == "tool":
             span_name = f"{EXECUTE_TOOL_OPERATION_NAME} {run.name}"
         else:
@@ -281,9 +284,7 @@ class LangChainTracer(BaseTracer):
             _apply_error_attributes(span, Error(message=str(error), type=type(error)))
         return super().on_chain_error(error, *args, run_id=run_id, **kwargs)
 
-    def on_retriever_error(
-        self, error: BaseException, *args: Any, run_id: UUID, **kwargs: Any
-    ) -> Run:
+    def on_retriever_error(self, error: BaseException, *args: Any, run_id: UUID, **kwargs: Any) -> Run:
         with self._lock:
             span = self._spans_by_run.get(run_id)
         if span:
@@ -432,9 +433,7 @@ class LangChainTracer(BaseTracer):
     def _finalize_agent_span(self, span: Span, run: Run) -> None:
         """Apply aggregated content and status to an invoke_agent span."""
         # Set status
-        if run.error is None or any(
-            re.match(pattern, run.error) for pattern in IGNORED_EXCEPTION_PATTERNS
-        ):
+        if run.error is None or any(re.match(pattern, run.error) for pattern in IGNORED_EXCEPTION_PATTERNS):
             span.set_status(trace_api.StatusCode.OK)
         else:
             _apply_error_attributes(span, Error(message=run.error, type=Exception))
@@ -483,9 +482,7 @@ def _update_span(span: Span, run: Run) -> LLMInvocation | None:
     and future metrics), or ``None`` for other run types.
     """
     # If there is no error or if there is an agent control exception, set the span to OK
-    if run.error is None or any(
-        re.match(pattern, run.error) for pattern in IGNORED_EXCEPTION_PATTERNS
-    ):
+    if run.error is None or any(re.match(pattern, run.error) for pattern in IGNORED_EXCEPTION_PATTERNS):
         span.set_status(trace_api.StatusCode.OK)
     else:
         _apply_error_attributes(span, Error(message=run.error, type=Exception))
