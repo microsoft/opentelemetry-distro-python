@@ -190,10 +190,11 @@ class TestSetupAzureMonitor(unittest.TestCase):
         with patch.dict(sys.modules, mods):
             from microsoft.opentelemetry._distro import _setup_azure_monitor
 
-            _setup_azure_monitor(
+            result = _setup_azure_monitor(
                 connection_string=TEST_CONNECTION_STRING,
                 resource=TEST_RESOURCE,
             )
+            self.assertTrue(result)
             mock_module.configure_azure_monitor.assert_called_once_with(
                 connection_string=TEST_CONNECTION_STRING,
                 resource=TEST_RESOURCE,
@@ -230,14 +231,31 @@ class TestSetupAzureMonitor(unittest.TestCase):
             self.assertEqual(actual_kwargs["logger_name"], "test")
 
     def test_exception_handled_gracefully(self):
-        """If configure_azure_monitor raises, it is caught and logged."""
+        """If configure_azure_monitor raises, it is caught and logged; returns False."""
         mods, mock_module = self._make_mock_modules()
         mock_module.configure_azure_monitor.side_effect = Exception("config error")
         with patch.dict(sys.modules, mods):
             from microsoft.opentelemetry._distro import _setup_azure_monitor
 
             # Should not raise
-            _setup_azure_monitor(connection_string=TEST_CONNECTION_STRING)
+            result = _setup_azure_monitor(connection_string=TEST_CONNECTION_STRING)
+            self.assertFalse(result)
+
+    @patch("microsoft.opentelemetry._distro._setup_azure_monitor", return_value=False)
+    @patch("microsoft.opentelemetry._distro._setup_logging")
+    @patch("microsoft.opentelemetry._distro._setup_metrics")
+    @patch("microsoft.opentelemetry._distro._setup_tracing")
+    def test_fallback_providers_created_on_azure_monitor_failure(
+        self, tracing_mock, metrics_mock, logging_mock, azure_monitor_mock
+    ):
+        """When Azure Monitor setup fails, bare providers are created as fallback."""
+        use_microsoft_opentelemetry(
+            azure_monitor_connection_string=TEST_CONNECTION_STRING,
+        )
+        azure_monitor_mock.assert_called_once()
+        tracing_mock.assert_called_once()
+        metrics_mock.assert_called_once()
+        logging_mock.assert_called_once()
 
 
 class TestEnableKwargsPassthrough(unittest.TestCase):

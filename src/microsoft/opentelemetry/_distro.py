@@ -100,11 +100,15 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
             otel_kwargs[key] = value
 
     # ---- Provider initialisation ----
+    setup_bare_providers = True
     if enable_azure_monitor:
         merged = {**otel_kwargs, **azure_monitor_kwargs}
-        _setup_azure_monitor(**merged)
-    else:
-        # No exporter — create bare providers for local/custom pipelines.
+        if _setup_azure_monitor(**merged):
+            setup_bare_providers = False
+
+    if setup_bare_providers:
+        # Either Azure Monitor is disabled, or setup failed — create bare
+        # providers so the global tracer/meter/logger are still usable.
         resource = otel_kwargs.get(RESOURCE_ARG) or Resource.create()
         disable_tracing = otel_kwargs.get(DISABLE_TRACING_ARG, False)
         disable_logging = otel_kwargs.get(DISABLE_LOGGING_ARG, False)
@@ -116,7 +120,8 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
             _setup_metrics(resource, otel_kwargs)
         if not disable_logging:
             _setup_logging(resource, otel_kwargs)
-        _logger.info("Azure Monitor exporter explicitly disabled.")
+        if not enable_azure_monitor:
+            _logger.info("Azure Monitor exporter explicitly disabled.")
 
     # ---- Instrumentations (always, after providers are set) ----
     _setup_instrumentations(otel_kwargs)
@@ -256,11 +261,13 @@ def _setup_instrumentations(otel_kwargs: Dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _setup_azure_monitor(**kwargs: object) -> None:
+def _setup_azure_monitor(**kwargs: object) -> bool:
     """Delegate Azure Monitor exporter setup.
 
     Passes the already-initialised providers to Azure Monitor so it
     can attach its exporters, samplers, and processors.
+
+    :returns: True if Azure Monitor was configured successfully, False otherwise.
     """
     try:
         from microsoft.opentelemetry._azure_monitor import configure_azure_monitor
@@ -268,14 +275,16 @@ def _setup_azure_monitor(**kwargs: object) -> None:
         _logger.warning(
             "Failed to import Azure Monitor components. Verify azure-monitor-opentelemetry-exporter is installed."
         )
-        return
+        return False
 
     try:
         configure_azure_monitor(**kwargs)
         _logger.info("Azure Monitor configured via azure-monitor-opentelemetry package")
+        return True
     except Exception as ex:  # pylint: disable=broad-exception-caught
         _logger.warning(
             "Failed to configure Azure Monitor: %s",
             ex,
             exc_info=True,
         )
+        return False
