@@ -9,12 +9,18 @@ description = "Minimal template for the Microsoft OpenTelemetry distro for Pytho
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "azure-core<2.0.0,>=1.28.0",
+    "azure-core-tracing-opentelemetry~=1.0.0b11",
     "azure-monitor-opentelemetry-exporter~=1.0.0b49",
-    "opentelemetry-api==1.40",
     "opentelemetry-sdk==1.40",
-    "opentelemetry-instrumentation==0.61b0",
+    "opentelemetry-instrumentation-django==0.61b0",
+    "opentelemetry-instrumentation-fastapi==0.61b0",
+    "opentelemetry-instrumentation-flask==0.61b0",
+    "opentelemetry-instrumentation-psycopg2==0.61b0",
+    "opentelemetry-instrumentation-requests==0.61b0",
+    "opentelemetry-instrumentation-urllib==0.61b0",
+    "opentelemetry-instrumentation-urllib3==0.61b0",
     "opentelemetry-instrumentation-logging==0.61b0",
+    "opentelemetry-resource-detector-azure<1.0.0,>=0.1.5",
 ]
 
 [project.optional-dependencies]
