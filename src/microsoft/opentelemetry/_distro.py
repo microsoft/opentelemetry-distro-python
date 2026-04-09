@@ -275,7 +275,7 @@ def _setup_azure_monitor(**kwargs: object) -> None:
     can attach its exporters, samplers, and processors.
     """
     try:
-        from microsoft.opentelemetry._azureMonitor import configure_azure_monitor
+        from microsoft.opentelemetry._azure_monitor import configure_azure_monitor
     except ImportError:
         _logger.warning(
             "Failed to import Azure Monitor components. Verify azure-monitor-opentelemetry-exporter is installed."

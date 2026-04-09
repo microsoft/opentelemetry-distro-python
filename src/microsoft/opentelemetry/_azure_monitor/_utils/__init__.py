@@ -18,7 +18,7 @@ from azure.monitor.opentelemetry.exporter._utils import (  # pylint: disable=imp
     _is_on_functions,
     _is_attach_enabled,
 )
-from microsoft.opentelemetry._azureMonitor._constants import (
+from microsoft.opentelemetry._azure_monitor._constants import (
     _LOG_PATH_LINUX,
     _LOG_PATH_WINDOWS,
 )

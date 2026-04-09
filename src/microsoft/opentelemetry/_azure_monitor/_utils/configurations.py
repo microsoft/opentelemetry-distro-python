@@ -34,7 +34,7 @@ from opentelemetry.sdk.trace.sampling import (
     ParentBased,
 )
 
-from microsoft.opentelemetry._azureMonitor._constants import (
+from microsoft.opentelemetry._azure_monitor._constants import (
     _AZURE_APP_SERVICE_RESOURCE_DETECTOR_NAME,
     _AZURE_VM_RESOURCE_DETECTOR_NAME,
     _FULLY_SUPPORTED_INSTRUMENTED_LIBRARIES,
@@ -72,8 +72,8 @@ from microsoft.opentelemetry._azureMonitor._constants import (
     SAMPLING_ARG,
     SAMPLER_TYPE,
 )
-from microsoft.opentelemetry._azureMonitor._types import ConfigurationValue
-from microsoft.opentelemetry._azureMonitor._version import VERSION
+from microsoft.opentelemetry._azure_monitor._types import ConfigurationValue
+from microsoft.opentelemetry._azure_monitor._version import VERSION
 
 _INVALID_FLOAT_MESSAGE = "Value of %s must be a float. Defaulting to %s: %s"
 _INVALID_TRACES_PER_SECOND_MESSAGE = "Value of %s must be a positive number for traces per second. Defaulting to %s: %s"

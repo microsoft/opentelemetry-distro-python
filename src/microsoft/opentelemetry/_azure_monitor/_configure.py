@@ -15,9 +15,9 @@ from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.trace import set_tracer_provider
 
 
-from microsoft.opentelemetry._azureMonitor._browser_sdk_loader import setup_snippet_injection
-from microsoft.opentelemetry._azureMonitor._browser_sdk_loader._config import BrowserSDKConfig
-from microsoft.opentelemetry._azureMonitor._constants import (
+from microsoft.opentelemetry._azure_monitor._browser_sdk_loader import setup_snippet_injection
+from microsoft.opentelemetry._azure_monitor._browser_sdk_loader._config import BrowserSDKConfig
+from microsoft.opentelemetry._azure_monitor._constants import (
     _ALL_SUPPORTED_INSTRUMENTED_LIBRARIES,
     _AZURE_SDK_INSTRUMENTATION_NAME,
     BROWSER_SDK_LOADER_CONFIG_ARG,
@@ -39,7 +39,7 @@ from microsoft.opentelemetry._azureMonitor._constants import (
     SAMPLING_ARG,
     SAMPLER_TYPE,
 )
-from microsoft.opentelemetry._azureMonitor._types import ConfigurationValue
+from microsoft.opentelemetry._azure_monitor._types import ConfigurationValue
 from azure.monitor.opentelemetry.exporter._quickpulse import (  # pylint: disable=import-error,no-name-in-module
     enable_live_metrics,
 )
@@ -64,11 +64,11 @@ from azure.monitor.opentelemetry.exporter._utils import (  # pylint: disable=imp
     _is_attach_enabled,
     _is_on_functions,
 )
-from microsoft.opentelemetry._azureMonitor._diagnostics.diagnostic_logging import (
+from microsoft.opentelemetry._azure_monitor._diagnostics.diagnostic_logging import (
     _DISTRO_DETECTS_ATTACH,
     AzureDiagnosticLogging,
 )
-from microsoft.opentelemetry._azureMonitor._utils.configurations import (
+from microsoft.opentelemetry._azure_monitor._utils.configurations import (
     _get_configurations,
     _is_instrumentation_enabled,
     _get_sampler_from_name,
