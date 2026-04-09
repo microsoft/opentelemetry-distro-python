@@ -23,6 +23,7 @@ from microsoft.opentelemetry._distro import (
     use_microsoft_opentelemetry,
     _setup_tracing,
     _setup_metrics,
+    _setup_logging,
 )
 
 TEST_RESOURCE = Resource({"service.name": "test-service"})
@@ -357,6 +358,66 @@ class TestAllConfigOptions(unittest.TestCase):
                 f"Prefixed key '{key}' should have been remapped",
             )
         self.assertNotIn("enable_azure_monitor", actual)
+
+
+class TestSetupLogging(unittest.TestCase):
+    """Tests for _setup_logging()."""
+
+    @patch("opentelemetry._logs.set_logger_provider")
+    def test_creates_logger_provider(self, set_lp_mock):
+        """_setup_logging creates and registers a LoggerProvider."""
+        lp = _setup_logging(TEST_RESOURCE, {})
+        self.assertIsNotNone(lp)
+        set_lp_mock.assert_called_once()
+
+    @patch("opentelemetry._logs.set_logger_provider")
+    def test_adds_log_record_processors(self, set_lp_mock):
+        """_setup_logging adds user-supplied log record processors."""
+        lrp = MagicMock()
+        lp = _setup_logging(TEST_RESOURCE, {"log_record_processors": [lrp]})
+        self.assertIsNotNone(lp)
+
+    @patch("opentelemetry._logs.set_logger_provider")
+    def test_attaches_handler_for_logger_name(self, set_lp_mock):
+        """_setup_logging attaches a LoggingHandler when logger_name is specified."""
+        import logging
+
+        test_logger_name = "test_distro_logging_handler"
+        test_logger = logging.getLogger(test_logger_name)
+        original_handlers = list(test_logger.handlers)
+
+        try:
+            _setup_logging(TEST_RESOURCE, {"logger_name": test_logger_name})
+            # Should have added a handler
+            self.assertGreater(len(test_logger.handlers), len(original_handlers))
+        finally:
+            # Cleanup: remove any handlers we added
+            for h in test_logger.handlers:
+                if h not in original_handlers:
+                    test_logger.removeHandler(h)
+
+    @patch("opentelemetry._logs.set_logger_provider")
+    def test_attaches_handler_with_formatter(self, set_lp_mock):
+        """_setup_logging sets formatter on handler when logging_formatter is provided."""
+        import logging
+
+        test_logger_name = "test_distro_logging_formatter"
+        test_logger = logging.getLogger(test_logger_name)
+        original_handlers = list(test_logger.handlers)
+        formatter = logging.Formatter("%(message)s")
+
+        try:
+            _setup_logging(TEST_RESOURCE, {
+                "logger_name": test_logger_name,
+                "logging_formatter": formatter,
+            })
+            new_handlers = [h for h in test_logger.handlers if h not in original_handlers]
+            self.assertTrue(len(new_handlers) > 0)
+            self.assertEqual(new_handlers[0].formatter, formatter)
+        finally:
+            for h in test_logger.handlers:
+                if h not in original_handlers:
+                    test_logger.removeHandler(h)
 
 
 if __name__ == "__main__":

@@ -377,6 +377,176 @@ class TestWebSnippetInjector(unittest.TestCase):
                 result = self.injector.should_inject("GET", "text/html", content)
                 self.assertFalse(result, f"Should detect existing script URL in: {content}")
 
+    def test_mark_browser_loader_feature_disabled(self):
+        """Test _mark_browser_loader_feature does nothing when disabled."""
+        from microsoft.opentelemetry._azure_monitor._browser_sdk_loader.snippet_injector import (
+            _mark_browser_loader_feature,
+        )
+
+        # Should not raise
+        _mark_browser_loader_feature(False)
+
+    def test_mark_browser_loader_feature_enabled_statsbeat_available(self):
+        """Test _mark_browser_loader_feature when statsbeat is available."""
+        from microsoft.opentelemetry._azure_monitor._browser_sdk_loader.snippet_injector import (
+            _mark_browser_loader_feature,
+        )
+
+        mock_module = unittest.mock.MagicMock()
+        mock_module.is_statsbeat_enabled.return_value = True
+        mock_module.get_statsbeat_shutdown.return_value = False
+        mock_module.get_statsbeat_browser_sdk_loader_feature_set.return_value = False
+        with patch.dict("sys.modules", {
+            "azure.monitor.opentelemetry.exporter.statsbeat._state": mock_module,
+        }):
+            _mark_browser_loader_feature(True)
+            mock_module.set_statsbeat_browser_sdk_loader_feature_set.assert_called_once()
+
+    def test_mark_browser_loader_feature_enabled_statsbeat_exception(self):
+        """Test _mark_browser_loader_feature handles statsbeat exception."""
+        from microsoft.opentelemetry._azure_monitor._browser_sdk_loader.snippet_injector import (
+            _mark_browser_loader_feature,
+        )
+
+        mock_module = unittest.mock.MagicMock()
+        mock_module.is_statsbeat_enabled.side_effect = Exception("boom")
+        with patch.dict("sys.modules", {
+            "azure.monitor.opentelemetry.exporter.statsbeat._state": mock_module,
+        }):
+            # Should not raise
+            _mark_browser_loader_feature(True)
+
+    def test_inject_snippet_no_insertion_point(self):
+        """Test inject_snippet returns original content when no insertion point found."""
+        content = b"just some text without html tags"
+        result = self.injector.inject_snippet(content)
+        self.assertEqual(result, content)
+
+    def test_inject_snippet_exception(self):
+        """Test inject_snippet handles exceptions gracefully."""
+        content = b"<html><head></head></html>"
+        with patch.object(self.injector, "_find_insertion_point", side_effect=Exception("boom")):
+            result = self.injector.inject_snippet(content)
+            self.assertEqual(result, content)
+
+    def test_find_insertion_point_body_fallback(self):
+        """Test _find_insertion_point falls back to <body> when no </head>."""
+        html = "<html><body><p>content</p></body></html>"
+        idx = self.injector._find_insertion_point(html)
+        self.assertEqual(idx, html.lower().find("<body"))
+
+    def test_find_insertion_point_html_fallback(self):
+        """Test _find_insertion_point falls back to <html> when no </head> or <body>."""
+        html = "<html><p>content</p></html>"
+        idx = self.injector._find_insertion_point(html)
+        self.assertEqual(idx, 0)
+
+    def test_find_insertion_point_no_tags(self):
+        """Test _find_insertion_point returns -1 when no tags found."""
+        html = "just plain text"
+        idx = self.injector._find_insertion_point(html)
+        self.assertEqual(idx, -1)
+
+    def test_has_existing_web_sdk_plain(self):
+        """Test _has_existing_web_sdk with plain content."""
+        content = b"<html><script>appInsights = {}</script></html>"
+        self.assertTrue(self.injector._has_existing_web_sdk(content))
+
+    def test_has_existing_web_sdk_no_sdk(self):
+        """Test _has_existing_web_sdk with no SDK present."""
+        content = b"<html><body>hello</body></html>"
+        self.assertFalse(self.injector._has_existing_web_sdk(content))
+
+    def test_has_existing_web_sdk_gzip(self):
+        """Test _has_existing_web_sdk with gzip compressed content."""
+        content = gzip.compress(b"<html><script>appInsights = {}</script></html>")
+        self.assertTrue(self.injector._has_existing_web_sdk(content, "gzip"))
+
+    def test_appears_compressed_gzip(self):
+        """Test _appears_compressed detects gzip magic bytes."""
+        self.assertTrue(self.injector._appears_compressed(b"\x1f\x8b\x08rest"))
+
+    def test_appears_compressed_zlib(self):
+        """Test _appears_compressed detects zlib magic bytes."""
+        self.assertTrue(self.injector._appears_compressed(b"\x78\x9c\x00rest"))
+
+    def test_appears_compressed_short_content(self):
+        """Test _appears_compressed returns False for short content."""
+        self.assertFalse(self.injector._appears_compressed(b"ab"))
+
+    def test_appears_compressed_plain(self):
+        """Test _appears_compressed returns False for plain content."""
+        self.assertFalse(self.injector._appears_compressed(b"<html>hello</html>"))
+
+    def test_decompress_content_deflate(self):
+        """Test _decompress_content with deflate encoding."""
+        import zlib
+
+        original = b"<html><body>hello</body></html>"
+        compressed = zlib.compress(original)
+        result = self.injector._decompress_content(compressed, "deflate")
+        self.assertEqual(result, original)
+
+    def test_compress_content_deflate(self):
+        """Test _compress_content with deflate encoding."""
+        import zlib
+
+        original = b"<html><body>hello</body></html>"
+        result = self.injector._compress_content(original, "deflate")
+        decompressed = zlib.decompress(result)
+        self.assertEqual(decompressed, original)
+
+    @patch("microsoft.opentelemetry._azure_monitor._browser_sdk_loader.snippet_injector.HAS_ZLIB", False)
+    def test_decompress_content_deflate_not_available(self):
+        """Test _decompress_content when zlib is not available."""
+        content = b"some content"
+        result = self.injector._decompress_content(content, "deflate")
+        self.assertEqual(result, content)
+
+    @patch("microsoft.opentelemetry._azure_monitor._browser_sdk_loader.snippet_injector.HAS_ZLIB", False)
+    def test_compress_content_deflate_not_available(self):
+        """Test _compress_content when zlib is not available."""
+        content = b"some content"
+        result = self.injector._compress_content(content, "deflate")
+        self.assertEqual(result, content)
+
+    def test_format_config_value_dict(self):
+        """Test _format_config_value with dict value."""
+        result = self.injector._format_config_value({"key": "val"})
+        self.assertIn("key", result)
+        self.assertIn('"val"', result)
+
+    def test_format_config_value_other(self):
+        """Test _format_config_value with unsupported type."""
+        result = self.injector._format_config_value([1, 2, 3])
+        self.assertEqual(result, '"[1, 2, 3]"')
+
+    def test_get_decompressed_content_caching(self):
+        """Test _get_decompressed_content uses cache on second call."""
+        content = gzip.compress(b"<html>hello</html>")
+        # First call populates cache
+        result1 = self.injector._get_decompressed_content(content, "gzip")
+        # Second call should use cache
+        result2 = self.injector._get_decompressed_content(content, "gzip")
+        self.assertEqual(result1, result2)
+        self.assertEqual(result1, b"<html>hello</html>")
+
+    def test_get_decompressed_content_auto_detect_gzip(self):
+        """Test _get_decompressed_content auto-detects gzip without encoding."""
+        original = b"<html>hello</html>"
+        content = gzip.compress(original)
+        result = self.injector._get_decompressed_content(content, None)
+        self.assertEqual(result, original)
+
+    def test_inject_with_compression_gzip_recompress(self):
+        """Test inject_with_compression recompresses after injection."""
+        html = b"<html><head></head><body>Test</body></html>"
+        compressed = gzip.compress(html)
+        result_content, result_encoding = self.injector.inject_with_compression(compressed, "gzip")
+        self.assertEqual(result_encoding, "gzip")
+        decompressed = gzip.decompress(result_content)
+        self.assertIn(b"appInsightsSDK", decompressed)
+
 
 if __name__ == "__main__":
     unittest.main()
