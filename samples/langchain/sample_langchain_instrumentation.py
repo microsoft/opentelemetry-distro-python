@@ -1,22 +1,22 @@
 import os
 os.environ["ENABLE_OBSERVABILITY"] = "true"
 
-from azure.monitor.opentelemetry._configure import configure_azure_monitor
+from microsoft.opentelemetry._distro import use_microsoft_opentelemetry
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langchain.agents import create_agent
 
 
-endpoint = "https://azmondistro-resources.cognitiveservices.azure.com/openai/v1/"
+endpoint = "<AZURE_OPENAI_ENDPOINT>"
 model_name = "gpt-4.1"
 deployment_name = "gpt-4.1"
 
-api_key = "1ILaNEKUS3lWD6yFFz0XCDvGTqZ3OEDLDknPaDGN2PRqvlPjF2yHJQQJ99CDACHYHv6XJ3w3AAAAACOGHx8K"
+api_key = "<AZURE_OPENAI_API_KEY>"
 
 
-# configure_azure_monitor sets up TracerProvider + Azure Monitor exporter
-configure_azure_monitor(
+# use_microsoft_opentelemetry sets up TracerProvider + Azure Monitor exporter
+use_microsoft_opentelemetry(
     sampling_ratio=1.0,
     instrumentation_options={
         "langchain": {"enabled": True},
@@ -39,7 +39,7 @@ def main():
         presence_penalty=0.5,
         stop_sequences=["\n", "Human:", "AI:"],
         seed=100,
-        api_key=api_key,
+        api_key=api_key, # Do not include api_key and base_url if using the OPENAI_API_KEY environment variable
         base_url=endpoint,
     )
 
@@ -79,6 +79,7 @@ def main():
         llm,
         tools=[get_population, get_famous_landmark],
         system_prompt="You are a helpful travel assistant. Use the tools to answer questions about cities.",
+        name="Travel_Assistant"
     )
 
     print("\n--- Agent run ---")
