@@ -378,44 +378,45 @@ class LangChainTracer(BaseTracer):
         agent_id = self._find_agent_ancestor(run)
         if not agent_id:
             return
-        with self._lock:
-            content = self._agent_content.get(agent_id)
-        if not content:
-            return
 
         run_type = run.run_type.lower()
 
-        # Capture model name from LLM runs
-        if run_type in ("llm", "chat_model") and not content.get("model"):
-            for _, m in model_name(run.outputs, run.extra):
-                content["model"] = m
-                break
+        with self._lock:
+            content = self._agent_content.get(agent_id)
+            if not content:
+                return
 
-        # Capture input messages from LLM runs (first LLM child wins)
-        if run_type in ("llm", "chat_model") and not content["input_messages"]:
-            if run.inputs:
-                for _, val in input_messages(run.inputs):
-                    content["input_messages"].append(val)
+            # Capture model name from LLM runs
+            if run_type in ("llm", "chat_model") and not content.get("model"):
+                for _, m in model_name(run.outputs, run.extra):
+                    content["model"] = m
                     break
-                if not content["input_messages"]:
-                    for _, val in prompts(run.inputs):
-                        if isinstance(val, list) and val:
-                            content["input_messages"].append(str(val[0]))
-                        elif isinstance(val, str):
-                            content["input_messages"].append(val)
+
+            # Capture input messages from LLM runs (first LLM child wins)
+            if run_type in ("llm", "chat_model") and not content["input_messages"]:
+                if run.inputs:
+                    for _, val in input_messages(run.inputs):
+                        content["input_messages"].append(val)
                         break
+                    if not content["input_messages"]:
+                        for _, val in prompts(run.inputs):
+                            if isinstance(val, list) and val:
+                                content["input_messages"].append(str(val[0]))
+                            elif isinstance(val, str):
+                                content["input_messages"].append(val)
+                            break
 
-        # Capture output messages from LLM runs (last LLM child wins)
-        if run_type in ("llm", "chat_model") and run.outputs:
-            for _, val in output_messages(run.outputs):
-                content["output_messages"] = [val]  # overwrite with latest
-                break
+            # Capture output messages from LLM runs (last LLM child wins)
+            if run_type in ("llm", "chat_model") and run.outputs:
+                for _, val in output_messages(run.outputs):
+                    content["output_messages"] = [val]  # overwrite with latest
+                    break
 
-        # Capture tool results
-        if run_type == "tool" and run.outputs:
-            if output := run.outputs.get("output"):
-                result_str = output if isinstance(output, str) else safe_json_dumps(output)
-                content["output_messages"].append(result_str)
+            # Capture tool results
+            if run_type == "tool" and run.outputs:
+                if output := run.outputs.get("output"):
+                    result_str = output if isinstance(output, str) else safe_json_dumps(output)
+                    content["output_messages"].append(result_str)
 
     def _find_agent_ancestor(self, run: Run) -> UUID | None:
         """Walk up the run tree to find the nearest agent ancestor run_id."""
