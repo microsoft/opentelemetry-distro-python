@@ -1,4 +1,4 @@
-from azure.monitor.opentelemetry import configure_azure_monitor
+from microsoft.opentelemetry import use_microsoft_opentelemetry
 from opentelemetry.instrumentation.langchain import LangChainInstrumentor
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
@@ -13,12 +13,9 @@ API_KEY = "<AZURE_OPENAI_API_KEY>"
 
 # Otherwise, set the env variable OPENAI_API_KEY
 
-configure_azure_monitor()  # Replace with the opentelemetry distro
-
-# use_microsoft_opentelemetry(
-#     azure_monitor_connection_string="InstrumentationKey=...",
-#     enable_genai_langchain=True,
-# )
+use_microsoft_opentelemetry(
+    azure_monitor_connection_string="InstrumentationKey=...",
+)
 
 LangChainInstrumentor().instrument()
 

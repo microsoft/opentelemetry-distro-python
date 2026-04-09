@@ -3,16 +3,13 @@
 import random
 from uuid import uuid4
 
-from azure.monitor.opentelemetry import configure_azure_monitor
+from microsoft.opentelemetry import use_microsoft_opentelemetry
 from langchain_core.messages import HumanMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langchain_azure_ai.callbacks.tracers import AzureAIOpenTelemetryTracer
+from langchain.agents import create_agent
 
-try:
-    from langchain.agents import create_agent as create_react_agent
-except ImportError:
-    from langgraph.prebuilt import create_react_agent
 
 # If using Azure OpenAI endpoint and API KEY
 ENDPOINT = "<AZURE_OPENAI_ENDPOINT>"
@@ -21,8 +18,8 @@ MODEL_NAME = "gpt-4.1"
 
 # Otherwise, set the env variable OPENAI_API_KEY
 
-configure_azure_monitor(  # Replace with the opentelemetry distro
-    connection_string="InstrumentationKey=...",
+use_microsoft_opentelemetry(  # Replace with the opentelemetry distro
+    azure_monitor_connection_string="InstrumentationKey=...",
 )
 
 tracer = AzureAIOpenTelemetryTracer(name="travel_planner", provider_name="openai")
@@ -71,9 +68,9 @@ def _make_llm(temperature: float = 0.3) -> ChatOpenAI:
     )
 
 
-flight_agent = create_react_agent(_make_llm(0.3), tools=[search_flights])
-hotel_agent = create_react_agent(_make_llm(0.3), tools=[search_hotels])
-activity_agent = create_react_agent(_make_llm(0.5), tools=[search_activities])
+flight_agent = create_agent(_make_llm(0.3), tools=[search_flights])
+hotel_agent = create_agent(_make_llm(0.3), tools=[search_hotels])
+activity_agent = create_agent(_make_llm(0.5), tools=[search_activities])
 
 
 # --- Coordinator tools that invoke sub-agents ---
@@ -108,7 +105,7 @@ def find_activities(destination: str) -> str:
 
 
 # --- Coordinator Agent ---
-coordinator = create_react_agent(
+coordinator = create_agent(
     _make_llm(0.2),
     tools=[find_flights, find_hotels, find_activities],
 )

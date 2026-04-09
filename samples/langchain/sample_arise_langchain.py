@@ -9,11 +9,11 @@ import httpx
 
 from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
-from azure.monitor.opentelemetry import configure_azure_monitor
+from microsoft.opentelemetry import use_microsoft_opentelemetry
 
 from openinference.instrumentation.langchain import LangChainInstrumentor
 
-configure_azure_monitor(connection_string="InstrumentationKey=...")  # Replace with the opentelemetry distro
+use_microsoft_opentelemetry(azure_monitor_connection_string="InstrumentationKey=...")
 
 LangChainInstrumentor().instrument()
 
