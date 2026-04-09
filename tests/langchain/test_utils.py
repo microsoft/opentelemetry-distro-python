@@ -68,8 +68,8 @@ def _make_run(**kwargs):
     run.serialized = kwargs.get("serialized", None)
     run.error = kwargs.get("error", None)
     run.parent_run_id = kwargs.get("parent_run_id", None)
-    run.start_time = kwargs.get("start_time", datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC))
-    run.end_time = kwargs.get("end_time", datetime.datetime(2024, 1, 1, second=1, tzinfo=datetime.UTC))
+    run.start_time = kwargs.get("start_time", datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc))
+    run.end_time = kwargs.get("end_time", datetime.datetime(2024, 1, 1, second=1, tzinfo=datetime.timezone.utc))
     return run
 
 
@@ -89,18 +89,18 @@ class TestSafeJsonDumps(TestCase):
         self.assertIn("12345678-1234-5678-1234-567812345678", result)
 
     def test_handles_datetime(self):
-        obj = {"ts": datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC)}
+        obj = {"ts": datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc)}
         result = safe_json_dumps(obj)
         self.assertIn("2024", result)
 
 
 class TestAsUtcNano(TestCase):
     def test_epoch_returns_zero(self):
-        dt = datetime.datetime(1970, 1, 1, tzinfo=datetime.UTC)
+        dt = datetime.datetime(1970, 1, 1, tzinfo=datetime.timezone.utc)
         self.assertEqual(as_utc_nano(dt), 0)
 
     def test_known_timestamp(self):
-        dt = datetime.datetime(2024, 1, 1, tzinfo=datetime.UTC)
+        dt = datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc)
         expected = int(dt.timestamp() * 1_000_000_000)
         self.assertEqual(as_utc_nano(dt), expected)
 
