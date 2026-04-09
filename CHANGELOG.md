@@ -19,8 +19,6 @@
 
 ### Other Changes
 
-- Remove the duplicate azure monitor folder
-
 - Add support for local mypy, pylint, black checks
   ([#14](https://github.com/microsoft/opentelemetry-distro-python/pull/14))
 - Add mypy and pyright checks
