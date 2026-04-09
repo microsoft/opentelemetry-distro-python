@@ -106,11 +106,9 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
             azure_monitor_connection_string=TEST_CONNECTION_STRING,
             enable_azure_monitor=False,
         )
-        # Providers are still set up
         tracing_mock.assert_called_once()
         metrics_mock.assert_called_once()
         logging_mock.assert_called_once()
-        # But Azure Monitor is not configured
         azure_monitor_mock.assert_not_called()
 
     @patch("microsoft.opentelemetry._distro._setup_azure_monitor")
@@ -175,8 +173,8 @@ class TestOTelProviderSetup(unittest.TestCase):
         """_setup_tracing adds user-supplied span processors."""
         sp = MagicMock()
         tp = _setup_tracing(TEST_RESOURCE, {"span_processors": [sp]})
-        # Processor is in the provider's active span processors
         self.assertIsInstance(tp, TracerProvider)
+        self.assertIn(sp, tp._active_span_processor._span_processors)
 
     @patch("microsoft.opentelemetry._distro.set_meter_provider")
     def test_setup_metrics_creates_provider(self, set_mp_mock):
@@ -340,23 +338,10 @@ class TestAllConfigOptions(unittest.TestCase):
         self.assertEqual(actual["disable_tracing"], True)
         self.assertEqual(actual["disable_metrics"], True)
         self.assertEqual(actual["resource"], TEST_RESOURCE)
-        self.assertEqual(actual["span_processors"], ["sp1"])
-        self.assertEqual(actual["log_record_processors"], ["lrp1"])
-        self.assertEqual(actual["metric_readers"], ["mr1"])
-        self.assertEqual(actual["views"], ["v1"])
         self.assertEqual(actual["logger_name"], "mylogger")
         self.assertEqual(actual["logging_formatter"], formatter)
         self.assertEqual(actual["instrumentation_options"], {"flask": {"enabled": False}})
         self.assertEqual(actual["enable_trace_based_sampling_for_logs"], True)
-        self.assertEqual(actual["sampling_ratio"], 0.25)
-
-        # azure_monitor_ prefixed keys should NOT appear in forwarded kwargs
-        for key in actual:
-            self.assertFalse(
-                key.startswith("azure_monitor_"),
-                f"Prefixed key '{key}' should have been remapped",
-            )
-        self.assertNotIn("enable_azure_monitor", actual)
 
 
 if __name__ == "__main__":

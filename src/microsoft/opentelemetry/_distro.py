@@ -37,6 +37,7 @@ from microsoft.opentelemetry._constants import (
     _SUPPORTED_INSTRUMENTED_LIBRARIES,
 )
 from microsoft.opentelemetry._instrumentation import get_dist_dependency_conflicts
+from microsoft.opentelemetry._otlp import is_otlp_enabled, create_otlp_components
 
 _logger = getLogger(__name__)
 
@@ -104,6 +105,22 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     disable_tracing = otel_kwargs.get(DISABLE_TRACING_ARG, False)
     disable_logging = otel_kwargs.get(DISABLE_LOGGING_ARG, False)
     disable_metrics = otel_kwargs.get(DISABLE_METRICS_ARG, False)
+
+    # ---- OTLP exporters (append to user-supplied processors/readers) ----
+    if is_otlp_enabled():
+        otlp = create_otlp_components()
+        if otlp.span_processor:
+            otel_kwargs.setdefault(SPAN_PROCESSORS_ARG, [])
+            otel_kwargs[SPAN_PROCESSORS_ARG] = list(otel_kwargs[SPAN_PROCESSORS_ARG])
+            otel_kwargs[SPAN_PROCESSORS_ARG].append(otlp.span_processor)
+        if otlp.log_record_processor:
+            otel_kwargs.setdefault(LOG_RECORD_PROCESSORS_ARG, [])
+            otel_kwargs[LOG_RECORD_PROCESSORS_ARG] = list(otel_kwargs[LOG_RECORD_PROCESSORS_ARG])
+            otel_kwargs[LOG_RECORD_PROCESSORS_ARG].append(otlp.log_record_processor)
+        if otlp.metric_reader:
+            otel_kwargs.setdefault(METRIC_READERS_ARG, [])
+            otel_kwargs[METRIC_READERS_ARG] = list(otel_kwargs[METRIC_READERS_ARG])
+            otel_kwargs[METRIC_READERS_ARG].append(otlp.metric_reader)
 
     tracer_provider: Optional[TracerProvider] = None
     meter_provider: Optional[MeterProvider] = None
