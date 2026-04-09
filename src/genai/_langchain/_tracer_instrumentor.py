@@ -26,7 +26,7 @@ from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
 from opentelemetry.trace import Span
 from wrapt import wrap_function_wrapper
 
-from genai._langchain.tracer import LangChainTracer
+from genai._langchain._tracer import LangChainTracer
 
 logger = logging.getLogger(__name__)
 

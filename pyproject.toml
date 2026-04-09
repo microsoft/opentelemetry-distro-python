@@ -44,7 +44,7 @@ dev = [
 ]
 
 [project.entry-points.opentelemetry_instrumentor]
-langchain = "genai._langchain.tracer_instrumentor:LangChainInstrumentor"
+langchain = "genai._langchain._tracer_instrumentor:LangChainInstrumentor"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

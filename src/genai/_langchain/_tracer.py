@@ -16,7 +16,7 @@ from typing import (
 )
 from uuid import UUID
 
-from langchain_core.tracers import BaseTracer, LangChainTracer
+from langchain_core.tracers import BaseTracer
 from langchain_core.tracers.schemas import Run
 from opentelemetry import context as context_api
 from opentelemetry import trace as trace_api
@@ -33,7 +33,7 @@ from opentelemetry.util.genai.span_utils import (
 from opentelemetry.util.genai.types import Error, LLMInvocation
 from opentelemetry.util.types import AttributeValue
 
-from genai._langchain.utils import (
+from genai._langchain._utils import (
     DictWithLock,
     as_utc_nano,
     build_llm_invocation,
@@ -52,6 +52,7 @@ from genai._langchain.utils import (
     SERVER_ADDRESS_KEY,
     SERVER_PORT_KEY,
     add_operation_type,
+    chain_node_messages,
     extract_agent_metadata,
     extract_session_info,
     function_calls,
@@ -90,6 +91,7 @@ class LangChainTracer(BaseTracer):
         "_agent_config",
         "_agent_run_ids",
         "_agent_content",
+        "_agent_wrapper_spans",
         "_spans_by_run",
         "_event_logger",
     )
@@ -112,6 +114,7 @@ class LangChainTracer(BaseTracer):
         self._agent_config: dict[str, Any] = agent_config or {}
         self._agent_run_ids: set[UUID] = set()
         self._agent_content: dict[UUID, dict[str, Any]] = {}
+        self._agent_wrapper_spans: dict[UUID, Span] = {}
         self._spans_by_run: OrderedDict[UUID, Span] = OrderedDict()
         self._event_logger = event_logger
         self._lock = RLock()
@@ -149,6 +152,23 @@ class LangChainTracer(BaseTracer):
         else:
             span_name = run.name
 
+        # For agent runs, always create a wrapper span.
+        # The wrapper gets the agent name (from config or metadata).
+        # The inner span shows the framework name (e.g. "invoke_agent LangGraph").
+        wrapper_span: Span | None = None
+        if is_agent:
+            agent_name = self._resolve_agent_name(run)
+            wrapper_label = agent_name or run.name
+            wrapper_span = self._tracer.start_span(
+                name=f"{INVOKE_AGENT_OPERATION_NAME} {wrapper_label}",
+                context=parent_context,
+                start_time=start_time_utc_nano,
+            )
+            parent_context = trace_api.set_span_in_context(wrapper_span)
+            # Resolve framework name for the inner span (e.g. "LangGraph")
+            framework_name = self._resolve_framework_name(run)
+            span_name = f"{INVOKE_AGENT_OPERATION_NAME} {framework_name}"
+
         span = self._tracer.start_span(
             name=span_name,
             context=parent_context,
@@ -157,6 +177,8 @@ class LangChainTracer(BaseTracer):
 
         # For agent spans, set immediate attributes and init content aggregation
         if is_agent:
+            # Use wrapper span (if present) as the agent span for attributes
+            agent_span = wrapper_span or span
             with self._lock:
                 self._agent_run_ids.add(run.id)
                 self._agent_content[run.id] = {
@@ -164,27 +186,25 @@ class LangChainTracer(BaseTracer):
                     "output_messages": [],
                     "model": None,
                 }
-            span.set_attribute(GEN_AI_OPERATION_NAME_KEY, INVOKE_AGENT_OPERATION_NAME)
-            # Set agent details from config, then overlay from run metadata
-            agent_name = self._resolve_agent_name(run)
+                if wrapper_span is not None:
+                    self._agent_wrapper_spans[run.id] = wrapper_span
+            agent_span.set_attribute(GEN_AI_OPERATION_NAME_KEY, INVOKE_AGENT_OPERATION_NAME)
             if agent_name:
-                span.set_attribute(GEN_AI_AGENT_NAME_KEY, agent_name)
+                agent_span.set_attribute(GEN_AI_AGENT_NAME_KEY, agent_name)
             agent_id = self._agent_config.get("agent_id")
             if agent_id:
-                span.set_attribute(GEN_AI_AGENT_ID_KEY, agent_id)
+                agent_span.set_attribute(GEN_AI_AGENT_ID_KEY, agent_id)
             agent_desc = self._agent_config.get("agent_description")
             if agent_desc:
-                span.set_attribute(GEN_AI_AGENT_DESCRIPTION_KEY, agent_desc)
-            # Overlay with any metadata from the run itself
-            span.set_attributes(dict(flatten(extract_agent_metadata(run))))
+                agent_span.set_attribute(GEN_AI_AGENT_DESCRIPTION_KEY, agent_desc)
+            agent_span.set_attributes(dict(flatten(extract_agent_metadata(run))))
             server_addr = self._agent_config.get("server_address")
             if server_addr:
-                span.set_attribute(SERVER_ADDRESS_KEY, server_addr)
+                agent_span.set_attribute(SERVER_ADDRESS_KEY, server_addr)
             server_port = self._agent_config.get("server_port")
             if server_port:
-                span.set_attribute(SERVER_PORT_KEY, server_port)
-            # Extract session/conversation from run metadata
-            span.set_attributes(dict(flatten(extract_session_info(run))))
+                agent_span.set_attribute(SERVER_PORT_KEY, server_port)
+            agent_span.set_attributes(dict(flatten(extract_session_info(run))))
 
         with self._lock:
             self._spans_by_run[run.id] = span
@@ -203,10 +223,18 @@ class LangChainTracer(BaseTracer):
 
         with self._lock:
             span = self._spans_by_run.pop(run.id, None)
+            wrapper_span = self._agent_wrapper_spans.pop(run.id, None) if is_agent else None
+
+        end_time_utc_nano = as_utc_nano(run.end_time) if run.end_time else None
+
         if span:
             invocation: LLMInvocation | None = None
             try:
-                if is_agent:
+                if is_agent and wrapper_span:
+                    # Two-span agent: update inner span as chain, finalize wrapper as agent
+                    _update_span(span, run)
+                elif is_agent:
+                    # Single-span agent: finalize directly
                     self._finalize_agent_span(span, run)
                 else:
                     invocation = _update_span(span, run)
@@ -218,8 +246,15 @@ class LangChainTracer(BaseTracer):
                     _maybe_emit_llm_event(self._event_logger, span, invocation)
                 except Exception:
                     logger.debug("Failed to emit LLM event.", exc_info=True)
-            end_time_utc_nano = as_utc_nano(run.end_time) if run.end_time else None
             span.end(end_time=end_time_utc_nano)
+
+        # Finalize and end wrapper span after the inner span
+        if wrapper_span:
+            try:
+                self._finalize_agent_span(wrapper_span, run)
+            except Exception:
+                logger.exception("Failed to finalize agent wrapper span.")
+            wrapper_span.end(end_time=end_time_utc_nano)
 
         # Clean up agent tracking
         if is_agent:
@@ -265,38 +300,51 @@ class LangChainTracer(BaseTracer):
         return super().on_tool_error(error, *args, run_id=run_id, **kwargs)
 
     def on_chat_model_start(self, *args: Any, **kwargs: Any) -> Run:
-        return LangChainTracer.on_chat_model_start(self, *args, **kwargs)  # type: ignore
+        return super().on_chat_model_start(*args, **kwargs)  # type: ignore
 
     # ---- Agent detection & aggregation ----------------------------------------
 
     @staticmethod
-    def _is_agent_run(run: Run) -> bool:
-        """Detect whether a LangChain run represents an agent invocation."""
+    def _is_agent_like_chain(run: Run) -> bool:
+        """Check whether a chain matches agent-like criteria (LangGraph, etc.)."""
         if run.run_type != "chain":
             return False
-        # LangGraph top-level graph
         if run.name == "LangGraph":
             return True
-        # langgraph CompiledGraph or StateGraph
         serialized = run.serialized or {}
         graph_type = serialized.get("graph", {}).get("type") if isinstance(serialized.get("graph"), dict) else None
         if graph_type in ("CompiledGraph", "StateGraph"):
             return True
-        # Agent created via create_react_agent / create_agent (name contains "Agent")
-        if not run.parent_run_id and "agent" in run.name.lower():
+        if "agent" in run.name.lower():
             return True
+        # LangChain create_agent sets lc_agent_name in metadata
+        if run.extra and isinstance(run.extra, dict):
+            meta = run.extra.get("metadata")
+            if isinstance(meta, dict) and meta.get("lc_agent_name"):
+                return True
         return False
+
+    def _is_agent_run(self, run: Run) -> bool:
+        """Detect whether a LangChain run should be the top-level agent span."""
+        if not self._is_agent_like_chain(run):
+            return False
+        # Don't nest agents — if a parent is already an agent, this is internal
+        if run.parent_run_id and run.parent_run_id in self._agent_run_ids:
+            return False
+        return True
 
     def _resolve_agent_name(self, run: Run) -> str | None:
         """Resolve agent name from config override, run metadata, or run name."""
         # 1. Explicit config override
         if name := self._agent_config.get("agent_name"):
             return name
-        # 2. From run metadata
+        # 2. From run metadata (agent_name or lc_agent_name)
         if run.extra and isinstance(run.extra, dict):
             meta = run.extra.get("metadata")
             if isinstance(meta, dict):
                 if name := meta.get("agent_name"):
+                    return name
+                if name := meta.get("lc_agent_name"):
                     return name
         # 3. From serialized graph name
         if run.serialized and isinstance(run.serialized, dict):
@@ -307,6 +355,19 @@ class LangChainTracer(BaseTracer):
         if run.name and run.name != "LangGraph":
             return run.name
         return None
+
+    @staticmethod
+    def _resolve_framework_name(run: Run) -> str:
+        """Resolve the framework/graph type name for the inner agent span."""
+        serialized = run.serialized or {}
+        graph = serialized.get("graph")
+        if isinstance(graph, dict):
+            graph_type = graph.get("type")
+            if graph_type in ("CompiledGraph", "StateGraph"):
+                return "LangGraph"
+        if serialized.get("name") and serialized["name"] != run.name:
+            return serialized["name"]
+        return "LangGraph"
 
     def _aggregate_into_parent(self, run: Run) -> None:
         """Aggregate child run content into the parent agent span's content."""
@@ -456,6 +517,8 @@ def _update_span(span: Span, run: Run) -> LLMInvocation | None:
             flatten(
                 chain(
                     add_operation_type(run),
+                    chain_node_messages(run.inputs, GEN_AI_INPUT_MESSAGES_KEY),
+                    chain_node_messages(run.outputs, GEN_AI_OUTPUT_MESSAGES_KEY),
                     tools(run),
                     metadata(run),
                 )

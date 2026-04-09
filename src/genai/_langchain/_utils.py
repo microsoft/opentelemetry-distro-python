@@ -468,6 +468,29 @@ def tools(run: Run) -> Iterator[tuple[str, str]]:
             yield GEN_AI_TOOL_CALL_RESULT_KEY, result_content
 
 
+def chain_node_messages(
+    data: Mapping[str, Any] | None,
+    attr_key: str,
+) -> Iterator[tuple[str, str]]:
+    """Extract messages from a LangGraph chain node's inputs or outputs.
+
+    Chain nodes typically store messages as ``{"messages": [BaseMessage, ...]}``.
+    """
+    if not data or not isinstance(data, Mapping):
+        return
+    messages = data.get("messages")
+    if not messages or not isinstance(messages, list):
+        return
+    contents: list[str] = []
+    for msg in messages:
+        c = _langchain_content(msg)
+        if c:
+            role = _langchain_role(msg)
+            contents.append(f"{role}: {c}")
+    if contents:
+        yield attr_key, safe_json_dumps(contents)
+
+
 def add_operation_type(run: Run) -> Iterator[tuple[str, str]]:
     run_type = run.run_type.lower()
     if run_type in ("llm", "chat_model"):
