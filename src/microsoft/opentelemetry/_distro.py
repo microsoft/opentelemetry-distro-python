@@ -99,39 +99,27 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
         else:
             otel_kwargs[key] = value
 
-    # ---- Core OTel provider initialisation ----
-    resource = otel_kwargs.get(RESOURCE_ARG) or Resource.create()
-    disable_tracing = otel_kwargs.get(DISABLE_TRACING_ARG, False)
-    disable_logging = otel_kwargs.get(DISABLE_LOGGING_ARG, False)
-    disable_metrics = otel_kwargs.get(DISABLE_METRICS_ARG, False)
-
-    tracer_provider: Optional[TracerProvider] = None
-    meter_provider: Optional[MeterProvider] = None
-    logger_provider: Optional[Any] = None
-
-    if not disable_tracing:
-        tracer_provider = _setup_tracing(resource, otel_kwargs)
-
-    if not disable_metrics:
-        meter_provider = _setup_metrics(resource, otel_kwargs)
-
-    if not disable_logging:
-        logger_provider = _setup_logging(resource, otel_kwargs)
-
-    # ---- Instrumentations (always, regardless of exporter) ----
-    _setup_instrumentations(otel_kwargs)
-
-    # ---- Azure Monitor exporter (optional) ----
+    # ---- Provider initialisation ----
     if enable_azure_monitor:
         merged = {**otel_kwargs, **azure_monitor_kwargs}
-        _setup_azure_monitor(
-            tracer_provider=tracer_provider,
-            meter_provider=meter_provider,
-            logger_provider=logger_provider,
-            **merged,
-        )
+        _setup_azure_monitor(**merged)
     else:
+        # No exporter — create bare providers for local/custom pipelines.
+        resource = otel_kwargs.get(RESOURCE_ARG) or Resource.create()
+        disable_tracing = otel_kwargs.get(DISABLE_TRACING_ARG, False)
+        disable_logging = otel_kwargs.get(DISABLE_LOGGING_ARG, False)
+        disable_metrics = otel_kwargs.get(DISABLE_METRICS_ARG, False)
+
+        if not disable_tracing:
+            _setup_tracing(resource, otel_kwargs)
+        if not disable_metrics:
+            _setup_metrics(resource, otel_kwargs)
+        if not disable_logging:
+            _setup_logging(resource, otel_kwargs)
         _logger.info("Azure Monitor exporter explicitly disabled.")
+
+    # ---- Instrumentations (always, after providers are set) ----
+    _setup_instrumentations(otel_kwargs)
 
 
 # ---------------------------------------------------------------------------
