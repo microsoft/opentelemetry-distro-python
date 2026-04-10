@@ -14,16 +14,10 @@ deployment_name = "gpt-4.1"
 
 api_key = "<AZURE_OPENAI_API_KEY>"
 
-
-# use_microsoft_opentelemetry sets up TracerProvider + Azure Monitor exporter
 use_microsoft_opentelemetry(
     sampling_ratio=1.0,
     instrumentation_options={
         "langchain": {"enabled": True},
-        "requests": {"enabled": False},
-        "urllib": {"enabled": False},
-        "urllib3": {"enabled": False},
-        "httpx": {"enabled": False},
     }
 )
 
@@ -43,7 +37,6 @@ def main():
         base_url=endpoint,
     )
 
-    # --- Part 1: Direct LLM invoke ---
     messages = [
         SystemMessage(content="You are a helpful assistant!"),
         HumanMessage(content="What is the capital of France?"),
@@ -52,7 +45,6 @@ def main():
     result = llm.invoke(messages)
     print("LLM output:\n", result)
 
-    # --- Part 2: Agent with tools (invoke_agent) ---
     @tool
     def get_population(city: str) -> str:
         """Get the population of a city."""
