@@ -18,8 +18,6 @@ from opentelemetry.sdk.resources import Resource
 
 from microsoft.opentelemetry._azure_monitor._configure import (
     _send_attach_warning,
-    _setup_azure_instrumentations,
-    _setup_browser_sdk_loader,
     _setup_live_metrics,
     _setup_logging,
     _setup_metrics,
@@ -384,9 +382,6 @@ class TestConfigure(unittest.TestCase):
         pcsp_mock.return_value = pcsp_init_mock
         custom_sp = Mock()
 
-        settings_mock = Mock()
-        opentelemetry_span_mock = Mock()
-
         configurations = {
             "connection_string": "test_cs",
             "enable_performance_counters": True,
@@ -402,9 +397,7 @@ class TestConfigure(unittest.TestCase):
         trace_exporter_mock.assert_called_once_with(**configurations)
         bsp_mock.assert_called_once_with(trace_exp_init_mock)
         self.assertEqual(tp_init_mock.add_span_processor.call_count, 3)
-        tp_init_mock.add_span_processor.assert_has_calls(
-            [call(custom_sp), call(pcsp_init_mock), call(bsp_init_mock)]
-        )
+        tp_init_mock.add_span_processor.assert_has_calls([call(custom_sp), call(pcsp_init_mock), call(bsp_init_mock)])
         pcsp_mock.assert_called_once_with()
 
     @patch(
@@ -447,9 +440,6 @@ class TestConfigure(unittest.TestCase):
         pcsp_mock.return_value = pcsp_init_mock
         custom_sp = Mock()
 
-        settings_mock = Mock()
-        opentelemetry_span_mock = Mock()
-
         configurations = {
             "connection_string": "test_cs",
             "enable_performance_counters": True,
@@ -465,9 +455,7 @@ class TestConfigure(unittest.TestCase):
         trace_exporter_mock.assert_called_once_with(**configurations)
         bsp_mock.assert_called_once_with(trace_exp_init_mock)
         self.assertEqual(tp_init_mock.add_span_processor.call_count, 3)
-        tp_init_mock.add_span_processor.assert_has_calls(
-            [call(custom_sp), call(pcsp_init_mock), call(bsp_init_mock)]
-        )
+        tp_init_mock.add_span_processor.assert_has_calls([call(custom_sp), call(pcsp_init_mock), call(bsp_init_mock)])
         pcsp_mock.assert_called_once_with()
 
     @patch(
@@ -509,9 +497,6 @@ class TestConfigure(unittest.TestCase):
         pcsp_init_mock = Mock()
         pcsp_mock.return_value = pcsp_init_mock
         custom_sp = Mock()
-
-        settings_mock = Mock()
-        opentelemetry_span_mock = Mock()
 
         configurations = {
             "connection_string": "test_cs",

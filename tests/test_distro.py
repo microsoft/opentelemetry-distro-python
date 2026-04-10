@@ -392,7 +392,7 @@ class TestSetupLogging(unittest.TestCase):
             self.assertGreater(len(test_logger.handlers), len(original_handlers))
         finally:
             # Cleanup: remove any handlers we added
-            for h in test_logger.handlers:
+            for h in list(test_logger.handlers):
                 if h not in original_handlers:
                     test_logger.removeHandler(h)
 
@@ -407,15 +407,18 @@ class TestSetupLogging(unittest.TestCase):
         formatter = logging.Formatter("%(message)s")
 
         try:
-            _setup_logging(TEST_RESOURCE, {
-                "logger_name": test_logger_name,
-                "logging_formatter": formatter,
-            })
+            _setup_logging(
+                TEST_RESOURCE,
+                {
+                    "logger_name": test_logger_name,
+                    "logging_formatter": formatter,
+                },
+            )
             new_handlers = [h for h in test_logger.handlers if h not in original_handlers]
             self.assertTrue(len(new_handlers) > 0)
             self.assertEqual(new_handlers[0].formatter, formatter)
         finally:
-            for h in test_logger.handlers:
+            for h in list(test_logger.handlers):
                 if h not in original_handlers:
                     test_logger.removeHandler(h)
 

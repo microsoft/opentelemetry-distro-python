@@ -5,7 +5,7 @@
 # --------------------------------------------------------------------------
 
 import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from packaging.requirements import Requirement
 

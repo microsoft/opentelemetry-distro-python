@@ -396,9 +396,12 @@ class TestWebSnippetInjector(unittest.TestCase):
         mock_module.is_statsbeat_enabled.return_value = True
         mock_module.get_statsbeat_shutdown.return_value = False
         mock_module.get_statsbeat_browser_sdk_loader_feature_set.return_value = False
-        with patch.dict("sys.modules", {
-            "azure.monitor.opentelemetry.exporter.statsbeat._state": mock_module,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "azure.monitor.opentelemetry.exporter.statsbeat._state": mock_module,
+            },
+        ):
             _mark_browser_loader_feature(True)
             mock_module.set_statsbeat_browser_sdk_loader_feature_set.assert_called_once()
 
@@ -410,9 +413,12 @@ class TestWebSnippetInjector(unittest.TestCase):
 
         mock_module = unittest.mock.MagicMock()
         mock_module.is_statsbeat_enabled.side_effect = Exception("boom")
-        with patch.dict("sys.modules", {
-            "azure.monitor.opentelemetry.exporter.statsbeat._state": mock_module,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "azure.monitor.opentelemetry.exporter.statsbeat._state": mock_module,
+            },
+        ):
             # Should not raise
             _mark_browser_loader_feature(True)
 
