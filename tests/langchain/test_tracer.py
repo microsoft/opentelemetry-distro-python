@@ -4,22 +4,16 @@
 import datetime
 from collections import OrderedDict
 from unittest import TestCase
-from unittest.mock import MagicMock, patch, call
-from uuid import UUID, uuid4
+from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 from genai._langchain._tracer import (
-    CONTEXT_ATTRIBUTES,
     LangChainTracer,
     _update_span,
     get_attributes_from_context,
 )
 from genai._langchain._utils import (
     EXECUTE_TOOL_OPERATION_NAME,
-    GEN_AI_AGENT_NAME_KEY,
-    GEN_AI_INPUT_MESSAGES_KEY,
-    GEN_AI_OPERATION_NAME_KEY,
-    GEN_AI_OUTPUT_MESSAGES_KEY,
-    GEN_AI_REQUEST_MODEL_KEY,
     INVOKE_AGENT_OPERATION_NAME,
 )
 
@@ -27,7 +21,7 @@ from genai._langchain._utils import (
 _NOW = datetime.datetime(2024, 6, 1, 12, 0, 0, tzinfo=datetime.timezone.utc)
 _NOW_END = datetime.datetime(2024, 6, 1, 12, 0, 1, tzinfo=datetime.timezone.utc)
 
-
+# pylint: disable=unused-variable, broad-exception-caught
 def _make_run(**kwargs):
     """Create a minimal mock Run."""
     run = MagicMock()

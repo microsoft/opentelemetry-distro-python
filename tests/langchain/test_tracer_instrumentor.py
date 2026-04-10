@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 from unittest import TestCase
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from genai._langchain._tracer_instrumentor import (

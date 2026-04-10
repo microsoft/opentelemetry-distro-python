@@ -5,7 +5,7 @@ import datetime
 import json
 from enum import Enum
 from unittest import TestCase
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from genai._langchain._utils import (
     DictWithLock,
@@ -29,7 +29,6 @@ from genai._langchain._utils import (
     GEN_AI_TOOL_TYPE_KEY,
     GEN_AI_USAGE_INPUT_TOKENS_KEY,
     GEN_AI_USAGE_OUTPUT_TOKENS_KEY,
-    INVOKE_AGENT_OPERATION_NAME,
     SESSION_ID_KEY,
     add_operation_type,
     as_utc_nano,
@@ -134,7 +133,7 @@ class TestStopOnException(TestCase):
         @stop_on_exception
         def gen():
             raise ValueError("boom")
-            yield ("k", "v")  # noqa: unreachable
+            yield ("k", "v")  # noqa: unreachable # pylint: disable=unreachable
 
         self.assertEqual(list(gen()), [])
 
