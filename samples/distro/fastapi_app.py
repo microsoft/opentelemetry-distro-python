@@ -1,10 +1,8 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-from logging import getLogger, INFO
-
 import uvicorn
-
+from logging import getLogger, INFO
 from microsoft.opentelemetry import use_microsoft_opentelemetry
 
 use_microsoft_opentelemetry(
@@ -14,7 +12,7 @@ use_microsoft_opentelemetry(
 logger = getLogger(__name__)
 logger.setLevel(INFO)
 
-from fastapi import FastAPI
+from fastapi import FastAPI # pylint: disable=wrong-import-position
 
 app = FastAPI()
 
