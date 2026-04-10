@@ -338,20 +338,20 @@ class LangChainTracer(BaseTracer): # pylint: disable=too-many-ancestors, too-man
         """Resolve agent name from config override, run metadata, or run name."""
         # 1. Explicit config override
         if name := self._agent_config.get("agent_name"):
-            return name
+            return str(name)
         # 2. From run metadata (agent_name or lc_agent_name)
         if run.extra and isinstance(run.extra, dict):
             meta = run.extra.get("metadata")
             if isinstance(meta, dict):
                 if name := meta.get("agent_name"):
-                    return name
+                    return str(name)
                 if name := meta.get("lc_agent_name"):
-                    return name
+                    return str(name)
         # 3. From serialized graph name
         if run.serialized and isinstance(run.serialized, dict):
             if name := run.serialized.get("name"):
                 if name != "LangGraph":  # avoid generic name
-                    return name
+                    return str(name)
         # 4. Run name itself if it's not just "LangGraph"
         if run.name and run.name != "LangGraph":
             return run.name
@@ -367,7 +367,7 @@ class LangChainTracer(BaseTracer): # pylint: disable=too-many-ancestors, too-man
             if graph_type in ("CompiledGraph", "StateGraph"):
                 return "LangGraph"
         if serialized.get("name") and serialized["name"] != run.name:
-            return serialized["name"]
+            return str(serialized["name"])
         return "LangGraph"
 
     def _aggregate_into_parent(self, run: Run) -> None: # pylint: disable=too-many-branches
@@ -475,7 +475,7 @@ def get_attributes_from_context() -> Iterator[tuple[str, AttributeValue]]:
             yield ctx_attr, cast(AttributeValue, val)
 
 
-def _update_span(span: Span, run: Run) -> LLMInvocation | None: # pylint: disable=inconsistent-return-statements
+def _update_span(span: Span, run: Run) -> LLMInvocation | None:
     """Update a non-agent span with run data.
 
     Returns the ``LLMInvocation`` for LLM runs (used for event emission
@@ -523,3 +523,4 @@ def _update_span(span: Span, run: Run) -> LLMInvocation | None: # pylint: disabl
             )
         )
     )
+    return None

@@ -453,9 +453,9 @@ def tools(run: Run) -> Iterator[tuple[str, str]]:
     if run.outputs and hasattr(run.outputs, "get"):
         if result := run.outputs.get("output"):
             if isinstance(result, BaseMessage):
-                result_content = result.content if hasattr(result, "content") else str(result)
+                result_content: str = str(result.content) if hasattr(result, "content") else str(result)
             elif hasattr(result, "content"):
-                result_content = result.content
+                result_content = str(result.content)
             elif isinstance(result, str):
                 result_content = result
             else:
@@ -527,7 +527,7 @@ def build_llm_invocation(run: Run) -> LLMInvocation:
                 inv.response_id = resp_id
 
     # --- Structured messages ---
-    inv.system_instruction = _extract_system_instruction(run.inputs)
+    inv.system_instruction = _extract_system_instruction(run.inputs)  # type: ignore[assignment]
     inv.input_messages = _extract_structured_input_messages(run.inputs)
     inv.output_messages = _extract_structured_output_messages(run.outputs)
 
@@ -537,12 +537,12 @@ def build_llm_invocation(run: Run) -> LLMInvocation:
 def _langchain_role(message: Any) -> str:
     """Extract role from a LangChain message (BaseMessage or dict)."""
     if isinstance(message, BaseMessage):
-        return getattr(message, "type", "unknown")
+        return str(getattr(message, "type", "unknown"))
     if hasattr(message, "get"):
         if role := message.get("role"):
-            return role
+            return str(role)
         if msg_type := message.get("type"):
-            return msg_type
+            return str(msg_type)
         # Fallback: parse role from serialized id field (e.g. ["langchain", "schema", "HumanMessage"])
         if id_field := message.get("id"):
             if isinstance(id_field, list) and len(id_field) > 0:
@@ -634,7 +634,7 @@ def _extract_structured_input_messages(
     results: list[InputMessage] = []
     for msg in first_messages:
         role = _langchain_role(msg)
-        parts: list[Text | ToolCall] = []
+        parts: list[Any] = []
         content = _langchain_content(msg)
         if content:
             parts.append(Text(content=content))
@@ -667,7 +667,7 @@ def _extract_structured_output_messages(
                 results.append(OutputMessage(role="assistant", parts=[Text(content=str(text))], finish_reason="stop"))
             continue
         role = _langchain_role(message_data)
-        parts: list[Text | ToolCall] = []
+        parts: list[Any] = []
         content = _langchain_content(message_data)
         if content:
             parts.append(Text(content=content))
