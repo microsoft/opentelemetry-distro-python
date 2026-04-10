@@ -108,8 +108,8 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
     ) -> None:
         super().__init__(*args, **kwargs)
         if TYPE_CHECKING:
-            assert self.run_map
-        self.run_map = DictWithLock[str, Run](self.run_map)
+            assert self.run_map  # type: ignore[has-type]
+        self.run_map = DictWithLock[str, Run](self.run_map)  # type: ignore[has-type,misc]
         self._tracer = tracer
         self._separate_trace_from_runtime_context = separate_trace_from_runtime_context
         self._agent_config: dict[str, Any] = agent_config or {}
@@ -118,7 +118,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         self._agent_wrapper_spans: dict[UUID, Span] = {}
         self._spans_by_run: OrderedDict[UUID, Span] = OrderedDict()
         self._event_logger = event_logger
-        self._lock = RLock()
+        self._lock = RLock()  # type: ignore[misc]
 
     def get_span(self, run_id: UUID) -> Span | None:
         with self._lock:
@@ -352,7 +352,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                     return str(name)
         # 4. Run name itself if it's not just "LangGraph"
         if run.name and run.name != "LangGraph":
-            return run.name
+            return str(run.name)
         return None
 
     @staticmethod
@@ -420,7 +420,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
     def _find_agent_ancestor(self, run: Run) -> UUID | None:
         """Walk up the run tree to find the nearest agent ancestor run_id."""
         run_map = self.run_map
-        current_id = run.parent_run_id
+        current_id: UUID | None = run.parent_run_id
         while current_id:
             if current_id in self._agent_run_ids:
                 return current_id

@@ -97,17 +97,20 @@ def _install_fake_otlp_modules():
         if mod_name not in sys.modules:
             sys.modules[mod_name] = types.ModuleType(mod_name)
 
-    trace_mod = types.ModuleType("opentelemetry.exporter.otlp.proto.http.trace_exporter")
+    trace_name = "opentelemetry.exporter.otlp.proto.http.trace_exporter"
+    trace_mod = types.ModuleType(trace_name)
     trace_mod.OTLPSpanExporter = mock_span_exporter
-    sys.modules[trace_mod.__name__] = trace_mod
+    sys.modules[trace_name] = trace_mod
 
-    metric_mod = types.ModuleType("opentelemetry.exporter.otlp.proto.http.metric_exporter")
+    metric_name = "opentelemetry.exporter.otlp.proto.http.metric_exporter"
+    metric_mod = types.ModuleType(metric_name)
     metric_mod.OTLPMetricExporter = mock_metric_exporter
-    sys.modules[metric_mod.__name__] = metric_mod
+    sys.modules[metric_name] = metric_mod
 
-    log_mod = types.ModuleType("opentelemetry.exporter.otlp.proto.http._log_exporter")
+    log_name = "opentelemetry.exporter.otlp.proto.http._log_exporter"
+    log_mod = types.ModuleType(log_name)
     log_mod.OTLPLogExporter = mock_log_exporter
-    sys.modules[log_mod.__name__] = log_mod
+    sys.modules[log_name] = log_mod
 
     return mock_span_exporter, mock_metric_exporter, mock_log_exporter
 
