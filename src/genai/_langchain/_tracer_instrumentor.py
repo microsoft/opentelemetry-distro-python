@@ -22,7 +22,7 @@ import langchain_core.runnables.config
 import opentelemetry.trace as trace_api
 from langchain_core.callbacks import BaseCallbackManager
 from opentelemetry._logs import get_logger as get_otel_logger
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
+from opentelemetry.instrumentation.instrumentor import BaseInstrumentor  # type: ignore[attr-defined]
 from opentelemetry.trace import Span
 from wrapt import wrap_function_wrapper
 
