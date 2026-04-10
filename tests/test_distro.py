@@ -286,11 +286,12 @@ class TestEnableKwargsPassthrough(unittest.TestCase):
 class TestAllConfigOptions(unittest.TestCase):
     """End-to-end test that every documented configuration option works."""
 
+    @patch("microsoft.opentelemetry._distro.is_otlp_enabled", return_value=False)
     @patch("microsoft.opentelemetry._distro._setup_azure_monitor")
     @patch("microsoft.opentelemetry._distro._setup_logging")
     @patch("microsoft.opentelemetry._distro._setup_metrics")
     @patch("microsoft.opentelemetry._distro._setup_tracing")
-    def test_all_options_end_to_end(self, tracing_mock, metrics_mock, logging_mock, azure_monitor_mock):
+    def test_all_options_end_to_end(self, tracing_mock, metrics_mock, logging_mock, azure_monitor_mock, otlp_mock):
         """Every documented kwarg is accepted, remapped if needed, and forwarded."""
         from logging import Formatter
 
@@ -338,10 +339,23 @@ class TestAllConfigOptions(unittest.TestCase):
         self.assertEqual(actual["disable_tracing"], True)
         self.assertEqual(actual["disable_metrics"], True)
         self.assertEqual(actual["resource"], TEST_RESOURCE)
+        self.assertEqual(actual["span_processors"], ["sp1"])
+        self.assertEqual(actual["log_record_processors"], ["lrp1"])
+        self.assertEqual(actual["metric_readers"], ["mr1"])
+        self.assertEqual(actual["views"], ["v1"])
         self.assertEqual(actual["logger_name"], "mylogger")
         self.assertEqual(actual["logging_formatter"], formatter)
         self.assertEqual(actual["instrumentation_options"], {"flask": {"enabled": False}})
         self.assertEqual(actual["enable_trace_based_sampling_for_logs"], True)
+        self.assertEqual(actual["sampling_ratio"], 0.25)
+
+        # azure_monitor_ prefixed keys should NOT appear in forwarded kwargs
+        for key in actual:
+            self.assertFalse(
+                key.startswith("azure_monitor_"),
+                f"Prefixed key '{key}' should have been remapped",
+            )
+        self.assertNotIn("enable_azure_monitor", actual)
 
 
 if __name__ == "__main__":

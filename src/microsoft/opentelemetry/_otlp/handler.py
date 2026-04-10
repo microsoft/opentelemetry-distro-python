@@ -11,20 +11,23 @@ from typing import Optional
 
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanProcessor
 from opentelemetry.sdk.metrics.export import MetricReader, PeriodicExportingMetricReader
+from opentelemetry.sdk._logs import LogRecordProcessor
+
+from microsoft.opentelemetry._constants import (
+    _OTEL_EXPORTER_OTLP_ENDPOINT,
+    _OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
+    _OTEL_EXPORTER_OTLP_METRICS_ENDPOINT,
+    _OTEL_EXPORTER_OTLP_LOGS_ENDPOINT,
+)
 
 _logger = getLogger(__name__)
-
-_OTEL_EXPORTER_OTLP_ENDPOINT = "OTEL_EXPORTER_OTLP_ENDPOINT"
-_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT = "OTEL_EXPORTER_OTLP_TRACES_ENDPOINT"
-_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT = "OTEL_EXPORTER_OTLP_METRICS_ENDPOINT"
-_OTEL_EXPORTER_OTLP_LOGS_ENDPOINT = "OTEL_EXPORTER_OTLP_LOGS_ENDPOINT"
 
 
 @dataclass
 class OtlpHandlers:
     span_processor: Optional[SpanProcessor] = field(default=None)
     metric_reader: Optional[MetricReader] = field(default=None)
-    log_record_processor: Optional[object] = field(default=None)
+    log_record_processor: Optional[LogRecordProcessor] = field(default=None)
 
 
 def is_otlp_enabled() -> bool:

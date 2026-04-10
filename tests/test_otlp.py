@@ -20,6 +20,8 @@ from microsoft.opentelemetry._otlp.handler import (
     OtlpHandlers,
     is_otlp_enabled,
     create_otlp_components,
+)
+from microsoft.opentelemetry._constants import (
     _OTEL_EXPORTER_OTLP_ENDPOINT,
     _OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
     _OTEL_EXPORTER_OTLP_METRICS_ENDPOINT,
@@ -74,13 +76,72 @@ class TestIsOtlpEnabled(unittest.TestCase):
         self.assertTrue(is_otlp_enabled())
 
 
+def _install_fake_otlp_modules():
+    """Insert stub modules into sys.modules so lazy imports inside
+    create_otlp_components() find mock exporters instead of raising
+    ModuleNotFoundError when the OTLP exporter package is not installed."""
+    import sys
+    import types
+
+    mock_span_exporter = MagicMock()
+    mock_metric_exporter = MagicMock()
+    mock_log_exporter = MagicMock()
+
+    module_chain = [
+        "opentelemetry.exporter",
+        "opentelemetry.exporter.otlp",
+        "opentelemetry.exporter.otlp.proto",
+        "opentelemetry.exporter.otlp.proto.http",
+    ]
+    for mod_name in module_chain:
+        if mod_name not in sys.modules:
+            sys.modules[mod_name] = types.ModuleType(mod_name)
+
+    trace_mod = types.ModuleType("opentelemetry.exporter.otlp.proto.http.trace_exporter")
+    trace_mod.OTLPSpanExporter = mock_span_exporter
+    sys.modules[trace_mod.__name__] = trace_mod
+
+    metric_mod = types.ModuleType("opentelemetry.exporter.otlp.proto.http.metric_exporter")
+    metric_mod.OTLPMetricExporter = mock_metric_exporter
+    sys.modules[metric_mod.__name__] = metric_mod
+
+    log_mod = types.ModuleType("opentelemetry.exporter.otlp.proto.http._log_exporter")
+    log_mod.OTLPLogExporter = mock_log_exporter
+    sys.modules[log_mod.__name__] = log_mod
+
+    return mock_span_exporter, mock_metric_exporter, mock_log_exporter
+
+
 class TestCreateOtlpComponents(unittest.TestCase):
     """Tests for create_otlp_components()."""
 
-    @patch("microsoft.opentelemetry._otlp.handler.OTLPLogExporter", create=True)
-    @patch("microsoft.opentelemetry._otlp.handler.OTLPMetricExporter", create=True)
-    @patch("microsoft.opentelemetry._otlp.handler.OTLPSpanExporter", create=True)
-    def test_returns_otlp_components(self, mock_span_exp, mock_metric_exp, mock_log_exp):
+    def setUp(self):
+        import sys
+
+        self._saved_modules = {}
+        fake_modules = [
+            "opentelemetry.exporter",
+            "opentelemetry.exporter.otlp",
+            "opentelemetry.exporter.otlp.proto",
+            "opentelemetry.exporter.otlp.proto.http",
+            "opentelemetry.exporter.otlp.proto.http.trace_exporter",
+            "opentelemetry.exporter.otlp.proto.http.metric_exporter",
+            "opentelemetry.exporter.otlp.proto.http._log_exporter",
+        ]
+        for mod in fake_modules:
+            self._saved_modules[mod] = sys.modules.get(mod)
+        self._mock_span_exp, self._mock_metric_exp, self._mock_log_exp = _install_fake_otlp_modules()
+
+    def tearDown(self):
+        import sys
+
+        for mod, original in self._saved_modules.items():
+            if original is None:
+                sys.modules.pop(mod, None)
+            else:
+                sys.modules[mod] = original
+
+    def test_returns_otlp_components(self):
         """create_otlp_components returns an OtlpHandlers with all three fields set."""
         components = create_otlp_components()
         self.assertIsInstance(components, OtlpHandlers)
@@ -88,28 +149,19 @@ class TestCreateOtlpComponents(unittest.TestCase):
         self.assertIsNotNone(components.metric_reader)
         self.assertIsNotNone(components.log_record_processor)
 
-    @patch("microsoft.opentelemetry._otlp.handler.OTLPLogExporter", create=True)
-    @patch("microsoft.opentelemetry._otlp.handler.OTLPMetricExporter", create=True)
-    @patch("microsoft.opentelemetry._otlp.handler.OTLPSpanExporter", create=True)
-    def test_span_processor_is_batch(self, mock_span_exp, mock_metric_exp, mock_log_exp):
+    def test_span_processor_is_batch(self):
         from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
         components = create_otlp_components()
         self.assertIsInstance(components.span_processor, BatchSpanProcessor)
 
-    @patch("microsoft.opentelemetry._otlp.handler.OTLPLogExporter", create=True)
-    @patch("microsoft.opentelemetry._otlp.handler.OTLPMetricExporter", create=True)
-    @patch("microsoft.opentelemetry._otlp.handler.OTLPSpanExporter", create=True)
-    def test_metric_reader_is_periodic(self, mock_span_exp, mock_metric_exp, mock_log_exp):
+    def test_metric_reader_is_periodic(self):
         from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
 
         components = create_otlp_components()
         self.assertIsInstance(components.metric_reader, PeriodicExportingMetricReader)
 
-    @patch("microsoft.opentelemetry._otlp.handler.OTLPLogExporter", create=True)
-    @patch("microsoft.opentelemetry._otlp.handler.OTLPMetricExporter", create=True)
-    @patch("microsoft.opentelemetry._otlp.handler.OTLPSpanExporter", create=True)
-    def test_log_processor_is_batch(self, mock_span_exp, mock_metric_exp, mock_log_exp):
+    def test_log_processor_is_batch(self):
         from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 
         components = create_otlp_components()
@@ -131,9 +183,14 @@ class TestOtlpIntegrationWithDistro(unittest.TestCase):
 
     @patch("microsoft.opentelemetry._distro._setup_azure_monitor")
     @patch("microsoft.opentelemetry._distro._setup_instrumentations")
+    @patch("microsoft.opentelemetry._distro._setup_logging")
+    @patch("microsoft.opentelemetry._distro._setup_metrics")
+    @patch("microsoft.opentelemetry._distro._setup_tracing")
     @patch("microsoft.opentelemetry._distro.is_otlp_enabled", return_value=True)
     @patch("microsoft.opentelemetry._distro.create_otlp_components")
-    def test_otlp_components_created_when_enabled(self, mock_create, mock_enabled, mock_instr, mock_azure):
+    def test_otlp_components_created_when_enabled(
+        self, mock_create, mock_enabled, mock_tracing, mock_metrics, mock_logging, mock_instr, mock_azure
+    ):
         """When OTLP is enabled, create_otlp_components is called once."""
         mock_create.return_value = OtlpHandlers()
         from microsoft.opentelemetry._distro import use_microsoft_opentelemetry
@@ -143,9 +200,14 @@ class TestOtlpIntegrationWithDistro(unittest.TestCase):
 
     @patch("microsoft.opentelemetry._distro._setup_azure_monitor")
     @patch("microsoft.opentelemetry._distro._setup_instrumentations")
+    @patch("microsoft.opentelemetry._distro._setup_logging")
+    @patch("microsoft.opentelemetry._distro._setup_metrics")
+    @patch("microsoft.opentelemetry._distro._setup_tracing")
     @patch("microsoft.opentelemetry._distro.is_otlp_enabled", return_value=False)
     @patch("microsoft.opentelemetry._distro.create_otlp_components")
-    def test_otlp_components_not_created_when_disabled(self, mock_create, mock_enabled, mock_instr, mock_azure):
+    def test_otlp_components_not_created_when_disabled(
+        self, mock_create, mock_enabled, mock_tracing, mock_metrics, mock_logging, mock_instr, mock_azure
+    ):
         """When OTLP is disabled, create_otlp_components is not called."""
         from microsoft.opentelemetry._distro import use_microsoft_opentelemetry
 

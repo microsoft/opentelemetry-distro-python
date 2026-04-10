@@ -107,19 +107,16 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     disable_metrics = otel_kwargs.get(DISABLE_METRICS_ARG, False)
 
     # ---- OTLP exporters (append to user-supplied processors/readers) ----
-    if is_otlp_enabled():
+    if is_otlp_enabled() and not (disable_tracing and disable_logging and disable_metrics):
         otlp = create_otlp_components()
-        if otlp.span_processor:
-            otel_kwargs.setdefault(SPAN_PROCESSORS_ARG, [])
-            otel_kwargs[SPAN_PROCESSORS_ARG] = list(otel_kwargs[SPAN_PROCESSORS_ARG])
+        if not disable_tracing and otlp.span_processor:
+            otel_kwargs[SPAN_PROCESSORS_ARG] = list(otel_kwargs.get(SPAN_PROCESSORS_ARG) or [])
             otel_kwargs[SPAN_PROCESSORS_ARG].append(otlp.span_processor)
-        if otlp.log_record_processor:
-            otel_kwargs.setdefault(LOG_RECORD_PROCESSORS_ARG, [])
-            otel_kwargs[LOG_RECORD_PROCESSORS_ARG] = list(otel_kwargs[LOG_RECORD_PROCESSORS_ARG])
+        if not disable_logging and otlp.log_record_processor:
+            otel_kwargs[LOG_RECORD_PROCESSORS_ARG] = list(otel_kwargs.get(LOG_RECORD_PROCESSORS_ARG) or [])
             otel_kwargs[LOG_RECORD_PROCESSORS_ARG].append(otlp.log_record_processor)
-        if otlp.metric_reader:
-            otel_kwargs.setdefault(METRIC_READERS_ARG, [])
-            otel_kwargs[METRIC_READERS_ARG] = list(otel_kwargs[METRIC_READERS_ARG])
+        if not disable_metrics and otlp.metric_reader:
+            otel_kwargs[METRIC_READERS_ARG] = list(otel_kwargs.get(METRIC_READERS_ARG) or [])
             otel_kwargs[METRIC_READERS_ARG].append(otlp.metric_reader)
 
     tracer_provider: Optional[TracerProvider] = None
