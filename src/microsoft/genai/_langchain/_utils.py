@@ -72,6 +72,7 @@ def as_utc_nano(dt: datetime.datetime) -> int:
 KeyType = TypeVar("KeyType")
 ValueType = TypeVar("ValueType")
 
+
 # pylint: disable=too-many-branches, abstract-method, too-many-return-statements
 # pylint: disable=broad-exception-caught
 def get_first_value(mapping: Mapping[KeyType, ValueType], keys: Iterable[KeyType]) -> ValueType | None:

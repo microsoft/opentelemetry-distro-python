@@ -81,8 +81,9 @@ CONTEXT_ATTRIBUTES = (
     "llm.prompt_template.version",
 )
 
+
 # pylint: disable=broad-exception-caught
-class LangChainTracer(BaseTracer): # pylint: disable=too-many-ancestors, too-many-instance-attributes
+class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-many-instance-attributes
     _MAX_TRACKED_RUNS = 10000
 
     __slots__ = (
@@ -300,9 +301,6 @@ class LangChainTracer(BaseTracer): # pylint: disable=too-many-ancestors, too-man
             _apply_error_attributes(span, Error(message=str(error), type=type(error)))
         return super().on_tool_error(error, *args, run_id=run_id, **kwargs)
 
-    def on_chat_model_start(self, *args: Any, **kwargs: Any) -> Run:
-        return super().on_chat_model_start(*args, **kwargs)  # type: ignore
-
     # ---- Agent detection & aggregation ----------------------------------------
 
     @staticmethod
@@ -370,7 +368,7 @@ class LangChainTracer(BaseTracer): # pylint: disable=too-many-ancestors, too-man
             return str(serialized["name"])
         return "LangGraph"
 
-    def _aggregate_into_parent(self, run: Run) -> None: # pylint: disable=too-many-branches
+    def _aggregate_into_parent(self, run: Run) -> None:  # pylint: disable=too-many-branches
         """Aggregate child run content into the parent agent span's content."""
         parent_id = run.parent_run_id
         if not parent_id:
