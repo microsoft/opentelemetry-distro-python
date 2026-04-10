@@ -40,7 +40,7 @@ with tracer.start_as_current_span("process-order") as span:
         # Simulate processing
         time.sleep(0.1)
         span.add_event("order.processed")
-    except Exception as ex:
+    except Exception as ex:  # pylint: disable=broad-exception-caught
         span.set_status(trace.StatusCode.ERROR, str(ex))
         span.record_exception(ex)
 

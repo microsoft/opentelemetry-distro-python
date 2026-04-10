@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-from logging import getLogger, INFO, WARNING, DEBUG
+from logging import getLogger, DEBUG
 
 from microsoft.opentelemetry import use_microsoft_opentelemetry
 
