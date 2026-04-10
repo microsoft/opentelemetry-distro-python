@@ -18,7 +18,6 @@ from opentelemetry.sdk.resources import Resource
 
 from microsoft.opentelemetry._azure_monitor._configure import (
     _send_attach_warning,
-    _setup_instrumentations,
     _setup_live_metrics,
     _setup_logging,
     _setup_metrics,
@@ -26,6 +25,7 @@ from microsoft.opentelemetry._azure_monitor._configure import (
     configure_azure_monitor,
 )
 from microsoft.opentelemetry._azure_monitor._diagnostics.diagnostic_logging import _DISTRO_DETECTS_ATTACH
+from microsoft.opentelemetry._distro import _setup_instrumentations
 
 TEST_RESOURCE = Resource({"foo": "bar"})
 
@@ -36,7 +36,10 @@ class TestConfigure(unittest.TestCase):
         "microsoft.opentelemetry._azure_monitor._configure._send_attach_warning",
     )
     @patch(
-        "microsoft.opentelemetry._azure_monitor._configure._setup_instrumentations",
+        "microsoft.opentelemetry._azure_monitor._configure._setup_browser_sdk_loader",
+    )
+    @patch(
+        "microsoft.opentelemetry._azure_monitor._configure._setup_azure_instrumentations",
     )
     @patch(
         "microsoft.opentelemetry._azure_monitor._configure._setup_live_metrics",
@@ -56,7 +59,8 @@ class TestConfigure(unittest.TestCase):
         logging_mock,
         metrics_mock,
         live_metrics_mock,
-        instrumentation_mock,
+        azure_instr_mock,
+        browser_sdk_mock,
         detect_attach_mock,
     ):
         kwargs = {
@@ -67,11 +71,15 @@ class TestConfigure(unittest.TestCase):
         logging_mock.assert_called_once()
         metrics_mock.assert_called_once()
         live_metrics_mock.assert_called_once()
-        instrumentation_mock.assert_called_once()
+        azure_instr_mock.assert_called_once()
+        browser_sdk_mock.assert_called_once()
         detect_attach_mock.assert_called_once()
 
     @patch(
-        "microsoft.opentelemetry._azure_monitor._configure._setup_instrumentations",
+        "microsoft.opentelemetry._azure_monitor._configure._setup_browser_sdk_loader",
+    )
+    @patch(
+        "microsoft.opentelemetry._azure_monitor._configure._setup_azure_instrumentations",
     )
     @patch(
         "microsoft.opentelemetry._azure_monitor._configure._setup_live_metrics",
@@ -95,7 +103,8 @@ class TestConfigure(unittest.TestCase):
         logging_mock,
         metrics_mock,
         live_metrics_mock,
-        instrumentation_mock,
+        azure_instr_mock,
+        browser_sdk_mock,
     ):
         configurations = {
             "connection_string": "test_cs",
@@ -122,12 +131,15 @@ class TestConfigure(unittest.TestCase):
         logging_mock.assert_called_once_with(configurations)
         metrics_mock.assert_called_once_with(configurations)
         live_metrics_mock.assert_called_once_with(configurations)
-        instrumentation_mock.assert_called_once_with(configurations)
+        azure_instr_mock.assert_called_once_with(configurations)
         # Assert setup_metrics is called before setup_logging
         self.assertLess(call_order.index("metrics"), call_order.index("logging"))
 
     @patch(
-        "microsoft.opentelemetry._azure_monitor._configure._setup_instrumentations",
+        "microsoft.opentelemetry._azure_monitor._configure._setup_browser_sdk_loader",
+    )
+    @patch(
+        "microsoft.opentelemetry._azure_monitor._configure._setup_azure_instrumentations",
     )
     @patch(
         "microsoft.opentelemetry._azure_monitor._configure._setup_live_metrics",
@@ -151,7 +163,8 @@ class TestConfigure(unittest.TestCase):
         logging_mock,
         metrics_mock,
         live_metrics_mock,
-        instrumentation_mock,
+        azure_instr_mock,
+        browser_sdk_mock,
     ):
         configurations = {
             "connection_string": "test_cs",
@@ -173,12 +186,15 @@ class TestConfigure(unittest.TestCase):
         logging_mock.assert_not_called()
         metrics_mock.assert_called_once_with(configurations)
         live_metrics_mock.assert_called_once_with(configurations)
-        instrumentation_mock.assert_called_once_with(configurations)
+        azure_instr_mock.assert_called_once_with(configurations)
         # Assert setup_metrics is called before setup_tracing
         self.assertLess(call_order.index("metrics"), call_order.index("tracing"))
 
     @patch(
-        "microsoft.opentelemetry._azure_monitor._configure._setup_instrumentations",
+        "microsoft.opentelemetry._azure_monitor._configure._setup_browser_sdk_loader",
+    )
+    @patch(
+        "microsoft.opentelemetry._azure_monitor._configure._setup_azure_instrumentations",
     )
     @patch(
         "microsoft.opentelemetry._azure_monitor._configure._setup_live_metrics",
@@ -202,7 +218,8 @@ class TestConfigure(unittest.TestCase):
         logging_mock,
         metrics_mock,
         live_metrics_mock,
-        instrumentation_mock,
+        azure_instr_mock,
+        browser_sdk_mock,
     ):
         configurations = {
             "connection_string": "test_cs",
@@ -219,10 +236,13 @@ class TestConfigure(unittest.TestCase):
         logging_mock.assert_called_once_with(configurations)
         metrics_mock.assert_not_called()
         live_metrics_mock.assert_called_once_with(configurations)
-        instrumentation_mock.assert_called_once_with(configurations)
+        azure_instr_mock.assert_called_once_with(configurations)
 
     @patch(
-        "microsoft.opentelemetry._azure_monitor._configure._setup_instrumentations",
+        "microsoft.opentelemetry._azure_monitor._configure._setup_browser_sdk_loader",
+    )
+    @patch(
+        "microsoft.opentelemetry._azure_monitor._configure._setup_azure_instrumentations",
     )
     @patch(
         "microsoft.opentelemetry._azure_monitor._configure._setup_live_metrics",
@@ -246,7 +266,8 @@ class TestConfigure(unittest.TestCase):
         logging_mock,
         metrics_mock,
         live_metrics_mock,
-        instrumentation_mock,
+        azure_instr_mock,
+        browser_sdk_mock,
     ):
         configurations = {
             "connection_string": "test_cs",
@@ -268,13 +289,16 @@ class TestConfigure(unittest.TestCase):
         logging_mock.assert_called_once_with(configurations)
         metrics_mock.assert_called_once_with(configurations)
         live_metrics_mock.assert_called_once_with(configurations)
-        instrumentation_mock.assert_called_once_with(configurations)
+        azure_instr_mock.assert_called_once_with(configurations)
         # Assert setup_metrics is called before setup_logging and setup_tracing
         self.assertLess(call_order.index("metrics"), call_order.index("logging"))
         self.assertLess(call_order.index("metrics"), call_order.index("tracing"))
 
     @patch(
-        "microsoft.opentelemetry._azure_monitor._configure._setup_instrumentations",
+        "microsoft.opentelemetry._azure_monitor._configure._setup_browser_sdk_loader",
+    )
+    @patch(
+        "microsoft.opentelemetry._azure_monitor._configure._setup_azure_instrumentations",
     )
     @patch(
         "microsoft.opentelemetry._azure_monitor._configure._setup_live_metrics",
@@ -298,7 +322,8 @@ class TestConfigure(unittest.TestCase):
         logging_mock,
         metrics_mock,
         live_metrics_mock,
-        instrumentation_mock,
+        azure_instr_mock,
+        browser_sdk_mock,
     ):
         configurations = {
             "connection_string": "test_cs",
@@ -315,7 +340,7 @@ class TestConfigure(unittest.TestCase):
         logging_mock.assert_called_once_with(configurations)
         metrics_mock.assert_called_once_with(configurations)
         live_metrics_mock.assert_not_called()
-        instrumentation_mock.assert_called_once_with(configurations)
+        azure_instr_mock.assert_called_once_with(configurations)
 
     @patch(
         "microsoft.opentelemetry._azure_monitor._configure._PerformanceCountersSpanProcessor",
@@ -357,9 +382,6 @@ class TestConfigure(unittest.TestCase):
         pcsp_mock.return_value = pcsp_init_mock
         custom_sp = Mock()
 
-        settings_mock = Mock()
-        opentelemetry_span_mock = Mock()
-
         configurations = {
             "connection_string": "test_cs",
             "enable_performance_counters": True,
@@ -368,27 +390,15 @@ class TestConfigure(unittest.TestCase):
             "span_processors": [custom_sp],
             "resource": TEST_RESOURCE,
         }
-        with patch("microsoft.opentelemetry._azure_monitor._configure._is_instrumentation_enabled") as instr_mock:
-            instr_mock.return_value = True
-            with patch.dict(
-                "sys.modules",
-                {
-                    "azure.core.settings": Mock(settings=settings_mock),
-                    "azure.core.tracing.ext.opentelemetry_span": Mock(OpenTelemetrySpan=opentelemetry_span_mock),
-                },
-            ):
-                _setup_tracing(configurations)
-                sampler_mock.assert_called_once_with(sampling_ratio=0.5)
-                tp_mock.assert_called_once_with(sampler=sampler_init_mock, resource=TEST_RESOURCE)
-                set_tracer_provider_mock.assert_called_once_with(tp_init_mock)
-                trace_exporter_mock.assert_called_once_with(**configurations)
-                bsp_mock.assert_called_once_with(trace_exp_init_mock)
-                self.assertEqual(tp_init_mock.add_span_processor.call_count, 3)
-                tp_init_mock.add_span_processor.assert_has_calls(
-                    [call(custom_sp), call(pcsp_init_mock), call(bsp_init_mock)]
-                )
-                self.assertEqual(settings_mock.tracing_implementation, opentelemetry_span_mock)
-                pcsp_mock.assert_called_once_with()
+        _setup_tracing(configurations)
+        sampler_mock.assert_called_once_with(sampling_ratio=0.5)
+        tp_mock.assert_called_once_with(sampler=sampler_init_mock, resource=TEST_RESOURCE)
+        set_tracer_provider_mock.assert_called_once_with(tp_init_mock)
+        trace_exporter_mock.assert_called_once_with(**configurations)
+        bsp_mock.assert_called_once_with(trace_exp_init_mock)
+        self.assertEqual(tp_init_mock.add_span_processor.call_count, 3)
+        tp_init_mock.add_span_processor.assert_has_calls([call(custom_sp), call(pcsp_init_mock), call(bsp_init_mock)])
+        pcsp_mock.assert_called_once_with()
 
     @patch(
         "microsoft.opentelemetry._azure_monitor._configure._PerformanceCountersSpanProcessor",
@@ -430,9 +440,6 @@ class TestConfigure(unittest.TestCase):
         pcsp_mock.return_value = pcsp_init_mock
         custom_sp = Mock()
 
-        settings_mock = Mock()
-        opentelemetry_span_mock = Mock()
-
         configurations = {
             "connection_string": "test_cs",
             "enable_performance_counters": True,
@@ -441,27 +448,15 @@ class TestConfigure(unittest.TestCase):
             "span_processors": [custom_sp],
             "resource": TEST_RESOURCE,
         }
-        with patch("microsoft.opentelemetry._azure_monitor._configure._is_instrumentation_enabled") as instr_mock:
-            instr_mock.return_value = True
-            with patch.dict(
-                "sys.modules",
-                {
-                    "azure.core.settings": Mock(settings=settings_mock),
-                    "azure.core.tracing.ext.opentelemetry_span": Mock(OpenTelemetrySpan=opentelemetry_span_mock),
-                },
-            ):
-                _setup_tracing(configurations)
-                sampler_mock.assert_called_once_with(target_spans_per_second_limit=2.0)
-                tp_mock.assert_called_once_with(sampler=sampler_init_mock, resource=TEST_RESOURCE)
-                set_tracer_provider_mock.assert_called_once_with(tp_init_mock)
-                trace_exporter_mock.assert_called_once_with(**configurations)
-                bsp_mock.assert_called_once_with(trace_exp_init_mock)
-                self.assertEqual(tp_init_mock.add_span_processor.call_count, 3)
-                tp_init_mock.add_span_processor.assert_has_calls(
-                    [call(custom_sp), call(pcsp_init_mock), call(bsp_init_mock)]
-                )
-                self.assertEqual(settings_mock.tracing_implementation, opentelemetry_span_mock)
-                pcsp_mock.assert_called_once_with()
+        _setup_tracing(configurations)
+        sampler_mock.assert_called_once_with(target_spans_per_second_limit=2.0)
+        tp_mock.assert_called_once_with(sampler=sampler_init_mock, resource=TEST_RESOURCE)
+        set_tracer_provider_mock.assert_called_once_with(tp_init_mock)
+        trace_exporter_mock.assert_called_once_with(**configurations)
+        bsp_mock.assert_called_once_with(trace_exp_init_mock)
+        self.assertEqual(tp_init_mock.add_span_processor.call_count, 3)
+        tp_init_mock.add_span_processor.assert_has_calls([call(custom_sp), call(pcsp_init_mock), call(bsp_init_mock)])
+        pcsp_mock.assert_called_once_with()
 
     @patch(
         "microsoft.opentelemetry._azure_monitor._configure._PerformanceCountersSpanProcessor",
@@ -503,9 +498,6 @@ class TestConfigure(unittest.TestCase):
         pcsp_mock.return_value = pcsp_init_mock
         custom_sp = Mock()
 
-        settings_mock = Mock()
-        opentelemetry_span_mock = Mock()
-
         configurations = {
             "connection_string": "test_cs",
             "enable_performance_counters": False,
@@ -514,25 +506,15 @@ class TestConfigure(unittest.TestCase):
             "span_processors": [custom_sp],
             "resource": TEST_RESOURCE,
         }
-        with patch("microsoft.opentelemetry._azure_monitor._configure._is_instrumentation_enabled") as instr_mock:
-            instr_mock.return_value = True
-            with patch.dict(
-                "sys.modules",
-                {
-                    "azure.core.settings": Mock(settings=settings_mock),
-                    "azure.core.tracing.ext.opentelemetry_span": Mock(OpenTelemetrySpan=opentelemetry_span_mock),
-                },
-            ):
-                _setup_tracing(configurations)
-                sampler_mock.assert_called_once_with(sampling_ratio=0.5)
-                tp_mock.assert_called_once_with(sampler=sampler_init_mock, resource=TEST_RESOURCE)
-                set_tracer_provider_mock.assert_called_once_with(tp_init_mock)
-                trace_exporter_mock.assert_called_once_with(**configurations)
-                bsp_mock.assert_called_once_with(trace_exp_init_mock)
-                self.assertEqual(tp_init_mock.add_span_processor.call_count, 2)
-                tp_init_mock.add_span_processor.assert_has_calls([call(custom_sp), call(bsp_init_mock)])
-                self.assertEqual(settings_mock.tracing_implementation, opentelemetry_span_mock)
-                pcsp_mock.assert_not_called()
+        _setup_tracing(configurations)
+        sampler_mock.assert_called_once_with(sampling_ratio=0.5)
+        tp_mock.assert_called_once_with(sampler=sampler_init_mock, resource=TEST_RESOURCE)
+        set_tracer_provider_mock.assert_called_once_with(tp_init_mock)
+        trace_exporter_mock.assert_called_once_with(**configurations)
+        bsp_mock.assert_called_once_with(trace_exp_init_mock)
+        self.assertEqual(tp_init_mock.add_span_processor.call_count, 2)
+        tp_init_mock.add_span_processor.assert_has_calls([call(custom_sp), call(bsp_init_mock)])
+        pcsp_mock.assert_not_called()
 
     @patch("microsoft.opentelemetry._azure_monitor._configure._PerformanceCountersLogRecordProcessor")
     @patch("microsoft.opentelemetry._azure_monitor._configure.getLogger")
@@ -876,10 +858,10 @@ class TestConfigure(unittest.TestCase):
 
         enable_live_metrics_mock.assert_called_once_with(**configurations)
 
-    @patch("microsoft.opentelemetry._azure_monitor._configure._ALL_SUPPORTED_INSTRUMENTED_LIBRARIES", ("test_instr2"))
-    @patch("microsoft.opentelemetry._azure_monitor._configure._is_instrumentation_enabled")
-    @patch("microsoft.opentelemetry._azure_monitor._configure.get_dist_dependency_conflicts")
-    @patch("microsoft.opentelemetry._azure_monitor._configure.entry_points")
+    @patch("microsoft.opentelemetry._distro._SUPPORTED_INSTRUMENTED_LIBRARIES", ("test_instr2",))
+    @patch("microsoft.opentelemetry._distro._is_instrumentation_enabled")
+    @patch("microsoft.opentelemetry._distro.get_dist_dependency_conflicts")
+    @patch("microsoft.opentelemetry._distro.entry_points")
     def test_setup_instrumentations_lib_not_supported(
         self,
         iter_mock,
@@ -898,34 +880,15 @@ class TestConfigure(unittest.TestCase):
         dep_mock.return_value = None
         enabled_mock.return_value = True
         _setup_instrumentations({})
-        dep_mock.assert_called_with(ep2_mock.dist)
         ep_mock.load.assert_not_called()
         ep2_mock.load.assert_called_once()
         instrumentor_mock.instrument.assert_called_once()
 
-    @patch("microsoft.opentelemetry._azure_monitor._configure._setup_additional_azure_sdk_instrumentations")
-    @patch("microsoft.opentelemetry._azure_monitor._configure._ALL_SUPPORTED_INSTRUMENTED_LIBRARIES", ("azure_sdk"))
-    @patch("microsoft.opentelemetry._azure_monitor._configure._is_instrumentation_enabled")
-    @patch("microsoft.opentelemetry._azure_monitor._configure.entry_points")
-    def test_setup_instrumentations_additional_azure(
-        self,
-        iter_mock,
-        enabled_mock,
-        additional_instrumentations_mock,
-    ):
-        ep_mock = Mock()
-        ep_mock.name = "azure_sdk"
-        iter_mock.return_value = (ep_mock,)
-
-        enabled_mock.return_value = True
-        _setup_instrumentations({})
-        additional_instrumentations_mock.assert_called_once()
-
-    @patch("microsoft.opentelemetry._azure_monitor._configure._ALL_SUPPORTED_INSTRUMENTED_LIBRARIES", ("test_instr"))
-    @patch("microsoft.opentelemetry._azure_monitor._configure._is_instrumentation_enabled")
-    @patch("microsoft.opentelemetry._azure_monitor._configure._logger")
-    @patch("microsoft.opentelemetry._azure_monitor._configure.get_dist_dependency_conflicts")
-    @patch("microsoft.opentelemetry._azure_monitor._configure.entry_points")
+    @patch("microsoft.opentelemetry._distro._SUPPORTED_INSTRUMENTED_LIBRARIES", ("test_instr",))
+    @patch("microsoft.opentelemetry._distro._is_instrumentation_enabled")
+    @patch("microsoft.opentelemetry._distro._logger")
+    @patch("microsoft.opentelemetry._distro.get_dist_dependency_conflicts")
+    @patch("microsoft.opentelemetry._distro.entry_points")
     def test_setup_instrumentations_conflict(
         self,
         iter_mock,
@@ -943,16 +906,15 @@ class TestConfigure(unittest.TestCase):
         dep_mock.return_value = True
         enabled_mock.return_value = True
         _setup_instrumentations({})
-        dep_mock.assert_called_with(ep_mock.dist)
         ep_mock.load.assert_not_called()
         instrumentor_mock.instrument.assert_not_called()
         logger_mock.debug.assert_called_once()
 
-    @patch("microsoft.opentelemetry._azure_monitor._configure._ALL_SUPPORTED_INSTRUMENTED_LIBRARIES", ("test_instr"))
-    @patch("microsoft.opentelemetry._azure_monitor._configure._is_instrumentation_enabled")
-    @patch("microsoft.opentelemetry._azure_monitor._configure._logger")
-    @patch("microsoft.opentelemetry._azure_monitor._configure.get_dist_dependency_conflicts")
-    @patch("microsoft.opentelemetry._azure_monitor._configure.entry_points")
+    @patch("microsoft.opentelemetry._distro._SUPPORTED_INSTRUMENTED_LIBRARIES", ("test_instr",))
+    @patch("microsoft.opentelemetry._distro._is_instrumentation_enabled")
+    @patch("microsoft.opentelemetry._distro._logger")
+    @patch("microsoft.opentelemetry._distro.get_dist_dependency_conflicts")
+    @patch("microsoft.opentelemetry._distro.entry_points")
     def test_setup_instrumentations_exception(
         self,
         iter_mock,
@@ -970,19 +932,18 @@ class TestConfigure(unittest.TestCase):
         dep_mock.return_value = None
         enabled_mock.return_value = True
         _setup_instrumentations({})
-        dep_mock.assert_called_with(ep_mock.dist)
         ep_mock.load.assert_called_once()
         instrumentor_mock.instrument.assert_not_called()
         logger_mock.warning.assert_called_once()
 
     @patch(
-        "microsoft.opentelemetry._azure_monitor._configure._ALL_SUPPORTED_INSTRUMENTED_LIBRARIES",
+        "microsoft.opentelemetry._distro._SUPPORTED_INSTRUMENTED_LIBRARIES",
         ("test_instr1", "test_instr2"),
     )
-    @patch("microsoft.opentelemetry._azure_monitor._configure._is_instrumentation_enabled")
-    @patch("microsoft.opentelemetry._azure_monitor._configure._logger")
-    @patch("microsoft.opentelemetry._azure_monitor._configure.get_dist_dependency_conflicts")
-    @patch("microsoft.opentelemetry._azure_monitor._configure.entry_points")
+    @patch("microsoft.opentelemetry._distro._is_instrumentation_enabled")
+    @patch("microsoft.opentelemetry._distro._logger")
+    @patch("microsoft.opentelemetry._distro.get_dist_dependency_conflicts")
+    @patch("microsoft.opentelemetry._distro.entry_points")
     def test_setup_instrumentations_disabled(
         self,
         iter_mock,
@@ -1002,7 +963,6 @@ class TestConfigure(unittest.TestCase):
         dep_mock.return_value = None
         enabled_mock.side_effect = [False, True]
         _setup_instrumentations({})
-        dep_mock.assert_called_with(ep2_mock.dist)
         ep_mock.load.assert_not_called()
         ep2_mock.load.assert_called_once()
         instrumentor_mock.instrument.assert_called_once()

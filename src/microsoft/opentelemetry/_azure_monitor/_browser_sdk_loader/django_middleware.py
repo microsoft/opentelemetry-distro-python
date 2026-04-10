@@ -42,7 +42,8 @@ class ApplicationInsightsWebSnippetMiddleware(MiddlewareMixin):
         :type get_response: Callable[[HttpRequest], HttpResponse]
         :rtype: None
         """
-        super().__init__(get_response)
+        if MiddlewareMixin is not object:
+            super().__init__(get_response)
         self.get_response = get_response
         self._injector: Optional[WebSnippetInjector] = None
         if not DJANGO_AVAILABLE:
