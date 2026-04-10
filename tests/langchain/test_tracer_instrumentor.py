@@ -84,8 +84,8 @@ class TestLangChainInstrumentor(TestCase):
         inst._instrument()
         run_id = uuid4()
         mock_span = MagicMock()
-        inst._tracer.get_span = MagicMock(return_value=mock_span)
-        result = inst.get_span(run_id)
+        with patch.object(inst._tracer, "get_span", return_value=mock_span):
+            result = inst.get_span(run_id)
         self.assertEqual(result, mock_span)
 
     @patch("genai._langchain._tracer_instrumentor.get_otel_logger")
