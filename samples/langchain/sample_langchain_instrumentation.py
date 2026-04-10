@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
 from microsoft.opentelemetry._distro import use_microsoft_opentelemetry
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
