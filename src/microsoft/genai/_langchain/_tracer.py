@@ -33,7 +33,7 @@ from opentelemetry.util.genai.span_utils import (
 from opentelemetry.util.genai.types import Error, LLMInvocation
 from opentelemetry.util.types import AttributeValue
 
-from genai._langchain._utils import (
+from microsoft.genai._langchain._utils import (
     DictWithLock,
     as_utc_nano,
     build_llm_invocation,
