@@ -367,7 +367,7 @@ def token_counts(outputs: Mapping[str, Any] | None) -> Iterator[tuple[str, int]]
         if (token_count := get_first_value(details, ("reasoning_tokens",))) is not None:
             yield GEN_AI_RESPONSE_FINISH_REASONS_KEY, token_count
     # langchain_core UsageMetadata
-    for attribute_name, details_key, keys in [
+    for attribute_name, details_key, keys in [  # type: ignore[assignment]
         (GEN_AI_USAGE_INPUT_TOKENS_KEY, None, ("input_tokens",)),
         (GEN_AI_USAGE_OUTPUT_TOKENS_KEY, None, ("output_tokens",)),
         (GEN_AI_RESPONSE_FINISH_REASONS_KEY, "output_token_details", ("reasoning",)),
