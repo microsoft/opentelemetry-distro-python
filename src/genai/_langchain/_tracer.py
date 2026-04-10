@@ -82,7 +82,7 @@ CONTEXT_ATTRIBUTES = (
 )
 
 # pylint: disable=broad-exception-caught
-class LangChainTracer(BaseTracer): # pylint: disable=too-many-ancestors
+class LangChainTracer(BaseTracer): # pylint: disable=too-many-ancestors, too-many-instance-attributes
     _MAX_TRACKED_RUNS = 10000
 
     __slots__ = (
