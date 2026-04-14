@@ -109,7 +109,7 @@ def _append_azure_monitor_components(
         _setup_browser_sdk_loader(configurations)
         _logger.info("Azure Monitor configured via azure-monitor-opentelemetry package")
 
-        return configurations, tracer_provider, meter_provider, logger_provider
+        return tracer_provider, meter_provider, logger_provider
     except Exception as ex:  # pylint: disable=broad-except
         _logger.warning(
             "Failed to create Azure Monitor components: %s",

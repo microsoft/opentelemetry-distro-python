@@ -279,18 +279,21 @@ class TestConfigure(unittest.TestCase):
         pcsp_init_mock = Mock()
         pcsp_mock.return_value = pcsp_init_mock
 
+        custom_sp = Mock()
         configurations = {
             "connection_string": "test_cs",
             "enable_performance_counters": True,
             "instrumentation_options": {"azure_sdk": {"enabled": True}},
             "sampling_ratio": 0.5,
             "resource": TEST_RESOURCE,
-            "span_processors": [],
+            "span_processors": [custom_sp],
             "enable_live_metrics": False,
         }
         result = _setup_tracing(configurations)
         sampler_mock.assert_called_once_with(sampling_ratio=0.5)
         tp_mock.assert_called_once_with(sampler=sampler_init_mock, resource=TEST_RESOURCE)
+        # Custom processor added first, then perf counters, then BSP
+        tp_init_mock.add_span_processor.assert_any_call(custom_sp)
         trace_exporter_mock.assert_called_once_with(**configurations)
         bsp_mock.assert_called_once_with(trace_exp_init_mock)
         pcsp_mock.assert_called_once_with()
@@ -330,18 +333,20 @@ class TestConfigure(unittest.TestCase):
         pcsp_init_mock = Mock()
         pcsp_mock.return_value = pcsp_init_mock
 
+        custom_sp = Mock()
         configurations = {
             "connection_string": "test_cs",
             "enable_performance_counters": True,
             "instrumentation_options": {"azure_sdk": {"enabled": True}},
             "traces_per_second": 2.0,
             "resource": TEST_RESOURCE,
-            "span_processors": [],
+            "span_processors": [custom_sp],
             "enable_live_metrics": False,
         }
         result = _setup_tracing(configurations)
         sampler_mock.assert_called_once_with(target_spans_per_second_limit=2.0)
         tp_mock.assert_called_once_with(sampler=sampler_init_mock, resource=TEST_RESOURCE)
+        tp_init_mock.add_span_processor.assert_any_call(custom_sp)
         trace_exporter_mock.assert_called_once_with(**configurations)
         bsp_mock.assert_called_once_with(trace_exp_init_mock)
         pcsp_mock.assert_called_once_with()
@@ -379,18 +384,20 @@ class TestConfigure(unittest.TestCase):
         bsp_init_mock = Mock()
         bsp_mock.return_value = bsp_init_mock
 
+        custom_sp = Mock()
         configurations = {
             "connection_string": "test_cs",
             "enable_performance_counters": False,
             "instrumentation_options": {"azure_sdk": {"enabled": True}},
             "sampling_ratio": 0.5,
             "resource": TEST_RESOURCE,
-            "span_processors": [],
+            "span_processors": [custom_sp],
             "enable_live_metrics": False,
         }
         result = _setup_tracing(configurations)
         sampler_mock.assert_called_once_with(sampling_ratio=0.5)
         tp_mock.assert_called_once_with(sampler=sampler_init_mock, resource=TEST_RESOURCE)
+        tp_init_mock.add_span_processor.assert_any_call(custom_sp)
         trace_exporter_mock.assert_called_once_with(**configurations)
         bsp_mock.assert_called_once_with(trace_exp_init_mock)
         pcsp_mock.assert_not_called()
@@ -407,13 +414,14 @@ class TestConfigure(unittest.TestCase):
         blrp_mock.return_value = blrp_init_mock
         pclp_init_mock = Mock()
         pclp_mock.return_value = pclp_init_mock
+        custom_lrp = Mock()
 
         configurations = {
             "connection_string": "test_cs",
             "enable_performance_counters": True,
             "resource": TEST_RESOURCE,
             "enable_trace_based_sampling_for_logs": False,
-            "log_record_processors": [],
+            "log_record_processors": [custom_lrp],
             "enable_live_metrics": False,
             "logger_name": "",
         }
@@ -445,13 +453,14 @@ class TestConfigure(unittest.TestCase):
         blrp_mock.return_value = blrp_init_mock
         pclp_init_mock = Mock()
         pclp_mock.return_value = pclp_init_mock
+        custom_lrp = Mock()
 
         configurations = {
             "connection_string": "test_cs",
             "enable_performance_counters": True,
             "resource": TEST_RESOURCE,
             "enable_trace_based_sampling_for_logs": True,
-            "log_record_processors": [],
+            "log_record_processors": [custom_lrp],
             "enable_live_metrics": False,
             "logger_name": "",
         }
@@ -481,13 +490,14 @@ class TestConfigure(unittest.TestCase):
         log_exporter_mock.return_value = log_exp_init_mock
         blrp_init_mock = Mock()
         blrp_mock.return_value = blrp_init_mock
+        custom_lrp = Mock()
 
         configurations = {
             "connection_string": "test_cs",
             "enable_performance_counters": False,
             "resource": TEST_RESOURCE,
             "enable_trace_based_sampling_for_logs": False,
-            "log_record_processors": [],
+            "log_record_processors": [custom_lrp],
             "enable_live_metrics": False,
             "logger_name": "",
         }
@@ -527,19 +537,20 @@ class TestConfigure(unittest.TestCase):
         reader_mock.return_value = reader_init_mock
         mp_init_mock = Mock()
         mp_mock.return_value = mp_init_mock
+        custom_reader = Mock()
 
         configurations = {
             "connection_string": "test_cs",
             "resource": TEST_RESOURCE,
             "views": [],
-            "metric_readers": [],
+            "metric_readers": [custom_reader],
             "enable_performance_counters": True,
         }
         result = _setup_metrics(configurations)
         metric_exporter_mock.assert_called_once_with(**configurations)
         reader_mock.assert_called_once_with(metric_exp_init_mock)
         mp_mock.assert_called_once_with(
-            metric_readers=[reader_init_mock],
+            metric_readers=[custom_reader, reader_init_mock],
             resource=TEST_RESOURCE,
             views=[],
         )
@@ -566,22 +577,24 @@ class TestConfigure(unittest.TestCase):
         mp_init_mock = Mock()
         mp_mock.return_value = mp_init_mock
         mock_view = Mock()
+        custom_reader = Mock()
 
         configurations = {
             "connection_string": "test_cs",
             "resource": TEST_RESOURCE,
             "views": [mock_view],
-            "metric_readers": [],
+            "metric_readers": [custom_reader],
             "enable_performance_counters": True,
         }
         result = _setup_metrics(configurations)
         metric_exporter_mock.assert_called_once_with(**configurations)
         reader_mock.assert_called_once_with(metric_exp_init_mock)
         mp_mock.assert_called_once_with(
-            metric_readers=[reader_init_mock],
+            metric_readers=[custom_reader, reader_init_mock],
             resource=TEST_RESOURCE,
             views=[mock_view],
         )
+        perf_mock.assert_called_once_with(meter_provider=mp_init_mock)
         self.assertEqual(result, mp_init_mock)
 
     @patch(
@@ -603,19 +616,20 @@ class TestConfigure(unittest.TestCase):
         reader_mock.return_value = reader_init_mock
         mp_init_mock = Mock()
         mp_mock.return_value = mp_init_mock
+        custom_reader = Mock()
 
         configurations = {
             "connection_string": "test_cs",
             "resource": TEST_RESOURCE,
             "views": [],
-            "metric_readers": [],
+            "metric_readers": [custom_reader],
             "enable_performance_counters": False,
         }
         result = _setup_metrics(configurations)
         metric_exporter_mock.assert_called_once_with(**configurations)
         reader_mock.assert_called_once_with(metric_exp_init_mock)
         mp_mock.assert_called_once_with(
-            metric_readers=[reader_init_mock],
+            metric_readers=[custom_reader, reader_init_mock],
             resource=TEST_RESOURCE,
             views=[],
         )
