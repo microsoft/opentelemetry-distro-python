@@ -114,8 +114,8 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     logger_provider: Optional[LoggerProvider] = None
 
     if enable_azure_monitor:
-        tracer_provider, meter_provider, logger_provider = (
-            _append_azure_monitor_components(otel_kwargs, azure_monitor_kwargs)
+        tracer_provider, meter_provider, logger_provider = _append_azure_monitor_components(
+            otel_kwargs, azure_monitor_kwargs
         )
 
     # If Azure Monitor was disabled or failed to create a provider for a
@@ -181,7 +181,7 @@ def _setup_metrics(
 def _setup_logging(
     resource: Resource,
     otel_kwargs: Dict[str, Any],
-) -> LoggerProvider:
+) -> LoggerProvider | None:
     """Create a LoggerProvider with user-supplied processors."""
     try:
         from opentelemetry.instrumentation.logging.handler import LoggingHandler

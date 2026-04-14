@@ -188,7 +188,7 @@ def _setup_tracing(configurations: Dict[str, ConfigurationValue]):
     return tracer_provider
 
 
-def _setup_logging(configurations: Dict[str, ConfigurationValue]):
+def _setup_logging(configurations: Dict[str, ConfigurationValue]):  # pylint: disable=inconsistent-return-statements
     # Setup logging
     # Use try catch while signal is experimental
     try:
