@@ -149,7 +149,7 @@ This project may contain trademarks or logos for projects, products, or services
 
 ## Reporting Security Issues
 
-[SECURITY.md]
+See [SECURITY.md](./SECURITY.md) for information on reporting vulnerabilities.
 
 ## License
 
