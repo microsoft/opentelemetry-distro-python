@@ -62,3 +62,8 @@ _AZURE_MONITOR_KWARG_MAP = {
     "azure_monitor_exporter_storage_directory": "storage_directory",
     "azure_monitor_browser_sdk_loader_config": "browser_sdk_loader_config",
 }
+
+# --- Agent365 Constants ---
+
+ENABLE_A365_ARG = "enable_a365"
+A365_TOKEN_RESOLVER_ARG = "a365_token_resolver"
