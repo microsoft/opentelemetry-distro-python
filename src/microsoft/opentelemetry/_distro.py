@@ -126,6 +126,10 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     disable_logging = otel_kwargs.get(DISABLE_LOGGING_ARG, False)
     disable_metrics = otel_kwargs.get(DISABLE_METRICS_ARG, False)
 
+    # When Azure Monitor is enabled, its _setup_* functions already create
+    # providers that include OTLP + user-supplied components, so the checks
+    # below are no-ops. These only run when Azure Monitor is disabled or
+    # its setup failed, to create bare providers and register them.
     if tracer_provider is None and not disable_tracing:
         tracer_provider = _setup_tracing(resource, otel_kwargs)
     if meter_provider is None and not disable_metrics:
@@ -133,6 +137,7 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     if logger_provider is None and not disable_logging:
         logger_provider = _setup_logging(resource, otel_kwargs)
 
+    # Register the created providers as the OTel global singletons
     if tracer_provider is not None:
         set_tracer_provider(tracer_provider)
     if meter_provider is not None:
@@ -143,6 +148,8 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     # ---- Instrumentations (always, after providers are set) ----
     _setup_instrumentations(otel_kwargs)
 
+    # Log when Azure Monitor is explicitly opted out, so users can
+    # confirm the setting took effect.
     if not enable_azure_monitor:
         _logger.info("Azure Monitor exporter explicitly disabled.")
 
