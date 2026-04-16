@@ -1,14 +1,7 @@
-# -------------------------------------------------------------------------
-# Copyright (c) Microsoft Corporation. All rights reserved.
-# Licensed under the MIT License. See License.txt in the project root for
-# license information.
-# --------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
 
-"""Constants for Agent365 observability.
-
-Superset of microsoft-agents-a365-observability-core constants plus
-distro-specific environment variable constants.
-"""
+# Constants for SDK OpenTelemetry implementation.
 
 # --- Span operation names ---
 INVOKE_AGENT_OPERATION_NAME = "invoke_agent"
@@ -28,6 +21,7 @@ ENABLE_OPENTELEMETRY_SWITCH = "Azure.Experimental.EnableActivitySource"
 TRACE_CONTENTS_SWITCH = "Azure.Experimental.TraceGenAIMessageContent"
 TRACE_CONTENTS_ENVIRONMENT_VARIABLE = "AZURE_TRACING_GEN_AI_CONTENT_RECORDING_ENABLED"
 ENABLE_OBSERVABILITY = "ENABLE_OBSERVABILITY"
+ENABLE_A365_OBSERVABILITY_EXPORTER = "ENABLE_A365_OBSERVABILITY_EXPORTER"
 ENABLE_A365_OBSERVABILITY = "ENABLE_A365_OBSERVABILITY"
 
 # --- GenAI semantic conventions ---
@@ -115,19 +109,3 @@ TELEMETRY_SDK_LANGUAGE_KEY = "telemetry.sdk.language"
 TELEMETRY_SDK_VERSION_KEY = "telemetry.sdk.version"
 TELEMETRY_SDK_NAME_VALUE = "A365ObservabilitySDK"
 TELEMETRY_SDK_LANGUAGE_VALUE = "python"
-
-# --- Distro environment variable names ---
-ENABLE_A365_OBSERVABILITY_EXPORTER = "ENABLE_A365_OBSERVABILITY_EXPORTER"
-A365_OBSERVABILITY_DOMAIN_OVERRIDE = "A365_OBSERVABILITY_DOMAIN_OVERRIDE"
-A365_TENANT_ID_ENV = "A365_TENANT_ID"
-A365_AGENT_ID_ENV = "A365_AGENT_ID"
-A365_CLUSTER_CATEGORY_ENV = "A365_CLUSTER_CATEGORY"
-A365_USE_S2S_ENDPOINT_ENV = "A365_USE_S2S_ENDPOINT"
-A365_SUPPRESS_INVOKE_AGENT_INPUT_ENV = "A365_SUPPRESS_INVOKE_AGENT_INPUT"
-
-# --- FIC (Federated Identity Credential) token flow env vars ---
-A365_AGENT_APP_INSTANCE_ID_ENV = "A365_AGENT_APP_INSTANCE_ID"
-A365_AGENTIC_USER_ID_ENV = "A365_AGENTIC_USER_ID"
-A365_SERVICE_CLIENT_ID_ENV = "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID"
-A365_SERVICE_CLIENT_SECRET_ENV = "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET"
-A365_SERVICE_TENANT_ID_ENV = "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID"

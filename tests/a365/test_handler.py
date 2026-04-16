@@ -5,7 +5,7 @@ import os
 import unittest
 from unittest.mock import patch
 
-from microsoft.opentelemetry._a365 import (
+from microsoft.agents.a365.observability import (
     A365Handlers,
     create_a365_components,
     is_a365_enabled,
@@ -53,7 +53,7 @@ class TestCreateA365Components(unittest.TestCase):
     })
     def test_passes_identity_from_env_to_span_processor(self):
         handlers = create_a365_components()
-        from microsoft.opentelemetry._a365._span_processor import A365SpanProcessor
+        from microsoft.agents.a365.observability.core.exporters.span_processor import A365SpanProcessor
         span_proc = handlers.span_processors[1]
         self.assertIsInstance(span_proc, A365SpanProcessor)
         self.assertEqual(span_proc._tenant_id, "t1")
@@ -68,7 +68,7 @@ class TestCreateA365Components(unittest.TestCase):
         with patch.dict(os.environ, env, clear=True):
             os.environ["ENABLE_A365_OBSERVABILITY_EXPORTER"] = "true"
             handlers = create_a365_components()
-            from microsoft.opentelemetry._a365._span_processor import A365SpanProcessor
+            from microsoft.agents.a365.observability.core.exporters.span_processor import A365SpanProcessor
             span_proc = handlers.span_processors[1]
             self.assertIsNone(span_proc._tenant_id)
             self.assertIsNone(span_proc._agent_id)
@@ -76,7 +76,7 @@ class TestCreateA365Components(unittest.TestCase):
     @patch.dict(os.environ, {"ENABLE_A365_OBSERVABILITY_EXPORTER": "true"})
     def test_baggage_processor_is_a365_span_processor(self):
         handlers = create_a365_components()
-        from microsoft.opentelemetry._a365._span_processor import A365SpanProcessor
+        from microsoft.agents.a365.observability.core.exporters.span_processor import A365SpanProcessor
         span_proc = handlers.span_processors[1]
         self.assertIsInstance(span_proc, A365SpanProcessor)
 

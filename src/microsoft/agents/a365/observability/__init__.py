@@ -6,7 +6,7 @@
 
 """Agent365 exporter integration for the Microsoft OpenTelemetry Distro."""
 
-from microsoft.opentelemetry._a365.exporters.utils import (  # noqa: F401
+from microsoft.agents.a365.observability.core.exporters.utils import (  # noqa: F401
     A365Handlers,
     create_a365_components,
     is_a365_enabled,

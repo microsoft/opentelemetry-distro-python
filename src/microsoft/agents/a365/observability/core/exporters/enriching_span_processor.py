@@ -19,12 +19,12 @@ from typing import Optional
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-from microsoft.opentelemetry._a365._constants import (
+from microsoft.agents.a365.observability.constants import (
     GEN_AI_INPUT_MESSAGES_KEY,
     GEN_AI_OPERATION_NAME_KEY,
     INVOKE_AGENT_OPERATION_NAME,
 )
-from microsoft.opentelemetry._a365._enriched_span import EnrichedReadableSpan
+from microsoft.agents.a365.observability.core.exporters.enriched_span import EnrichedReadableSpan
 
 logger = logging.getLogger(__name__)
 

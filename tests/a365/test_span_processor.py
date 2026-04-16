@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 from opentelemetry import baggage, context
 
-from microsoft.opentelemetry._a365._span_processor import (
+from microsoft.agents.a365.observability.core.exporters.span_processor import (
     A365SpanProcessor,
     COMMON_ATTRIBUTES,
     INVOKE_AGENT_ATTRIBUTES,

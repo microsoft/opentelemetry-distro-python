@@ -25,7 +25,7 @@ from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanProcessor
 from opentelemetry.trace import SpanKind, StatusCode
 
-from microsoft.opentelemetry._a365._constants import (
+from microsoft.agents.a365.observability.constants import (
     A365_AGENT_APP_INSTANCE_ID_ENV,
     A365_AGENT_ID_ENV,
     A365_AGENTIC_USER_ID_ENV,
@@ -447,10 +447,10 @@ def create_a365_components(
       - ``A365_USE_S2S_ENDPOINT`` -- defaults to False
       - ``A365_SUPPRESS_INVOKE_AGENT_INPUT`` -- defaults to False
     """
-    from microsoft.opentelemetry._a365._enriching_span_processor import _EnrichingBatchSpanProcessor
-    from microsoft.opentelemetry._a365._exporter import _Agent365Exporter
-    from microsoft.opentelemetry._a365._exporter_options import Agent365ExporterOptions
-    from microsoft.opentelemetry._a365._span_processor import A365SpanProcessor
+    from microsoft.agents.a365.observability.core.exporters.enriching_span_processor import _EnrichingBatchSpanProcessor
+    from microsoft.agents.a365.observability.core.exporters.agent365_exporter import _Agent365Exporter
+    from microsoft.agents.a365.observability.core.exporters.agent365_exporter_options import Agent365ExporterOptions
+    from microsoft.agents.a365.observability.core.exporters.span_processor import A365SpanProcessor
 
     if token_resolver is None:
         token_resolver = _create_default_token_resolver()

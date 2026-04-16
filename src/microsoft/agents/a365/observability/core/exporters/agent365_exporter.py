@@ -23,7 +23,7 @@ from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 from opentelemetry.trace import StatusCode
 
-from microsoft.opentelemetry._a365._utils import (
+from microsoft.agents.a365.observability.core.exporters.utils import (
     build_export_url,
     get_validated_domain_override,
     hex_span_id,

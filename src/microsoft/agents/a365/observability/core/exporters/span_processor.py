@@ -22,7 +22,7 @@ from __future__ import annotations
 from opentelemetry import baggage, context
 from opentelemetry.sdk.trace import SpanProcessor as BaseSpanProcessor
 
-from microsoft.opentelemetry._a365._constants import (
+from microsoft.agents.a365.observability.constants import (
     CHANNEL_LINK_KEY,
     CHANNEL_NAME_KEY,
     CUSTOM_PARENT_SPAN_ID_KEY,
