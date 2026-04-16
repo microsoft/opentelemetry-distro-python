@@ -172,7 +172,9 @@ class TestGetValidatedDomainOverride(unittest.TestCase):
             self.assertIsNone(get_validated_domain_override())
 
     def test_valid_https(self):
-        with unittest.mock.patch.dict(os.environ, {"A365_OBSERVABILITY_DOMAIN_OVERRIDE": "https://custom.endpoint.com"}):
+        with unittest.mock.patch.dict(
+            os.environ, {"A365_OBSERVABILITY_DOMAIN_OVERRIDE": "https://custom.endpoint.com"}
+        ):
             self.assertEqual(get_validated_domain_override(), "https://custom.endpoint.com")
 
     def test_invalid_scheme(self):

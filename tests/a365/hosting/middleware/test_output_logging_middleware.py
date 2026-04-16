@@ -148,8 +148,7 @@ async def test_send_handler_creates_output_scope_for_messages():
     send_next = AsyncMock()
 
     with patch(
-        "microsoft.agents.a365.observability.hosting.middleware"
-        ".output_logging_middleware.OutputScope"
+        "microsoft.agents.a365.observability.hosting.middleware" ".output_logging_middleware.OutputScope"
     ) as mock_output_scope_cls:
         mock_scope = MagicMock()
         mock_output_scope_cls.start.return_value = mock_scope
@@ -179,8 +178,7 @@ async def test_send_handler_uses_parent_span_from_turn_state():
     send_next = AsyncMock()
 
     with patch(
-        "microsoft.agents.a365.observability.hosting.middleware"
-        ".output_logging_middleware.OutputScope"
+        "microsoft.agents.a365.observability.hosting.middleware" ".output_logging_middleware.OutputScope"
     ) as mock_output_scope_cls:
         mock_scope = MagicMock()
         mock_output_scope_cls.start.return_value = mock_scope
@@ -209,8 +207,7 @@ async def test_send_handler_rethrows_errors():
     send_next = AsyncMock(side_effect=send_error)
 
     with patch(
-        "microsoft.agents.a365.observability.hosting.middleware"
-        ".output_logging_middleware.OutputScope"
+        "microsoft.agents.a365.observability.hosting.middleware" ".output_logging_middleware.OutputScope"
     ) as mock_output_scope_cls:
         mock_scope = MagicMock()
         mock_output_scope_cls.start.return_value = mock_scope

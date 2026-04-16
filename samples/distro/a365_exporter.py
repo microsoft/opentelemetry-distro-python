@@ -34,6 +34,7 @@ use_microsoft_opentelemetry(
 
 # -- Run agent code (identity is stamped automatically) ---------------------
 
+
 def main():
     tracer = trace.get_tracer("a365.sample")
 

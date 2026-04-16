@@ -86,9 +86,7 @@ def test_get_channel_pairs():
 def test_get_conversation_pairs():
     """Test get_conversation_pairs extracts conversation information."""
     conversation = ConversationAccount(id="conversation-123")
-    activity = Activity(
-        type="message", conversation=conversation, service_url="https://example.com"
-    )
+    activity = Activity(type="message", conversation=conversation, service_url="https://example.com")
 
     result = list(get_conversation_pairs(activity))
 

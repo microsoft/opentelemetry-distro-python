@@ -401,6 +401,7 @@ class TestA365Components(unittest.TestCase):
             use_microsoft_opentelemetry(enable_a365=True, enable_azure_monitor=False)
 
         from opentelemetry.trace import get_tracer_provider
+
         tp = get_tracer_provider()
         self.assertIsNotNone(tp)
 

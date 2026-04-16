@@ -36,9 +36,7 @@ def token_cache():
 
 
 @pytest.mark.asyncio
-async def test_register_and_retrieve_token_success(
-    token_cache, mock_authorization, mock_turn_context
-):
+async def test_register_and_retrieve_token_success(token_cache, mock_authorization, mock_turn_context):
     """Test complete flow: create struct, register, and retrieve token successfully."""
     agent_id = "agent-123"
     tenant_id = "tenant-456"

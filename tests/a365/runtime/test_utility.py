@@ -181,20 +181,24 @@ class TestGetAgentIdFromToken:
 
     def test_xms_par_app_azp_takes_highest_priority(self, create_test_jwt):
         """Test xms_par_app_azp claim takes priority over appid and azp."""
-        token = create_test_jwt({
-            "xms_par_app_azp": "blueprint-id-123",
-            "appid": "app-id-456",
-            "azp": "azp-id-789",
-        })
+        token = create_test_jwt(
+            {
+                "xms_par_app_azp": "blueprint-id-123",
+                "appid": "app-id-456",
+                "azp": "azp-id-789",
+            }
+        )
         result = Utility.get_agent_id_from_token(token)
         assert result == "blueprint-id-123"
 
     def test_appid_takes_priority_when_no_xms_par_app_azp(self, create_test_jwt):
         """Test appid claim is used when xms_par_app_azp is not present."""
-        token = create_test_jwt({
-            "appid": "app-id-456",
-            "azp": "azp-id-789",
-        })
+        token = create_test_jwt(
+            {
+                "appid": "app-id-456",
+                "azp": "azp-id-789",
+            }
+        )
         result = Utility.get_agent_id_from_token(token)
         assert result == "app-id-456"
 
@@ -217,20 +221,24 @@ class TestGetAgentIdFromToken:
 
     def test_falls_back_to_appid_when_xms_par_app_azp_is_empty(self, create_test_jwt):
         """Test falls back to appid when xms_par_app_azp is empty string."""
-        token = create_test_jwt({
-            "xms_par_app_azp": "",
-            "appid": "app-id-456",
-        })
+        token = create_test_jwt(
+            {
+                "xms_par_app_azp": "",
+                "appid": "app-id-456",
+            }
+        )
         result = Utility.get_agent_id_from_token(token)
         assert result == "app-id-456"
 
     def test_falls_back_to_azp_when_appid_is_also_empty(self, create_test_jwt):
         """Test falls back to azp when both xms_par_app_azp and appid are empty."""
-        token = create_test_jwt({
-            "xms_par_app_azp": "",
-            "appid": "",
-            "azp": "azp-id-789",
-        })
+        token = create_test_jwt(
+            {
+                "xms_par_app_azp": "",
+                "appid": "",
+                "azp": "azp-id-789",
+            }
+        )
         result = Utility.get_agent_id_from_token(token)
         assert result == "azp-id-789"
 
@@ -316,9 +324,7 @@ class TestGetApplicationName:
     def test_handles_pyproject_with_different_sections(self, tmp_path):
         """Test correctly parses name from [project] section only."""
         pyproject = tmp_path / "pyproject.toml"
-        pyproject.write_text(
-            '[tool.ruff]\nname = "ruff-name"\n\n[project]\nname = "project-name"\n'
-        )
+        pyproject.write_text('[tool.ruff]\nname = "ruff-name"\n\n[project]\nname = "project-name"\n')
 
         env = {k: v for k, v in os.environ.items() if k != "AGENT365_APPLICATION_NAME"}
         with patch.dict(os.environ, env, clear=True):
@@ -330,9 +336,7 @@ class TestGetApplicationName:
     def test_ignores_fields_starting_with_name(self, tmp_path):
         """Test only matches exact 'name' field, not 'name_something'."""
         pyproject = tmp_path / "pyproject.toml"
-        pyproject.write_text(
-            '[project]\nname_something = "wrong"\nnamespace = "also-wrong"\nname = "correct"\n'
-        )
+        pyproject.write_text('[project]\nname_something = "wrong"\nnamespace = "also-wrong"\nname = "correct"\n')
 
         env = {k: v for k, v in os.environ.items() if k != "AGENT365_APPLICATION_NAME"}
         with patch.dict(os.environ, env, clear=True):

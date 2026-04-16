@@ -44,14 +44,10 @@ def test_configure_is_singleton():
     ],
     ids=["default_baggage_only", "both_enabled", "output_only", "none"],
 )
-def test_configure_registers_expected_middlewares(
-    enable_baggage, enable_output_logging, expected_types
-):
+def test_configure_registers_expected_middlewares(enable_baggage, enable_output_logging, expected_types):
     """configure() should register the correct middlewares based on options."""
     middleware_set = MagicMock()
-    options = ObservabilityHostingOptions(
-        enable_baggage=enable_baggage, enable_output_logging=enable_output_logging
-    )
+    options = ObservabilityHostingOptions(enable_baggage=enable_baggage, enable_output_logging=enable_output_logging)
     ObservabilityHostingManager.configure(middleware_set, options)
 
     assert middleware_set.use.call_count == len(expected_types)

@@ -79,9 +79,7 @@ class TestEnrichingBatchSpanProcessor(unittest.TestCase):
         original_span.name = "original"
         original_span.attributes = {}
 
-        with patch.object(
-            _EnrichingBatchSpanProcessor.__bases__[0], "on_end"
-        ) as mock_super_on_end:
+        with patch.object(_EnrichingBatchSpanProcessor.__bases__[0], "on_end") as mock_super_on_end:
             processor.on_end(original_span)
             mock_super_on_end.assert_called_once_with(enriched)
 
@@ -99,9 +97,7 @@ class TestEnrichingBatchSpanProcessor(unittest.TestCase):
         original_span.name = "original"
         original_span.attributes = {}
 
-        with patch.object(
-            _EnrichingBatchSpanProcessor.__bases__[0], "on_end"
-        ) as mock_super_on_end:
+        with patch.object(_EnrichingBatchSpanProcessor.__bases__[0], "on_end") as mock_super_on_end:
             processor.on_end(original_span)
             mock_super_on_end.assert_called_once_with(original_span)
 
@@ -117,9 +113,7 @@ class TestEnrichingBatchSpanProcessor(unittest.TestCase):
             "gen_ai.input.messages": "[{...}]",
         }
 
-        with patch.object(
-            _EnrichingBatchSpanProcessor.__bases__[0], "on_end"
-        ) as mock_super_on_end:
+        with patch.object(_EnrichingBatchSpanProcessor.__bases__[0], "on_end") as mock_super_on_end:
             processor.on_end(span)
             passed_span = mock_super_on_end.call_args[0][0]
             self.assertNotIn("gen_ai.input.messages", dict(passed_span.attributes))
@@ -136,9 +130,7 @@ class TestEnrichingBatchSpanProcessor(unittest.TestCase):
             "gen_ai.input.messages": "[{...}]",
         }
 
-        with patch.object(
-            _EnrichingBatchSpanProcessor.__bases__[0], "on_end"
-        ) as mock_super_on_end:
+        with patch.object(_EnrichingBatchSpanProcessor.__bases__[0], "on_end") as mock_super_on_end:
             processor.on_end(span)
             mock_super_on_end.assert_called_once_with(span)
 
