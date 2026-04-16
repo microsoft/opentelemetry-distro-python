@@ -24,6 +24,7 @@ RESOURCE_ARG = "resource"
 SPAN_PROCESSORS_ARG = "span_processors"
 VIEWS_ARG = "views"
 INSTRUMENTATION_OPTIONS_ARG = "instrumentation_options"
+ENABLE_LIVE_METRICS_ARG = "enable_live_metrics"
 
 # --- Instrumentation Constants ---
 

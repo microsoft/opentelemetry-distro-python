@@ -15,6 +15,7 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry._logs import set_logger_provider
+from opentelemetry.instrumentation.logging.handler import LoggingHandler
 from opentelemetry.trace import set_tracer_provider
 from opentelemetry.util._importlib_metadata import (
     EntryPoint,
@@ -94,16 +95,10 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
         Enable trace-based sampling for logs.
     :rtype: None
     """
-    enable_azure_monitor = kwargs.pop(ENABLE_AZURE_MONITOR_ARG, True)
 
     # Separate Azure Monitor kwargs from generic OTel kwargs
-    otel_kwargs: Dict[str, Any] = {}
-    azure_monitor_kwargs: Dict[str, Any] = {}
-    for key, value in kwargs.items():
-        if key in _AZURE_MONITOR_KWARG_MAP:
-            azure_monitor_kwargs[_AZURE_MONITOR_KWARG_MAP[key]] = value
-        else:
-            otel_kwargs[key] = value
+    otel_kwargs: Dict[str, Any] = {k: v for k, v in kwargs.items() if k not in _AZURE_MONITOR_KWARG_MAP}
+    azure_monitor_kwargs: Dict[str, Any] = {_AZURE_MONITOR_KWARG_MAP[k]: v for k, v in kwargs.items() if k in _AZURE_MONITOR_KWARG_MAP}
 
     # ---- OTLP exporters (append to user-supplied processors/readers) ----
     _append_otlp_components(otel_kwargs)
@@ -112,6 +107,8 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     tracer_provider: Optional[TracerProvider] = None
     meter_provider: Optional[MeterProvider] = None
     logger_provider: Optional[LoggerProvider] = None
+
+    enable_azure_monitor = kwargs.pop(ENABLE_AZURE_MONITOR_ARG, True)
 
     if enable_azure_monitor:
         tracer_provider, meter_provider, logger_provider = _append_azure_monitor_components(
@@ -190,15 +187,6 @@ def _setup_logging(
     otel_kwargs: Dict[str, Any],
 ) -> LoggerProvider | None:
     """Create a LoggerProvider with user-supplied processors."""
-    try:
-        from opentelemetry.instrumentation.logging.handler import LoggingHandler
-    except ImportError:
-        _logger.warning(
-            "OpenTelemetry logging SDK not available. "
-            "Install opentelemetry-sdk and opentelemetry-instrumentation-logging."
-        )
-        return None
-
     logger_provider = LoggerProvider(resource=resource)
     for lrp in otel_kwargs.get(LOG_RECORD_PROCESSORS_ARG) or []:
         logger_provider.add_log_record_processor(lrp)
