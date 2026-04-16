@@ -11,6 +11,7 @@ from microsoft.opentelemetry._constants import (
     DISABLE_LOGGING_ARG,
     DISABLE_METRICS_ARG,
     DISABLE_TRACING_ARG,
+    ENABLE_LIVE_METRICS_ARG,
     LOG_RECORD_PROCESSORS_ARG,
     METRIC_READERS_ARG,
     SPAN_PROCESSORS_ARG,
@@ -31,21 +32,21 @@ def _append_otlp_components(otel_kwargs: Dict[str, Any]) -> None:
     Respects per-signal disable flags so that disabled pipelines do not
     get unnecessary exporters.
     """
-    disable_tracing = otel_kwargs.get(DISABLE_TRACING_ARG, False)
-    disable_logging = otel_kwargs.get(DISABLE_LOGGING_ARG, False)
-    disable_metrics = otel_kwargs.get(DISABLE_METRICS_ARG, False)
-
-    if not is_otlp_enabled() or (disable_tracing and disable_logging and disable_metrics):
+    if not is_otlp_enabled():
         return
 
-    otlp = create_otlp_components()
-    if not disable_tracing and otlp.span_processor:
+    otlp = create_otlp_components(
+        enable_traces=not otel_kwargs.get(DISABLE_TRACING_ARG, False),
+        enable_metrics=not otel_kwargs.get(DISABLE_METRICS_ARG, False),
+        enable_logs=not otel_kwargs.get(DISABLE_LOGGING_ARG, False),
+    )
+    if otlp.span_processor:
         otel_kwargs[SPAN_PROCESSORS_ARG] = list(otel_kwargs.get(SPAN_PROCESSORS_ARG) or [])
         otel_kwargs[SPAN_PROCESSORS_ARG].append(otlp.span_processor)
-    if not disable_logging and otlp.log_record_processor:
+    if otlp.log_record_processor:
         otel_kwargs[LOG_RECORD_PROCESSORS_ARG] = list(otel_kwargs.get(LOG_RECORD_PROCESSORS_ARG) or [])
         otel_kwargs[LOG_RECORD_PROCESSORS_ARG].append(otlp.log_record_processor)
-    if not disable_metrics and otlp.metric_reader:
+    if otlp.metric_reader:
         otel_kwargs[METRIC_READERS_ARG] = list(otel_kwargs.get(METRIC_READERS_ARG) or [])
         otel_kwargs[METRIC_READERS_ARG].append(otlp.metric_reader)
 
@@ -64,22 +65,18 @@ def _append_azure_monitor_components(
     Returns (tracer_provider, meter_provider, logger_provider) on success,
     or (None, None, None) on failure.
     """
-    try:
-        from microsoft.opentelemetry._azure_monitor._configure import (
-            _setup_tracing,
-            _setup_metrics,
-            _setup_logging,
-            _setup_live_metrics,
-            _setup_azure_instrumentations,
-            _setup_browser_sdk_loader,
-            _send_attach_warning,
-        )
-        from microsoft.opentelemetry._azure_monitor._utils.configurations import _get_configurations
-    except ImportError:
-        _logger.warning(
-            "Failed to import Azure Monitor components. Verify azure-monitor-opentelemetry-exporter is installed."
-        )
-        return None, None, None
+    # Lazy imports to avoid pulling in the Azure Monitor exporter stack
+    # when Azure Monitor is not enabled.
+    from microsoft.opentelemetry._azure_monitor._configure import (
+        _setup_tracing,
+        _setup_metrics,
+        _setup_logging,
+        _setup_live_metrics,
+        _setup_azure_instrumentations,
+        _setup_browser_sdk_loader,
+        _send_attach_warning,
+    )
+    from microsoft.opentelemetry._azure_monitor._utils.configurations import _get_configurations
 
     try:
         _send_attach_warning()
@@ -93,7 +90,7 @@ def _append_azure_monitor_components(
         disable_tracing = configurations.get(DISABLE_TRACING_ARG, False)
         disable_logging = configurations.get(DISABLE_LOGGING_ARG, False)
         disable_metrics = configurations.get(DISABLE_METRICS_ARG, False)
-        enable_live_metrics_config = configurations.get("enable_live_metrics", False)
+        enable_live_metrics_config = configurations.get(ENABLE_LIVE_METRICS_ARG, False)
 
         # Metrics first (before perf counters span/log processors)
         if not disable_metrics:

@@ -9,8 +9,8 @@ from dataclasses import dataclass, field
 from logging import getLogger
 from typing import Optional
 
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanProcessor
-from opentelemetry.sdk.metrics.export import MetricReader, PeriodicExportingMetricReader
+from opentelemetry.sdk.trace.export import SpanProcessor
+from opentelemetry.sdk.metrics.export import MetricReader
 from opentelemetry.sdk._logs import LogRecordProcessor
 
 from microsoft.opentelemetry._constants import (
@@ -48,9 +48,14 @@ def is_otlp_enabled() -> bool:
     )
 
 
-def create_otlp_components() -> OtlpHandlers:
-    """Creates OTLP HTTP exporters for traces, metrics, and logs.
+def create_otlp_components(
+    enable_traces: bool = True,
+    enable_metrics: bool = True,
+    enable_logs: bool = True,
+) -> OtlpHandlers:
+    """Creates OTLP HTTP exporters for the requested signals.
 
+    Only the signals that are enabled will have exporters created.
     All configuration is driven by the standard OpenTelemetry OTLP environment
     variables.  The underlying ``opentelemetry-exporter-otlp-proto-http``
     packages read these variables automatically -- no programmatic config is
@@ -69,25 +74,23 @@ def create_otlp_components() -> OtlpHandlers:
     Per-signal overrides follow the pattern
     ``OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_{ENDPOINT,HEADERS,TIMEOUT,COMPRESSION}``.
     """
+    # Lazy imports to avoid pulling in OTLP exporter modules when OTLP is not enabled.
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
     from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
     from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
     from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 
     components = OtlpHandlers()
 
-    _logger.info("OTLP export enabled for traces, metrics, and logs.")
+    if enable_traces:
+        components.span_processor = BatchSpanProcessor(OTLPSpanExporter())
 
-    # Trace exporter
-    trace_exporter = OTLPSpanExporter()
-    components.span_processor = BatchSpanProcessor(trace_exporter)
+    if enable_metrics:
+        components.metric_reader = PeriodicExportingMetricReader(OTLPMetricExporter())
 
-    # Metric exporter
-    metric_exporter = OTLPMetricExporter()
-    components.metric_reader = PeriodicExportingMetricReader(metric_exporter)
-
-    # Log exporter
-    log_exporter = OTLPLogExporter()
-    components.log_record_processor = BatchLogRecordProcessor(log_exporter)
+    if enable_logs:
+        components.log_record_processor = BatchLogRecordProcessor(OTLPLogExporter())
 
     return components
