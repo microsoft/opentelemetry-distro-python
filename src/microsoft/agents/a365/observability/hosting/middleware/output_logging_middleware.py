@@ -139,9 +139,7 @@ class OutputLoggingMiddleware:
             activities: list[Activity],
             send_next: Callable,
         ) -> None:
-            messages = [
-                a.text for a in activities if getattr(a, "type", None) == "message" and a.text
-            ]
+            messages = [a.text for a in activities if getattr(a, "type", None) == "message" and a.text]
 
             if not messages:
                 await send_next()

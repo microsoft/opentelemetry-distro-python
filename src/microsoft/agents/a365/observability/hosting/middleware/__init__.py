@@ -2,8 +2,14 @@
 # Licensed under the MIT License.
 
 from microsoft.agents.a365.observability.hosting.middleware.baggage_middleware import BaggageMiddleware
-from microsoft.agents.a365.observability.hosting.middleware.observability_hosting_manager import ObservabilityHostingManager, ObservabilityHostingOptions
-from microsoft.agents.a365.observability.hosting.middleware.output_logging_middleware import A365_PARENT_TRACEPARENT_KEY, OutputLoggingMiddleware
+from microsoft.agents.a365.observability.hosting.middleware.observability_hosting_manager import (
+    ObservabilityHostingManager,
+    ObservabilityHostingOptions,
+)
+from microsoft.agents.a365.observability.hosting.middleware.output_logging_middleware import (
+    A365_PARENT_TRACEPARENT_KEY,
+    OutputLoggingMiddleware,
+)
 
 __all__ = [
     "BaggageMiddleware",

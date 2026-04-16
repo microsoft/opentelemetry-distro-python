@@ -154,9 +154,7 @@ class A365SpanProcessor(BaseSpanProcessor):
         is_invoke_agent = False
         if operation_name == INVOKE_AGENT_OPERATION_NAME:
             is_invoke_agent = True
-        elif isinstance(getattr(span, "name", None), str) and span.name.startswith(
-            INVOKE_AGENT_OPERATION_NAME
-        ):
+        elif isinstance(getattr(span, "name", None), str) and span.name.startswith(INVOKE_AGENT_OPERATION_NAME):
             is_invoke_agent = True
 
         target_keys = list(COMMON_ATTRIBUTES)

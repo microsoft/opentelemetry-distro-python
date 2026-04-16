@@ -45,8 +45,7 @@ def register_span_enricher(enricher: Callable[[ReadableSpan], ReadableSpan]) -> 
     with _enricher_lock:
         if _span_enricher is not None:
             raise RuntimeError(
-                "A span enricher is already registered. "
-                "Only one platform instrumentor can be active at a time."
+                "A span enricher is already registered. " "Only one platform instrumentor can be active at a time."
             )
         _span_enricher = enricher
         logger.debug("Span enricher registered: %s", enricher.__name__)

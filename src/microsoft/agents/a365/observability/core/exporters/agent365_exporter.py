@@ -168,11 +168,7 @@ class _Agent365Exporter(SpanExporter):
                     timeout=DEFAULT_HTTP_TIMEOUT_SECONDS,
                 )
 
-                correlation_id = (
-                    resp.headers.get("x-ms-correlation-id")
-                    or resp.headers.get("request-id")
-                    or "N/A"
-                )
+                correlation_id = resp.headers.get("x-ms-correlation-id") or resp.headers.get("request-id") or "N/A"
 
                 if 200 <= resp.status_code < 300:
                     logger.debug(
@@ -195,8 +191,7 @@ class _Agent365Exporter(SpanExporter):
                             time.sleep(0.5 * (2**attempt))
                         continue
                     logger.error(
-                        "HTTP %d final failure after %d attempts. "
-                        "Correlation ID: %s. Response: %s",
+                        "HTTP %d final failure after %d attempts. " "Correlation ID: %s. Response: %s",
                         resp.status_code,
                         DEFAULT_MAX_RETRIES + 1,
                         correlation_id,

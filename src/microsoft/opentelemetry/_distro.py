@@ -164,7 +164,6 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
         _logger.info("Azure Monitor exporter explicitly disabled.")
 
 
-
 def _append_a365_components(
     enable_a365: bool,
     otel_kwargs: Dict[str, Any],

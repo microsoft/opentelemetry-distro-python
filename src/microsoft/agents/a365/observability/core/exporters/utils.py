@@ -189,8 +189,7 @@ def get_validated_domain_override() -> str | None:
                 return None
             if "/" in domain_override:
                 logger.warning(
-                    "Invalid domain override '%s': domain without protocol should not contain "
-                    "path separators (/)",
+                    "Invalid domain override '%s': domain without protocol should not contain " "path separators (/)",
                     domain_override,
                 )
                 return None
@@ -207,9 +206,7 @@ def get_validated_domain_override() -> str | None:
     return domain_override
 
 
-def build_export_url(
-    endpoint: str, agent_id: str, tenant_id: str, use_s2s_endpoint: bool = False
-) -> str:
+def build_export_url(endpoint: str, agent_id: str, tenant_id: str, use_s2s_endpoint: bool = False) -> str:
     """Construct the full export URL from endpoint and agent ID."""
     endpoint_path = (
         f"/observabilityService/tenants/{tenant_id}/agents/{agent_id}/traces"
@@ -395,12 +392,14 @@ def _create_default_token_resolver() -> Callable[[str, str], Optional[str]]:
     Tries FIC first (if the required env vars are set), otherwise
     falls back to ``DefaultAzureCredential``.
     """
-    fic_available = all([
-        os.environ.get(A365_SERVICE_CLIENT_ID_ENV),
-        os.environ.get(A365_SERVICE_CLIENT_SECRET_ENV),
-        os.environ.get(A365_AGENT_APP_INSTANCE_ID_ENV),
-        os.environ.get(A365_AGENTIC_USER_ID_ENV),
-    ])
+    fic_available = all(
+        [
+            os.environ.get(A365_SERVICE_CLIENT_ID_ENV),
+            os.environ.get(A365_SERVICE_CLIENT_SECRET_ENV),
+            os.environ.get(A365_AGENT_APP_INSTANCE_ID_ENV),
+            os.environ.get(A365_AGENTIC_USER_ID_ENV),
+        ]
+    )
 
     if fic_available:
         logger.info("FIC env vars detected \u2014 using FIC token resolver for A365.")

@@ -115,13 +115,10 @@ class OpenTelemetryScope:
         start_time = span_details.start_time if span_details else None
         end_time = span_details.end_time if span_details else None
         span_links = span_details.span_links if span_details else None
-        kind = (
-            span_details.span_kind if span_details and span_details.span_kind else SpanKind.CLIENT
-        )
+        kind = span_details.span_kind if span_details and span_details.span_kind else SpanKind.CLIENT
         if not isinstance(kind, SpanKind):
             logger.warning(
-                "span_details.span_kind has invalid type %s (value: %r); "
-                "falling back to SpanKind.CLIENT",
+                "span_details.span_kind has invalid type %s (value: %r); " "falling back to SpanKind.CLIENT",
                 type(kind).__name__,
                 kind,
             )
@@ -183,12 +180,8 @@ class OpenTelemetryScope:
                     self.set_tag_maybe(GEN_AI_AGENT_VERSION_KEY, agent_details.agent_version)
                     self.set_tag_maybe(GEN_AI_AGENT_AUID_KEY, agent_details.agentic_user_id)
                     self.set_tag_maybe(GEN_AI_AGENT_EMAIL_KEY, agent_details.agentic_user_email)
-                    self.set_tag_maybe(
-                        GEN_AI_AGENT_BLUEPRINT_ID_KEY, agent_details.agent_blueprint_id
-                    )
-                    self.set_tag_maybe(
-                        GEN_AI_AGENT_PLATFORM_ID_KEY, agent_details.agent_platform_id
-                    )
+                    self.set_tag_maybe(GEN_AI_AGENT_BLUEPRINT_ID_KEY, agent_details.agent_blueprint_id)
+                    self.set_tag_maybe(GEN_AI_AGENT_PLATFORM_ID_KEY, agent_details.agent_platform_id)
                     self.set_tag_maybe(TENANT_ID_KEY, agent_details.tenant_id)
                     self.set_tag_maybe(GEN_AI_ICON_URI_KEY, agent_details.icon_uri)
                     # Set provider name dynamically from agent details

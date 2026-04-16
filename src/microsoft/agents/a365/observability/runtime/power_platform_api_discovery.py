@@ -38,9 +38,7 @@ class PowerPlatformApiDiscovery:
     def get_tenant_island_cluster_endpoint(self, tenant_id: str) -> str:
         return self._generate_power_platform_api_domain(tenant_id, "il-")
 
-    def _generate_power_platform_api_domain(
-        self, host_name_identifier: str, host_name_prefix: str = ""
-    ) -> str:
+    def _generate_power_platform_api_domain(self, host_name_identifier: str, host_name_prefix: str = "") -> str:
         # Validate allowed characters: alphanumeric and dash
         if not re.match(r"^[a-zA-Z0-9-]+$", host_name_identifier):
             raise ValueError(

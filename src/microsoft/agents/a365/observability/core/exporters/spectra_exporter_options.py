@@ -44,9 +44,7 @@ class SpectraExporterOptions:
         if protocol not in ("grpc", "http"):
             raise ValueError(f"protocol must be 'grpc' or 'http', got '{protocol}'")
         if endpoint is None:
-            endpoint = (
-                self._DEFAULT_GRPC_ENDPOINT if protocol == "grpc" else self._DEFAULT_HTTP_ENDPOINT
-            )
+            endpoint = self._DEFAULT_GRPC_ENDPOINT if protocol == "grpc" else self._DEFAULT_HTTP_ENDPOINT
         self.endpoint = endpoint
         self.protocol = protocol
         self.insecure = insecure

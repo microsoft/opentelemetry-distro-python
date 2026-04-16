@@ -4,7 +4,10 @@
 from microsoft.agents.a365.observability.runtime.environment_utils import get_observability_authentication_scope
 from microsoft.agents.a365.observability.runtime.operation_error import OperationError
 from microsoft.agents.a365.observability.runtime.operation_result import OperationResult
-from microsoft.agents.a365.observability.runtime.power_platform_api_discovery import ClusterCategory, PowerPlatformApiDiscovery
+from microsoft.agents.a365.observability.runtime.power_platform_api_discovery import (
+    ClusterCategory,
+    PowerPlatformApiDiscovery,
+)
 from microsoft.agents.a365.observability.runtime.utility import Utility
 
 __all__ = [

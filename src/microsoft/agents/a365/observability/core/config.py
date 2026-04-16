@@ -111,9 +111,7 @@ class TelemetryManager:
 
         # Check if a365 observability is already configured
         if self._tracer_provider is not None:
-            self._logger.warning(
-                "a365 observability already configured. Ignoring repeated configure() call."
-            )
+            self._logger.warning("a365 observability already configured. Ignoring repeated configure() call.")
             return True
 
         # Create resource with service information
@@ -132,8 +130,7 @@ class TelemetryManager:
         if getattr(tracer_provider, "resource", None):
             # Use existing provider from application's OTEL setup
             self._logger.info(
-                "Detected existing TracerProvider with resource. "
-                "Adding a365 observability processors to it."
+                "Detected existing TracerProvider with resource. " "Adding a365 observability processors to it."
             )
         else:
             # Create new TracerProvider with our resource
@@ -208,9 +205,7 @@ class TelemetryManager:
         if os.environ.get("ENABLE_OTLP_EXPORTER", "").lower() == "true":
             # The OTLPSpanExporter is auto configured from the environment variables
             otlp_exporter = OTLPSpanExporter()
-            tracer_provider.add_span_processor(
-                _EnrichingBatchSpanProcessor(otlp_exporter, **batch_processor_kwargs)
-            )
+            tracer_provider.add_span_processor(_EnrichingBatchSpanProcessor(otlp_exporter, **batch_processor_kwargs))
 
         # Configure logging if logger_name is provided
         if logger_name:
@@ -239,9 +234,7 @@ class TelemetryManager:
         tracer_name = name or DEFAULT_LOGGER_NAME
         if self._tracer_provider is None:
             # Not configured — return whatever tracer OpenTelemetry provides (no-op)
-            self._logger.warning(
-                "agent365 telemetry not configured; returning a no-op tracer for '%s'", tracer_name
-            )
+            self._logger.warning("agent365 telemetry not configured; returning a no-op tracer for '%s'", tracer_name)
             return trace.get_tracer(tracer_name, version)
 
         # Ensure global tracer provider is set (should already be by configure)

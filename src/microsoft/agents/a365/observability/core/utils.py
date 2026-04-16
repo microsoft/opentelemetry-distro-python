@@ -75,9 +75,7 @@ KeyType = TypeVar("KeyType")
 ValueType = TypeVar("ValueType")
 
 
-def get_first_value(
-    mapping: Mapping[KeyType, ValueType], keys: Iterable[KeyType]
-) -> ValueType | None:
+def get_first_value(mapping: Mapping[KeyType, ValueType], keys: Iterable[KeyType]) -> ValueType | None:
     """
     Returns the first non-null value corresponding to an input key, or None if
     no non-null value is found.

@@ -103,9 +103,7 @@ class InvokeAgentScope(OpenTelemetryScope):
         # spanKind defaults to CLIENT; allow override via span_details
         resolved_span_details = (
             SpanDetails(
-                span_kind=span_details.span_kind
-                if span_details and span_details.span_kind
-                else SpanKind.CLIENT,
+                span_kind=span_details.span_kind if span_details and span_details.span_kind else SpanKind.CLIENT,
                 parent_context=span_details.parent_context if span_details else None,
                 start_time=span_details.start_time if span_details else None,
                 end_time=span_details.end_time if span_details else None,

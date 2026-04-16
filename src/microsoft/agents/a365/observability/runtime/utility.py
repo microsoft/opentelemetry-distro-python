@@ -183,9 +183,7 @@ class Utility:
             with Utility._cache_lock:
                 # Double-checked locking pattern
                 if not Utility._application_name_initialized:
-                    Utility._cached_application_name = (
-                        Utility._read_application_name_from_pyproject()
-                    )
+                    Utility._cached_application_name = Utility._read_application_name_from_pyproject()
                     Utility._application_name_initialized = True
 
         return Utility._cached_application_name

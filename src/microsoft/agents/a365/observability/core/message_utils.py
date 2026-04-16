@@ -51,18 +51,12 @@ def is_wrapped_messages(
 
 def to_input_messages(messages: list[str]) -> list[ChatMessage]:
     """Convert plain input strings into OTEL ``ChatMessage`` objects."""
-    return [
-        ChatMessage(role=MessageRole.USER, parts=[TextPart(content=content)])
-        for content in messages
-    ]
+    return [ChatMessage(role=MessageRole.USER, parts=[TextPart(content=content)]) for content in messages]
 
 
 def to_output_messages(messages: list[str]) -> list[OutputMessage]:
     """Convert plain output strings into OTEL ``OutputMessage`` objects."""
-    return [
-        OutputMessage(role=MessageRole.ASSISTANT, parts=[TextPart(content=content)])
-        for content in messages
-    ]
+    return [OutputMessage(role=MessageRole.ASSISTANT, parts=[TextPart(content=content)]) for content in messages]
 
 
 # ---------------------------------------------------------------------------
