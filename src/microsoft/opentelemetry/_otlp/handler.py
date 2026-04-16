@@ -9,13 +9,9 @@ from dataclasses import dataclass, field
 from logging import getLogger
 from typing import Optional
 
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
-from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanProcessor
-from opentelemetry.sdk.metrics.export import MetricReader, PeriodicExportingMetricReader
+from opentelemetry.sdk.trace.export import SpanProcessor
+from opentelemetry.sdk.metrics.export import MetricReader
 from opentelemetry.sdk._logs import LogRecordProcessor
-from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 
 from microsoft.opentelemetry._constants import (
     _OTEL_EXPORTER_OTLP_ENDPOINT,
@@ -78,6 +74,14 @@ def create_otlp_components(
     Per-signal overrides follow the pattern
     ``OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_{ENDPOINT,HEADERS,TIMEOUT,COMPRESSION}``.
     """
+    # Lazy imports to avoid pulling in OTLP exporter modules when OTLP is not enabled.
+    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+    from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+    from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+    from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+
     components = OtlpHandlers()
 
     if enable_traces:

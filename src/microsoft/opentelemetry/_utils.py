@@ -17,16 +17,6 @@ from microsoft.opentelemetry._constants import (
     SPAN_PROCESSORS_ARG,
 )
 from microsoft.opentelemetry._otlp import is_otlp_enabled, create_otlp_components
-from microsoft.opentelemetry._azure_monitor._configure import (
-    _setup_tracing,
-    _setup_metrics,
-    _setup_logging,
-    _setup_live_metrics,
-    _setup_azure_instrumentations,
-    _setup_browser_sdk_loader,
-    _send_attach_warning,
-)
-from microsoft.opentelemetry._azure_monitor._utils.configurations import _get_configurations
 
 _logger = getLogger(__name__)
 
@@ -75,6 +65,19 @@ def _append_azure_monitor_components(
     Returns (tracer_provider, meter_provider, logger_provider) on success,
     or (None, None, None) on failure.
     """
+    # Lazy imports to avoid pulling in the Azure Monitor exporter stack
+    # when Azure Monitor is not enabled.
+    from microsoft.opentelemetry._azure_monitor._configure import (
+        _setup_tracing,
+        _setup_metrics,
+        _setup_logging,
+        _setup_live_metrics,
+        _setup_azure_instrumentations,
+        _setup_browser_sdk_loader,
+        _send_attach_warning,
+    )
+    from microsoft.opentelemetry._azure_monitor._utils.configurations import _get_configurations
+
     try:
         _send_attach_warning()
         merged = {**otel_kwargs, **azure_monitor_kwargs}
