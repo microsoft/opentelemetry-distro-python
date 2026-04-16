@@ -38,6 +38,7 @@ _SUPPORTED_INSTRUMENTED_LIBRARIES = (
     "urllib3",
     # GENAI
     "langchain",
+    "openai",
 )
 
 # --- Microsoft Distro Constants ---
