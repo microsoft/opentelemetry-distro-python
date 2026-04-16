@@ -96,6 +96,8 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     :rtype: None
     """
 
+    enable_azure_monitor = kwargs.pop(ENABLE_AZURE_MONITOR_ARG, True)
+
     # Separate Azure Monitor kwargs from generic OTel kwargs
     otel_kwargs: Dict[str, Any] = {k: v for k, v in kwargs.items() if k not in _AZURE_MONITOR_KWARG_MAP}
     azure_monitor_kwargs: Dict[str, Any] = {_AZURE_MONITOR_KWARG_MAP[k]: v for k, v in kwargs.items() if k in _AZURE_MONITOR_KWARG_MAP}
@@ -107,8 +109,6 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     tracer_provider: Optional[TracerProvider] = None
     meter_provider: Optional[MeterProvider] = None
     logger_provider: Optional[LoggerProvider] = None
-
-    enable_azure_monitor = kwargs.pop(ENABLE_AZURE_MONITOR_ARG, True)
 
     if enable_azure_monitor:
         tracer_provider, meter_provider, logger_provider = _append_azure_monitor_components(
