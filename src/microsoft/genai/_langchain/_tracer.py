@@ -6,7 +6,7 @@
 import logging
 import re
 from collections import OrderedDict
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from itertools import chain
 from threading import RLock
 from typing import (
@@ -24,7 +24,7 @@ from opentelemetry.context import (
     _SUPPRESS_INSTRUMENTATION_KEY,
     get_value,
 )
-from opentelemetry.trace import Span
+from opentelemetry.trace import Span, SpanKind
 from opentelemetry.util.genai.span_utils import (
     _apply_error_attributes,
     _apply_llm_finish_attributes,
@@ -48,7 +48,10 @@ from microsoft.genai._langchain._utils import (
     GEN_AI_INPUT_MESSAGES_KEY,
     GEN_AI_OPERATION_NAME_KEY,
     GEN_AI_OUTPUT_MESSAGES_KEY,
+    GEN_AI_PROVIDER_NAME_KEY,
     GEN_AI_REQUEST_MODEL_KEY,
+    GEN_AI_USAGE_INPUT_TOKENS_KEY,
+    GEN_AI_USAGE_OUTPUT_TOKENS_KEY,
     SERVER_ADDRESS_KEY,
     SERVER_PORT_KEY,
     add_operation_type,
@@ -64,6 +67,8 @@ from microsoft.genai._langchain._utils import (
     model_name,
     output_messages,
     prompts,
+    _should_capture_content_on_spans,
+    token_counts,
     tools,
 )
 
@@ -167,16 +172,23 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                 name=f"{INVOKE_AGENT_OPERATION_NAME} {wrapper_label}",
                 context=parent_context,
                 start_time=start_time_utc_nano,
+                kind=SpanKind.INTERNAL,
             )
             parent_context = trace_api.set_span_in_context(wrapper_span)
             # Resolve framework name for the inner span (e.g. "LangGraph")
             framework_name = self._resolve_framework_name(run)
             span_name = f"{INVOKE_AGENT_OPERATION_NAME} {framework_name}"
 
+        if run.run_type.lower() in ("llm", "chat_model"):
+            span_kind = SpanKind.CLIENT
+        else:
+            span_kind = SpanKind.INTERNAL
+
         span = self._tracer.start_span(
             name=span_name,
             context=parent_context,
             start_time=start_time_utc_nano,
+            kind=span_kind,
         )
 
         # For agent spans, set immediate attributes and init content aggregation
@@ -189,6 +201,10 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                     "input_messages": [],
                     "output_messages": [],
                     "model": None,
+                    "provider": None,
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "finish_reasons": [],
                 }
                 if wrapper_span is not None:
                     self._agent_wrapper_spans[run.id] = wrapper_span
@@ -201,6 +217,9 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             agent_desc = self._agent_config.get("agent_description")
             if agent_desc:
                 agent_span.set_attribute(GEN_AI_AGENT_DESCRIPTION_KEY, agent_desc)
+            agent_version = self._agent_config.get("agent_version")
+            if agent_version:
+                agent_span.set_attribute("gen_ai.agent.version", agent_version)
             agent_span.set_attributes(dict(flatten(extract_agent_metadata(run))))
             server_addr = self._agent_config.get("server_address")
             if server_addr:
@@ -391,6 +410,19 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                     content["model"] = m
                     break
 
+            if run_type in ("llm", "chat_model") and not content.get("provider"):
+                if run.extra and isinstance(run.extra, Mapping):
+                    meta = run.extra.get("metadata")
+                    if isinstance(meta, Mapping) and (ls_provider := meta.get("ls_provider")):
+                        content["provider"] = str(ls_provider).lower()
+
+            if run_type in ("llm", "chat_model") and run.outputs:
+                for key, val in token_counts(run.outputs):
+                    if key == GEN_AI_USAGE_INPUT_TOKENS_KEY and isinstance(val, int):
+                        content["input_tokens"] = content.get("input_tokens", 0) + val
+                    elif key == GEN_AI_USAGE_OUTPUT_TOKENS_KEY and isinstance(val, int):
+                        content["output_tokens"] = content.get("output_tokens", 0) + val
+
             # Capture input messages from LLM runs (first LLM child wins)
             if run_type in ("llm", "chat_model") and not content["input_messages"]:
                 if run.inputs:
@@ -445,23 +477,29 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         if model := content.get("model"):
             span.set_attribute(GEN_AI_REQUEST_MODEL_KEY, model)
 
-        # Set aggregated input messages
-        if msgs := content.get("input_messages"):
-            span.set_attribute(GEN_AI_INPUT_MESSAGES_KEY, safe_json_dumps(msgs))
-        else:
-            # Fall back to run's own inputs
-            for _, val in invoke_agent_input_message(run.inputs):
-                span.set_attribute(GEN_AI_INPUT_MESSAGES_KEY, val)
-                break
+        if provider := content.get("provider"):
+            span.set_attribute(GEN_AI_PROVIDER_NAME_KEY, provider)
 
-        # Set aggregated output messages
-        if msgs := content.get("output_messages"):
-            span.set_attribute(GEN_AI_OUTPUT_MESSAGES_KEY, safe_json_dumps(msgs))
-        else:
-            # Fall back to run's own outputs
-            for _, val in invoke_agent_output_message(run.outputs):
-                span.set_attribute(GEN_AI_OUTPUT_MESSAGES_KEY, val)
-                break
+        if (input_tokens := content.get("input_tokens")) and input_tokens > 0:
+            span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS_KEY, input_tokens)
+        if (output_tokens := content.get("output_tokens")) and output_tokens > 0:
+            span.set_attribute(GEN_AI_USAGE_OUTPUT_TOKENS_KEY, output_tokens)
+
+        # Set aggregated input/output messages only when content capture is enabled
+        if _should_capture_content_on_spans():
+            if msgs := content.get("input_messages"):
+                span.set_attribute(GEN_AI_INPUT_MESSAGES_KEY, safe_json_dumps(msgs))
+            else:
+                for _, val in invoke_agent_input_message(run.inputs):
+                    span.set_attribute(GEN_AI_INPUT_MESSAGES_KEY, val)
+                    break
+
+            if msgs := content.get("output_messages"):
+                span.set_attribute(GEN_AI_OUTPUT_MESSAGES_KEY, safe_json_dumps(msgs))
+            else:
+                for _, val in invoke_agent_output_message(run.outputs):
+                    span.set_attribute(GEN_AI_OUTPUT_MESSAGES_KEY, val)
+                    break
 
         # Set metadata (session_id, etc.)
         span.set_attributes(dict(flatten(metadata(run))))
@@ -493,6 +531,9 @@ def _update_span(span: Span, run: Run) -> LLMInvocation | None:
     if run_type in ("llm", "chat_model"):
         invocation = build_llm_invocation(run)
         _apply_llm_finish_attributes(span, invocation)
+        # Fix "chat None" span name when model is unknown
+        if invocation.request_model is None:
+            span.update_name(invocation.operation_name)
         # Extras not covered by LLMInvocation
         span.set_attributes(
             dict(

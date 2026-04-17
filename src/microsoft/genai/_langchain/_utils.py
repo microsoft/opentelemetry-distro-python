@@ -38,7 +38,12 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GenAiOperationNameValues,
 )
 from opentelemetry.semconv.attributes.server_attributes import SERVER_ADDRESS, SERVER_PORT
-from opentelemetry.util.genai.utils import gen_ai_json_dumps
+from opentelemetry.util.genai.utils import (
+    ContentCapturingMode,
+    gen_ai_json_dumps,
+    get_content_capturing_mode,
+    is_experimental_mode,
+)
 from opentelemetry.util.genai.types import (
     InputMessage,
     LLMInvocation,
@@ -49,10 +54,25 @@ from opentelemetry.util.genai.types import (
 from opentelemetry.util.types import AttributeValue
 from wrapt import ObjectProxy
 
+try:
+    from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+        GEN_AI_TOOL_DEFINITIONS,
+    )
+except ImportError:
+    GEN_AI_TOOL_DEFINITIONS = "gen_ai.tool.definitions"
+
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 # ---- Core utilities ----------------------------------------------------------
+
+
+def _should_capture_content_on_spans() -> bool:
+    """Check if content should be captured on span attributes."""
+    if not is_experimental_mode():
+        return False
+    mode = get_content_capturing_mode()
+    return mode in (ContentCapturingMode.SPAN_ONLY, ContentCapturingMode.SPAN_AND_EVENT)
 
 
 def safe_json_dumps(obj: Any, **kwargs: Any) -> str:
@@ -182,6 +202,7 @@ GEN_AI_TOOL_DESCRIPTION_KEY = GEN_AI_TOOL_DESCRIPTION
 GEN_AI_TOOL_ARGS_KEY = GEN_AI_TOOL_CALL_ARGUMENTS
 GEN_AI_TOOL_CALL_RESULT_KEY = GEN_AI_TOOL_CALL_RESULT
 GEN_AI_TOOL_TYPE_KEY = GEN_AI_TOOL_TYPE
+GEN_AI_TOOL_DEFINITIONS_KEY = GEN_AI_TOOL_DEFINITIONS
 
 SESSION_ID_KEY = "microsoft.session.id"
 
@@ -302,7 +323,7 @@ def output_messages(
 
 @stop_on_exception
 def invocation_parameters(run: Run) -> Iterator[tuple[str, str]]:
-    if run.run_type.lower() != "llm":
+    if run.run_type.lower() not in ("llm", "chat_model"):
         return
     if not (extra := run.extra):
         return
@@ -311,9 +332,13 @@ def invocation_parameters(run: Run) -> Iterator[tuple[str, str]]:
     if inv_params := extra.get("invocation_params"):
         if not isinstance(inv_params, Mapping):
             return
-        tool_list = inv_params.get("tools", [])
-        for idx, tool in enumerate(tool_list):
-            yield f"{GEN_AI_TOOL_ARGS_KEY}.{idx}", safe_json_dumps(tool)
+        tool_defs = []
+        for source_key in ("tools", "functions"):
+            tool_list = inv_params.get(source_key, [])
+            if isinstance(tool_list, list):
+                tool_defs.extend(tool_list)
+        if tool_defs:
+            yield GEN_AI_TOOL_DEFINITIONS_KEY, safe_json_dumps(tool_defs)
 
 
 @stop_on_exception
@@ -363,15 +388,10 @@ def token_counts(outputs: Mapping[str, Any] | None) -> Iterator[tuple[str, int]]
     ]:
         if (token_count := get_first_value(token_usage, keys)) is not None:
             yield attribute_name, token_count
-    # OpenAI completion_tokens_details
-    if (details := token_usage.get("completion_tokens_details")) is not None:
-        if (token_count := get_first_value(details, ("reasoning_tokens",))) is not None:
-            yield GEN_AI_RESPONSE_FINISH_REASONS_KEY, token_count
     # langchain_core UsageMetadata
     for attribute_name, details_key, keys in [  # type: ignore[assignment]
         (GEN_AI_USAGE_INPUT_TOKENS_KEY, None, ("input_tokens",)),
         (GEN_AI_USAGE_OUTPUT_TOKENS_KEY, None, ("output_tokens",)),
-        (GEN_AI_RESPONSE_FINISH_REASONS_KEY, "output_token_details", ("reasoning",)),
     ]:
         details = token_usage.get(details_key) if details_key else token_usage
         if details is not None:
@@ -403,7 +423,6 @@ def function_calls(outputs: Mapping[str, Any] | None) -> Iterator[tuple[str, str
         return
     if not isinstance(fc, dict):
         return
-    yield GEN_AI_OPERATION_NAME_KEY, EXECUTE_TOOL_OPERATION_NAME
     yield GEN_AI_TOOL_TYPE_KEY, "function"
     name = fc.get("name")
     if isinstance(name, str):
@@ -414,19 +433,20 @@ def function_calls(outputs: Mapping[str, Any] | None) -> Iterator[tuple[str, str
     call_id = fc.get("id")
     if isinstance(call_id, str):
         yield GEN_AI_TOOL_CALL_ID_KEY, call_id
-    args = fc.get("arguments")
-    if args is not None:
-        if isinstance(args, str):
-            try:
-                args_json = safe_json_dumps(json.loads(args))
-            except Exception:
+    if _should_capture_content_on_spans():
+        args = fc.get("arguments")
+        if args is not None:
+            if isinstance(args, str):
+                try:
+                    args_json = safe_json_dumps(json.loads(args))
+                except Exception:
+                    args_json = safe_json_dumps(args)
+            else:
                 args_json = safe_json_dumps(args)
-        else:
-            args_json = safe_json_dumps(args)
-        yield GEN_AI_TOOL_ARGS_KEY, args_json
-    result = fc.get("result")
-    if result is not None:
-        yield GEN_AI_TOOL_CALL_RESULT_KEY, safe_json_dumps(result)
+            yield GEN_AI_TOOL_ARGS_KEY, args_json
+        result = fc.get("result")
+        if result is not None:
+            yield GEN_AI_TOOL_CALL_RESULT_KEY, safe_json_dumps(result)
 
 
 @stop_on_exception
@@ -437,7 +457,7 @@ def tools(run: Run) -> Iterator[tuple[str, str]]:
         return
     if not isinstance(serialized, Mapping):
         return
-    yield GEN_AI_TOOL_TYPE_KEY, "extension"
+    yield GEN_AI_TOOL_TYPE_KEY, "function"
     if name := serialized.get("name"):
         yield GEN_AI_TOOL_NAME_KEY, name
     if description := serialized.get("description"):
@@ -445,23 +465,24 @@ def tools(run: Run) -> Iterator[tuple[str, str]]:
     if run.extra and hasattr(run.extra, "get"):
         if tool_call_id := run.extra.get("tool_call_id"):
             yield GEN_AI_TOOL_CALL_ID_KEY, tool_call_id
-    if run.inputs and hasattr(run.inputs, "get"):
-        if input_val := run.inputs.get("input"):
-            if isinstance(input_val, str):
-                yield GEN_AI_TOOL_ARGS_KEY, input_val
-            else:
-                yield GEN_AI_TOOL_ARGS_KEY, safe_json_dumps(input_val)
-    if run.outputs and hasattr(run.outputs, "get"):
-        if result := run.outputs.get("output"):
-            if isinstance(result, BaseMessage):
-                result_content: str = str(result.content) if hasattr(result, "content") else str(result)
-            elif hasattr(result, "content"):
-                result_content = str(result.content)
-            elif isinstance(result, str):
-                result_content = result
-            else:
-                result_content = safe_json_dumps(result)
-            yield GEN_AI_TOOL_CALL_RESULT_KEY, result_content
+    if _should_capture_content_on_spans():
+        if run.inputs and hasattr(run.inputs, "get"):
+            if input_val := run.inputs.get("input"):
+                if isinstance(input_val, str):
+                    yield GEN_AI_TOOL_ARGS_KEY, input_val
+                else:
+                    yield GEN_AI_TOOL_ARGS_KEY, safe_json_dumps(input_val)
+        if run.outputs and hasattr(run.outputs, "get"):
+            if result := run.outputs.get("output"):
+                if isinstance(result, BaseMessage):
+                    result_content: str = str(result.content) if hasattr(result, "content") else str(result)
+                elif hasattr(result, "content"):
+                    result_content = str(result.content)
+                elif isinstance(result, str):
+                    result_content = result
+                else:
+                    result_content = safe_json_dumps(result)
+                yield GEN_AI_TOOL_CALL_RESULT_KEY, result_content
 
 
 def chain_node_messages(
@@ -472,6 +493,8 @@ def chain_node_messages(
 
     Chain nodes typically store messages as ``{"messages": [BaseMessage, ...]}``.
     """
+    if not _should_capture_content_on_spans():
+        return
     if not data or not isinstance(data, Mapping):
         return
     messages = data.get("messages")
@@ -512,6 +535,42 @@ def build_llm_invocation(run: Run) -> LLMInvocation:
     for _, val in llm_provider(run.extra):
         inv.provider = val
         break
+
+    # --- Request parameters from invocation_params ---
+    if run.extra and isinstance(run.extra, Mapping):
+        inv_params = run.extra.get("invocation_params") or {}
+        if isinstance(inv_params, Mapping):
+            if (temp := inv_params.get("temperature")) is not None:
+                inv.temperature = float(temp)
+            if (tp := inv_params.get("top_p")) is not None:
+                inv.top_p = float(tp)
+            if (mt := inv_params.get("max_tokens")) is not None:
+                inv.max_tokens = int(mt)
+            if (fp := inv_params.get("frequency_penalty")) is not None:
+                inv.frequency_penalty = float(fp)
+            if (pp := inv_params.get("presence_penalty")) is not None:
+                inv.presence_penalty = float(pp)
+            if (seed_val := inv_params.get("seed")) is not None:
+                inv.seed = int(seed_val)
+            stop = inv_params.get("stop")
+            if stop is not None:
+                if isinstance(stop, str):
+                    inv.stop_sequences = [stop]
+                elif isinstance(stop, list):
+                    inv.stop_sequences = [str(s) for s in stop]
+            for key in ("base_url", "api_base", "azure_endpoint"):
+                if addr := inv_params.get(key):
+                    inv.server_address = str(addr).rstrip("/")
+                    break
+
+    # --- Response model name (from llm_output) ---
+    if run.outputs and isinstance(run.outputs, Mapping):
+        llm_output = run.outputs.get("llm_output")
+        if llm_output and hasattr(llm_output, "get"):
+            for key in ("model_name", "model"):
+                if resp_model := llm_output.get(key):
+                    inv.response_model_name = str(resp_model)
+                    break
 
     # --- Token counts ---
     for key, val in token_counts(run.outputs):
