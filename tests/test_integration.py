@@ -10,6 +10,7 @@ Validates public API surface, Azure Monitor delegation, environment variable
 handling, and error paths.
 """
 
+import os
 import unittest
 from unittest.mock import patch
 
@@ -73,6 +74,24 @@ class TestDefaultBehavior(unittest.TestCase):
     @patch("microsoft.opentelemetry._distro._setup_metrics")
     @patch("microsoft.opentelemetry._distro._setup_tracing")
     def test_disabled_when_no_connection_string(self, tracing_mock, metrics_mock, logging_mock, append_mock):
+        use_microsoft_opentelemetry()
+        append_mock.assert_not_called()
+
+    @patch.dict(os.environ, {"APPLICATIONINSIGHTS_CONNECTION_STRING": "InstrumentationKey=env-test;IngestionEndpoint=https://test.in.ai.azure.com/"})
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    def test_enabled_when_env_var_set(self, append_mock):
+        """Azure Monitor is enabled when APPLICATIONINSIGHTS_CONNECTION_STRING env var is set."""
+        use_microsoft_opentelemetry()
+        append_mock.assert_called_once()
+
+    @patch.dict(os.environ, {}, clear=False)
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components")
+    @patch("microsoft.opentelemetry._distro._setup_logging")
+    @patch("microsoft.opentelemetry._distro._setup_metrics")
+    @patch("microsoft.opentelemetry._distro._setup_tracing")
+    def test_disabled_when_env_var_not_set(self, tracing_mock, metrics_mock, logging_mock, append_mock):
+        """Azure Monitor is disabled when no connection string kwarg or env var is present."""
+        os.environ.pop("APPLICATIONINSIGHTS_CONNECTION_STRING", None)
         use_microsoft_opentelemetry()
         append_mock.assert_not_called()
 

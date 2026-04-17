@@ -11,6 +11,7 @@ Validates that the microsoft distro wrapper:
   2. Optionally delegates Azure Monitor exporter setup.
 """
 
+import os
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -33,7 +34,7 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
     """Tests for use_microsoft_opentelemetry() orchestration."""
 
     @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
-    def test_azure_monitor_enabled_by_default(self, append_mock):
+    def test_azure_monitor_enabled_when_connection_string_provided(self, append_mock):
         """Azure Monitor is enabled when a connection string is provided."""
         use_microsoft_opentelemetry(
             azure_monitor_connection_string=TEST_CONNECTION_STRING,
@@ -83,12 +84,14 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
         self.assertEqual(otel_kwargs["sampling_ratio"], 0.5)
         self.assertEqual(otel_kwargs["logger_name"], "test")
 
+    @patch.dict(os.environ, {}, clear=False)
     @patch("microsoft.opentelemetry._distro._append_azure_monitor_components")
     @patch("microsoft.opentelemetry._distro._setup_logging")
     @patch("microsoft.opentelemetry._distro._setup_metrics")
     @patch("microsoft.opentelemetry._distro._setup_tracing")
-    def test_explicit_disable(self, tracing_mock, metrics_mock, logging_mock, append_mock):
-        """Without a connection string, Azure Monitor is not set up."""
+    def test_disabled_when_no_connection_string(self, tracing_mock, metrics_mock, logging_mock, append_mock):
+        """Without a connection string kwarg or env var, Azure Monitor is not set up."""
+        os.environ.pop("APPLICATIONINSIGHTS_CONNECTION_STRING", None)
         use_microsoft_opentelemetry()
         tracing_mock.assert_called_once()
         metrics_mock.assert_called_once()
@@ -105,31 +108,37 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
         self.assertNotIn("enable_azure_monitor", otel_kwargs)
         self.assertNotIn("enable_azure_monitor", azure_kwargs)
 
+    @patch.dict(os.environ, {}, clear=False)
     @patch("microsoft.opentelemetry._distro._setup_logging")
     @patch("microsoft.opentelemetry._distro._setup_metrics")
     @patch("microsoft.opentelemetry._distro._setup_tracing")
     def test_disable_tracing_skips_tracing(self, tracing_mock, metrics_mock, logging_mock):
         """disable_tracing=True skips TracerProvider creation."""
+        os.environ.pop("APPLICATIONINSIGHTS_CONNECTION_STRING", None)
         use_microsoft_opentelemetry(disable_tracing=True)
         tracing_mock.assert_not_called()
         metrics_mock.assert_called_once()
         logging_mock.assert_called_once()
 
+    @patch.dict(os.environ, {}, clear=False)
     @patch("microsoft.opentelemetry._distro._setup_logging")
     @patch("microsoft.opentelemetry._distro._setup_metrics")
     @patch("microsoft.opentelemetry._distro._setup_tracing")
     def test_disable_metrics_skips_metrics(self, tracing_mock, metrics_mock, logging_mock):
         """disable_metrics=True skips MeterProvider creation."""
+        os.environ.pop("APPLICATIONINSIGHTS_CONNECTION_STRING", None)
         use_microsoft_opentelemetry(disable_metrics=True)
         tracing_mock.assert_called_once()
         metrics_mock.assert_not_called()
         logging_mock.assert_called_once()
 
+    @patch.dict(os.environ, {}, clear=False)
     @patch("microsoft.opentelemetry._distro._setup_logging")
     @patch("microsoft.opentelemetry._distro._setup_metrics")
     @patch("microsoft.opentelemetry._distro._setup_tracing")
     def test_disable_logging_skips_logging(self, tracing_mock, metrics_mock, logging_mock):
         """disable_logging=True skips LoggerProvider creation."""
+        os.environ.pop("APPLICATIONINSIGHTS_CONNECTION_STRING", None)
         use_microsoft_opentelemetry(disable_logging=True)
         tracing_mock.assert_called_once()
         metrics_mock.assert_called_once()
