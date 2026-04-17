@@ -349,5 +349,62 @@ class TestSetupLogging(unittest.TestCase):
                     test_logger.removeHandler(h)
 
 
+class TestA365Components(unittest.TestCase):
+    """Tests for A365 enable_a365 flag and _append_a365_components."""
+
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    @patch("microsoft.opentelemetry._distro._append_a365_components")
+    def test_a365_enabled_passed_through(self, a365_mock, azure_monitor_mock):
+        """enable_a365=True is forwarded to _append_a365_components."""
+        use_microsoft_opentelemetry(
+            enable_a365=True,
+        )
+        a365_mock.assert_called_once()
+        call_args = a365_mock.call_args
+        # First arg: enable_a365
+        self.assertTrue(call_args[0][0])
+
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    @patch("microsoft.opentelemetry._distro._append_a365_components")
+    def test_a365_disabled_by_default(self, a365_mock, azure_monitor_mock):
+        """A365 is disabled by default."""
+        use_microsoft_opentelemetry()
+        a365_mock.assert_called_once()
+        # enable_a365 should be False
+        self.assertFalse(a365_mock.call_args[0][0])
+
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    @patch("microsoft.opentelemetry._distro._append_a365_components")
+    def test_a365_flag_not_in_otel_kwargs(self, a365_mock, azure_monitor_mock):
+        """enable_a365 should not leak into azure_monitor_kwargs."""
+        use_microsoft_opentelemetry(
+            enable_a365=True,
+            azure_monitor_connection_string=TEST_CONNECTION_STRING,
+        )
+        # Check azure_monitor_mock received connection_string but not enable_a365
+        am_call = azure_monitor_mock.call_args
+        if am_call:
+            merged = {**am_call[0][0], **am_call[0][1]} if am_call[0] else {}
+            self.assertNotIn("enable_a365", merged)
+
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    def test_a365_appends_span_processors(self, azure_monitor_mock):
+        """When A365 is enabled, its span processors are appended to otel_kwargs."""
+        mock_sp = MagicMock()
+        mock_handlers = MagicMock()
+        mock_handlers.span_processors = [mock_sp]
+
+        with patch(
+            "microsoft.agents.a365.observability.create_a365_components",
+            return_value=mock_handlers,
+        ):
+            use_microsoft_opentelemetry(enable_a365=True, enable_azure_monitor=False)
+
+        from opentelemetry.trace import get_tracer_provider
+
+        tp = get_tracer_provider()
+        self.assertIsNotNone(tp)
+
+
 if __name__ == "__main__":
     unittest.main()

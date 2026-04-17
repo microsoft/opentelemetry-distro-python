@@ -27,6 +27,8 @@ from microsoft.opentelemetry._constants import (
     DISABLE_LOGGING_ARG,
     DISABLE_METRICS_ARG,
     DISABLE_TRACING_ARG,
+    ENABLE_A365_ARG,
+    A365_TOKEN_RESOLVER_ARG,
     ENABLE_AZURE_MONITOR_ARG,
     INSTRUMENTATION_OPTIONS_ARG,
     LOGGER_NAME_ARG,
@@ -93,17 +95,28 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
         Per-library instrumentation enable/disable options.
     :keyword bool enable_trace_based_sampling_for_logs:
         Enable trace-based sampling for logs.
+    :keyword bool enable_a365:
+        Enable Agent365 trace export. Defaults to False.
+    :keyword a365_token_resolver:
+        Optional callable ``(agent_id: str, tenant_id: str) -> str | None``
+        used to authenticate with the Agent365 endpoint.  When omitted,
+        ``DefaultAzureCredential`` is used.
     :rtype: None
     """
 
     enable_azure_monitor = kwargs.pop(ENABLE_AZURE_MONITOR_ARG, True)
+    enable_a365 = kwargs.pop(ENABLE_A365_ARG, False)
+    a365_token_resolver = kwargs.pop(A365_TOKEN_RESOLVER_ARG, None)
 
     # Separate Azure Monitor kwargs from generic OTel kwargs
     otel_kwargs: Dict[str, Any] = {k: v for k, v in kwargs.items() if k not in _AZURE_MONITOR_KWARG_MAP}
-    azure_monitor_kwargs: Dict[str, Any] = {_AZURE_MONITOR_KWARG_MAP[k]: v for k, v in kwargs.items() if k in _AZURE_MONITOR_KWARG_MAP}
+    azure_monitor_kwargs: Dict[str, Any] = {_AZURE_MONITOR_KWARG_MAP[k]: v for k, v in kwargs.items() if k in _AZURE_MONITOR_KWARG_MAP} # pylint: disable=line-too-long
 
     # ---- OTLP exporters (append to user-supplied processors/readers) ----
     _append_otlp_components(otel_kwargs)
+
+    # ---- A365 exporters (append span processors — traces only) ----
+    _append_a365_components(enable_a365, otel_kwargs, token_resolver=a365_token_resolver)  # type: ignore[arg-type]
 
     # ---- Build and register providers ----
     tracer_provider: Optional[TracerProvider] = None
@@ -149,6 +162,50 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     # confirm the setting took effect.
     if not enable_azure_monitor:
         _logger.info("Azure Monitor exporter explicitly disabled.")
+
+
+def _append_a365_components(
+    enable_a365: bool,
+    otel_kwargs: Dict[str, Any],
+    token_resolver: Optional[object] = None,
+) -> None:
+    """Append Agent365 span processors to ``otel_kwargs[SPAN_PROCESSORS_ARG]``.
+
+    A365 only produces span processors (traces).  They are added to the
+    same list that the distro uses when creating the TracerProvider, so
+    the distro registers a single provider for all exporters.
+
+    All A365 configuration is read from environment variables.
+
+    :param token_resolver: Optional callable ``(agent_id, tenant_id) -> str | None``.
+        When provided, it is used instead of ``DefaultAzureCredential``.
+    """
+    if not enable_a365:
+        return
+
+    disable_tracing = otel_kwargs.get(DISABLE_TRACING_ARG, False)
+    if disable_tracing:
+        return
+
+    try:
+        from microsoft.agents.a365.observability import (
+            A365Handlers,
+            create_a365_components,
+        )
+    except ImportError:
+        _logger.warning("A365 export requested but microsoft.agents.a365.observability not available.")
+        return
+
+    try:
+        handlers: A365Handlers = create_a365_components(token_resolver=token_resolver)  # type: ignore[arg-type]
+    except Exception: # pylint: disable=broad-exception-caught
+        _logger.exception("Failed to create A365 components.")
+        return
+
+    if handlers.span_processors:
+        otel_kwargs[SPAN_PROCESSORS_ARG] = list(otel_kwargs.get(SPAN_PROCESSORS_ARG) or [])
+        for sp in handlers.span_processors:
+            otel_kwargs[SPAN_PROCESSORS_ARG].append(sp)
 
 
 # ---------------------------------------------------------------------------
