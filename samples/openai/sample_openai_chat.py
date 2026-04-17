@@ -31,7 +31,7 @@ client = OpenAI(
 )
 
 response = client.chat.completions.create(
-    model="gpt-4.1-4",
+    model="gpt-4.1",
     messages=[
         {"role": "system", "content": "You are a concise assistant. Answer in one or two sentences."},
         {"role": "user", "content": "What is OpenTelemetry?"},
