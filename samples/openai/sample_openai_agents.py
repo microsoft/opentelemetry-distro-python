@@ -32,10 +32,6 @@ os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "gen_ai_latest_experiment
 # azure_monitor_connection_string="InstrumentationKey=..."
 use_microsoft_opentelemetry(
     azure_monitor_connection_string=os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING", ""),
-    disable_logging=True,
-    disable_metrics=True,
-    enable_live_metrics=False,
-    disable_offline_storage=True
 )
 
 @function_tool
