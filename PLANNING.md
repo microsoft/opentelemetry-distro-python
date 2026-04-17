@@ -111,7 +111,7 @@ All GenAI instrumentations in this package (both direct dependencies and interna
 - ~~Do NOT include Traceloop instrumentations (these use the `opentelemetry` namespace but are not official OpenTelemetry contrib packages)~~
 - ~~Do NOT include Arize instrumentations as direct dependencies~~
 - ~~Standard Python instrumentations (Flask, Django, FastAPI, requests, urllib, etc.) are provided by the in-repo Azure Monitor code — do NOT reimplement them in a separate layer~~
-- Decide whether GenAI instrumentations are hard dependencies or optional extras
+- ~~Treat the OpenAI and OpenAI Agents GenAI instrumentations as direct dependencies rather than optional extras~~
 - ~~Make instrumentation enablement explicit and debuggable~~
 
 ### ~~Internal LangChain Instrumentation~~
