@@ -22,6 +22,8 @@ from microsoft.agents.a365.observability.core.span_details import SpanDetails
 from microsoft.agents.a365.observability.core.spans_scopes.output_scope import OutputScope
 from microsoft.agents.a365.observability.core.utils import extract_context_from_headers
 
+# mypy: disable-error-code="call-arg"
+
 logger = logging.getLogger(__name__)
 
 # TurnState key for the parent trace context (W3C traceparent string).

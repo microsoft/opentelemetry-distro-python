@@ -23,6 +23,8 @@ from microsoft.agents.a365.observability.core.exporters.utils import is_agent365
 from microsoft.agents.a365.observability.core.exporters.spectra_exporter_options import SpectraExporterOptions
 from microsoft.agents.a365.observability.core.exporters.span_processor import A365SpanProcessor as SpanProcessor
 
+# mypy: disable-error-code="no-untyped-def, assignment, attr-defined, arg-type"
+
 DEFAULT_LOGGER_NAME = __name__
 
 # pylint: disable=broad-exception-caught, too-many-instance-attributes

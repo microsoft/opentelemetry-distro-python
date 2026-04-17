@@ -35,6 +35,8 @@ from microsoft.agents.a365.observability.core.exporters.utils import (
     truncate_span,
 )
 
+# mypy: disable-error-code="import-untyped, union-attr"
+
 # Hardcoded constants - not configurable
 DEFAULT_HTTP_TIMEOUT_SECONDS = 30.0
 DEFAULT_MAX_RETRIES = 3

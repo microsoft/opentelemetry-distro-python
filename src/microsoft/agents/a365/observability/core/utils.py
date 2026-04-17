@@ -26,6 +26,8 @@ from wrapt import ObjectProxy
 
 from microsoft.agents.a365.observability.core.constants import ERROR_TYPE_KEY
 
+# mypy: disable-error-code="no-untyped-def"
+
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 

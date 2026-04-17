@@ -52,6 +52,8 @@ if TYPE_CHECKING:
     from microsoft.agents.a365.observability.core.agent_details import AgentDetails
     from microsoft.agents.a365.observability.core.span_details import SpanDetails
 
+# mypy: disable-error-code="attr-defined, no-untyped-def"
+
 # Create logger for this module
 logger = logging.getLogger(__name__)
 

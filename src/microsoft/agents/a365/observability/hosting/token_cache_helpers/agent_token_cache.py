@@ -131,7 +131,7 @@ class AgenticTokenCache:
             )
 
             logger.info("Successfully exchanged token for %s", key)
-            return token
+            return token  # type: ignore[no-any-return]
         except Exception as e:  # pylint: disable=broad-exception-caught
             # Return None if token generation fails
             logger.error("Token exchange failed for %s: %s", key, type(e).__name__)

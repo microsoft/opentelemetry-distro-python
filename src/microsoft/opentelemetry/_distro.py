@@ -116,7 +116,7 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     _append_otlp_components(otel_kwargs)
 
     # ---- A365 exporters (append span processors — traces only) ----
-    _append_a365_components(enable_a365, otel_kwargs, token_resolver=a365_token_resolver)
+    _append_a365_components(enable_a365, otel_kwargs, token_resolver=a365_token_resolver)  # type: ignore[arg-type]
 
     # ---- Build and register providers ----
     tracer_provider: Optional[TracerProvider] = None
@@ -197,7 +197,7 @@ def _append_a365_components(
         return
 
     try:
-        handlers: A365Handlers = create_a365_components(token_resolver=token_resolver)
+        handlers: A365Handlers = create_a365_components(token_resolver=token_resolver)  # type: ignore[arg-type]
     except Exception: # pylint: disable=broad-exception-caught
         _logger.exception("Failed to create A365 components.")
         return

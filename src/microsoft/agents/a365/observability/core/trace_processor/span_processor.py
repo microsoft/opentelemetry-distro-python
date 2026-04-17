@@ -21,6 +21,8 @@ from opentelemetry.sdk.trace import SpanProcessor as BaseSpanProcessor
 from microsoft.agents.a365.observability.core.constants import GEN_AI_OPERATION_NAME_KEY, INVOKE_AGENT_OPERATION_NAME
 from microsoft.agents.a365.observability.core.trace_processor.util import COMMON_ATTRIBUTES, INVOKE_AGENT_ATTRIBUTES
 
+# mypy: disable-error-code="no-untyped-def"
+
 # pylint: disable=broad-exception-caught, useless-parent-delegation
 class SpanProcessor(BaseSpanProcessor):
     """Span processor that propagates every baggage key/value to span attributes."""

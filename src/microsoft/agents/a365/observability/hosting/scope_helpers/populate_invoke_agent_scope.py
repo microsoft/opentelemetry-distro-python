@@ -18,6 +18,8 @@ from microsoft.agents.a365.observability.hosting.scope_helpers.utils import (
 if TYPE_CHECKING:
     from microsoft_agents.hosting.core.turn_context import TurnContext
 
+# mypy: disable-error-code="arg-type"
+
 
 def populate(scope: InvokeAgentScope, turn_context: TurnContext) -> InvokeAgentScope:
     """

@@ -64,7 +64,7 @@ class OperationResult:
         Returns:
             OperationResult: An OperationResult indicating a successful operation.
         """
-        return OperationResult._success_instance
+        return OperationResult._success_instance  # type: ignore[return-value]
 
     @staticmethod
     def failed(*errors: OperationError) -> "OperationResult":

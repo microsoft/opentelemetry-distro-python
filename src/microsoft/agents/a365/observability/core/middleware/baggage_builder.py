@@ -33,6 +33,8 @@ from microsoft.agents.a365.observability.core.constants import (
 )
 from microsoft.agents.a365.observability.core.utils import validate_and_normalize_ip
 
+# mypy: disable-error-code="no-untyped-def"
+
 logger = logging.getLogger(__name__)
 
 

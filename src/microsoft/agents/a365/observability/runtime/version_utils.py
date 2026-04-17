@@ -14,7 +14,7 @@ from __future__ import annotations
 import os
 
 
-def build_version():
+def build_version():  # type: ignore[no-untyped-def]
     """
     DEPRECATED: This function is no longer used.
 

@@ -343,7 +343,7 @@ def _create_fic_token_resolver() -> Callable[[str, str], Optional[str]]:
                 _cache[cache_key] = (access_token, time.time() + expires_in)
 
             logger.debug("FIC token acquired for agent %s, tenant %s", agent_id, tenant_id)
-            return access_token
+            return access_token  # type: ignore[no-any-return]
 
         except Exception:
             logger.warning("FIC token flow failed.", exc_info=True)

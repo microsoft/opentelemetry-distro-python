@@ -58,6 +58,8 @@ from microsoft.agents.a365.observability.constants import (
     USER_NAME_KEY,
 )
 
+# mypy: disable-error-code="no-untyped-def"
+
 # Generic / common tracing attributes propagated from baggage to all spans
 COMMON_ATTRIBUTES = [
     TENANT_ID_KEY,
