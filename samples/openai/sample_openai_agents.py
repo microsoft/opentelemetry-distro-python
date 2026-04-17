@@ -9,6 +9,8 @@ Prerequisites:
 Environment variables:
     APPLICATIONINSIGHTS_CONNECTION_STRING  – Azure Monitor connection string
     OPENAI_API_KEY                         – OpenAI API key
+    AZURE_OPENAI_ENDPOINT                  – Azure OpenAI endpoint
+    AZURE_OPENAI_API_KEY                   – Azure OpenAI API key
 """
 
 import os
