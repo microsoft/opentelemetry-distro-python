@@ -16,7 +16,7 @@ from typing import Any, Optional, Set
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.util import types
 
-
+# pylint:disable=super-init-not-called
 class EnrichedReadableSpan(ReadableSpan):
     """Wrapper to add attributes to an immutable ReadableSpan.
 

@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 _span_enricher: Optional[Callable[[ReadableSpan], ReadableSpan]] = None
 _enricher_lock = threading.Lock()
 
-
+# pylint: disable=global-statement, broad-exception-caught
 def register_span_enricher(enricher: Callable[[ReadableSpan], ReadableSpan]) -> None:
     """Register the span enricher for the active platform instrumentor.
 
@@ -45,7 +45,7 @@ def register_span_enricher(enricher: Callable[[ReadableSpan], ReadableSpan]) -> 
     with _enricher_lock:
         if _span_enricher is not None:
             raise RuntimeError(
-                "A span enricher is already registered. " "Only one platform instrumentor can be active at a time."
+                "A span enricher is already registered. Only one platform instrumentor can be active at a time."
             )
         _span_enricher = enricher
         logger.debug("Span enricher registered: %s", enricher.__name__)

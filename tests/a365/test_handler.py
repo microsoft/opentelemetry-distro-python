@@ -75,7 +75,6 @@ class TestCreateA365Components(unittest.TestCase):
         with patch.dict(os.environ, env, clear=True):
             os.environ["ENABLE_A365_OBSERVABILITY_EXPORTER"] = "true"
             handlers = create_a365_components()
-            from microsoft.agents.a365.observability.core.exporters.span_processor import A365SpanProcessor
 
             span_proc = handlers.span_processors[1]
             self.assertIsNone(span_proc._tenant_id)

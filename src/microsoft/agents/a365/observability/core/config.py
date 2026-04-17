@@ -25,7 +25,7 @@ from microsoft.agents.a365.observability.core.exporters.span_processor import A3
 
 DEFAULT_LOGGER_NAME = __name__
 
-
+# pylint: disable=broad-exception-caught, too-many-instance-attributes
 class TelemetryManager:
     """
     Thread-safe singleton manager for telemetry operations.
@@ -93,7 +93,7 @@ class TelemetryManager:
                     **kwargs,
                 )
         except Exception as e:
-            self._logger.error(f"Failed to configure telemetry: {e}")
+            self._logger.error("Failed to configure telemetry: %s", e)
             return False
 
     def _configure_internal(
@@ -130,7 +130,7 @@ class TelemetryManager:
         if getattr(tracer_provider, "resource", None):
             # Use existing provider from application's OTEL setup
             self._logger.info(
-                "Detected existing TracerProvider with resource. " "Adding a365 observability processors to it."
+                "Detected existing TracerProvider with resource. Adding a365 observability processors to it."
             )
         else:
             # Create new TracerProvider with our resource

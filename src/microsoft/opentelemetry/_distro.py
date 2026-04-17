@@ -110,7 +110,7 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
 
     # Separate Azure Monitor kwargs from generic OTel kwargs
     otel_kwargs: Dict[str, Any] = {k: v for k, v in kwargs.items() if k not in _AZURE_MONITOR_KWARG_MAP}
-    azure_monitor_kwargs: Dict[str, Any] = {_AZURE_MONITOR_KWARG_MAP[k]: v for k, v in kwargs.items() if k in _AZURE_MONITOR_KWARG_MAP}
+    azure_monitor_kwargs: Dict[str, Any] = {_AZURE_MONITOR_KWARG_MAP[k]: v for k, v in kwargs.items() if k in _AZURE_MONITOR_KWARG_MAP} # pylint: disable=line-too-long
 
     # ---- OTLP exporters (append to user-supplied processors/readers) ----
     _append_otlp_components(otel_kwargs)
@@ -198,7 +198,7 @@ def _append_a365_components(
 
     try:
         handlers: A365Handlers = create_a365_components(token_resolver=token_resolver)
-    except Exception:
+    except Exception: # pylint: disable=broad-exception-caught
         _logger.exception("Failed to create A365 components.")
         return
 

@@ -118,7 +118,7 @@ class OpenTelemetryScope:
         kind = span_details.span_kind if span_details and span_details.span_kind else SpanKind.CLIENT
         if not isinstance(kind, SpanKind):
             logger.warning(
-                "span_details.span_kind has invalid type %s (value: %r); " "falling back to SpanKind.CLIENT",
+                "span_details.span_kind has invalid type %s (value: %r); falling back to SpanKind.CLIENT",
                 type(kind).__name__,
                 kind,
             )
@@ -156,9 +156,9 @@ class OpenTelemetryScope:
             # Log span creation
             if self._span:
                 span_id = f"{self._span.context.span_id:016x}" if self._span.context else "unknown"
-                logger.info(f"Span started: '{activity_name}' ({span_id})")
+                logger.info("Span started: '%s' (%s)", activity_name, span_id)
             else:
-                logger.error(f"Failed to create span: '{activity_name}' - tracer returned None")
+                logger.error("Failed to create span: '%s' - tracer returned None", activity_name)
 
             # Set common tags
             if self._span:
@@ -262,7 +262,7 @@ class OpenTelemetryScope:
         if self._span and self._is_telemetry_enabled() and not self._has_ended:
             self._has_ended = True
             span_id = f"{self._span.context.span_id:016x}" if self._span.context else "unknown"
-            logger.info(f"Span ended: '{self._span.name}' ({span_id})")
+            logger.info("Span ended: '%s' (%s)", self._span.name, span_id)
 
             # Convert custom end time to OTel-compatible format (nanoseconds since epoch)
             otel_end_time = self._datetime_to_ns(self._custom_end_time)

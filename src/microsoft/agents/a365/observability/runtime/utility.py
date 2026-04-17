@@ -21,7 +21,7 @@ from typing import Any, Optional
 
 import jwt
 
-
+# pylint: disable=broad-exception-caught
 class Utility:
     """
     Utility class providing common runtime operations for Agent 365.
@@ -218,7 +218,7 @@ class Utility:
                 if stripped == "[project]":
                     in_project_section = True
                     continue
-                elif stripped.startswith("[") and stripped.endswith("]"):
+                if stripped.startswith("[") and stripped.endswith("]"):
                     in_project_section = False
                     continue
 

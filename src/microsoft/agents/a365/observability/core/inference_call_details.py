@@ -8,6 +8,7 @@ from microsoft.agents.a365.observability.core.models.service_endpoint import Ser
 
 
 @dataclass
+# pylint: disable=too-many-instance-attributes
 class InferenceCallDetails:
     """Details of an inference call for generative AI operations."""
 

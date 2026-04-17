@@ -44,6 +44,7 @@ logger = logging.getLogger(__name__)
 
 
 @final
+# pylint: disable=broad-exception-caught
 class _Agent365Exporter(SpanExporter):
     """Agent365 span exporter.
 
@@ -191,7 +192,7 @@ class _Agent365Exporter(SpanExporter):
                             time.sleep(0.5 * (2**attempt))
                         continue
                     logger.error(
-                        "HTTP %d final failure after %d attempts. " "Correlation ID: %s. Response: %s",
+                        "HTTP %d final failure after %d attempts. Correlation ID: %s. Response: %s",
                         resp.status_code,
                         DEFAULT_MAX_RETRIES + 1,
                         correlation_id,

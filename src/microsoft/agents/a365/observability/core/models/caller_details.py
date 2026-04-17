@@ -4,10 +4,11 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
+from microsoft.agents.a365.observability.core.models.user_details import UserDetails
+
 if TYPE_CHECKING:
     from microsoft.agents.a365.observability.core.agent_details import AgentDetails
 
-from microsoft.agents.a365.observability.core.models.user_details import UserDetails
 
 
 @dataclass

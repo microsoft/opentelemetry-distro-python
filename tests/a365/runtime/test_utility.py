@@ -14,7 +14,7 @@ import jwt
 import pytest
 from microsoft.agents.a365.observability.runtime.utility import Utility
 
-
+# pylint: disable=redefined-outer-name
 # Fixtures (Mocks and Helpers)
 @pytest.fixture
 def create_test_jwt():

@@ -29,7 +29,7 @@ from microsoft.agents.a365.observability.core.models.messages import (
 
 logger = logging.getLogger(__name__)
 
-
+# pylint: disable=broad-exception-caught
 def is_string_list(
     param: Union[InputMessagesParam, OutputMessagesParam],
 ) -> bool:

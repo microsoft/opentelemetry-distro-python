@@ -90,9 +90,9 @@ class AgenticTokenCache:
                     agentic_token_struct=token_generator,
                     scopes=observability_scopes,
                 )
-                logger.debug(f"Registered observability for {key}")
+                logger.debug("Registered observability for %s", key)
             else:
-                logger.debug(f"Observability already registered for {key}, ignoring")
+                logger.debug("Observability already registered for %s, ignoring", key)
 
     async def get_observability_token(self, agent_id: str, tenant_id: str) -> str | None:
         """
@@ -107,16 +107,16 @@ class AgenticTokenCache:
         """
         key = f"{agent_id}:{tenant_id}"
 
-        logger.debug(f"Cache lookup for {key}")
+        logger.debug("Cache lookup for %s", key)
 
         with self._lock:
             entry = self._map.get(key)
 
         if entry is None:
-            logger.debug(f"Cache miss for {key}")
+            logger.debug("Cache miss for %s", key)
             return None
 
-        logger.debug(f"Cache hit for {key}, exchanging token")
+        logger.debug("Cache hit for %s, exchanging token", key)
 
         try:
             authorization = entry.agentic_token_struct.authorization
@@ -130,9 +130,9 @@ class AgenticTokenCache:
                 auth_handler_id=auth_handler_id,
             )
 
-            logger.info(f"Successfully exchanged token for {key}")
+            logger.info("Successfully exchanged token for %s", key)
             return token
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             # Return None if token generation fails
-            logger.error(f"Token exchange failed for {key}: {type(e).__name__}")
+            logger.error("Token exchange failed for %s: %s", key, type(e).__name__)
             return None

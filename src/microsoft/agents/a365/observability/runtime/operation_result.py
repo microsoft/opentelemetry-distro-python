@@ -89,9 +89,8 @@ class OperationResult:
         """
         if self._succeeded:
             return "Succeeded"
-        else:
-            error_messages = ", ".join(str(error.message) for error in self._errors)
-            return f"Failed: {error_messages}" if error_messages else "Failed"
+        error_messages = ", ".join(str(error.message) for error in self._errors)
+        return f"Failed: {error_messages}" if error_messages else "Failed"
 
 
 # Module-level eager initialization (thread-safe by Python's import lock)

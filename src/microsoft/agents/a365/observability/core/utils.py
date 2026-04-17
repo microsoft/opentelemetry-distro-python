@@ -29,7 +29,7 @@ from microsoft.agents.a365.observability.core.constants import ERROR_TYPE_KEY
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
-
+# pylint: disable=broad-exception-caught
 def extract_context_from_headers(headers: dict[str, str]) -> context.Context:
     """Extract an OpenTelemetry Context from W3C trace HTTP headers.
 
@@ -184,7 +184,7 @@ def extract_model_name(span_name: str) -> str | None:
         return parts[1]
     # If we have more than 2 parts, the model name starts from the 3rd part
     # Format: "chat.completions model-name" or "chat.completions model-name-with-dashes"
-    elif len(parts) >= 3:
+    if len(parts) >= 3:
         # Join everything after "chat.completions" to handle model names with spaces/dashes
         model_name = " ".join(parts[2:])
         return model_name.strip()
@@ -242,5 +242,5 @@ def validate_and_normalize_ip(ip_string: str | None) -> str | None:
         ip_obj = ip_address(ip_string)
         return str(ip_obj)
     except (ValueError, AddressValueError):
-        logger.error(f"Invalid IP address: '{ip_string}'")
+        logger.error("Invalid IP address: '%s'", ip_string)
         return None

@@ -71,7 +71,7 @@ class ObservabilityHostingManager:
 
         if cls._instance is not None:
             logger.warning(
-                "[ObservabilityHostingManager] Already configured. " "Subsequent configure() calls are ignored."
+                "[ObservabilityHostingManager] Already configured. Subsequent configure() calls are ignored."
             )
             return cls._instance
 

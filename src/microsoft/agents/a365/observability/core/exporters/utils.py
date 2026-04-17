@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 # Maximum allowed span size in bytes (250KB)
 MAX_SPAN_SIZE_BYTES = 250 * 1024
 
-
+# pylint: disable=broad-exception-caught, too-many-return-statements
 def hex_trace_id(value: int) -> str:
     """Convert a 128-bit trace ID to a 32-character hex string."""
     return f"{value:032x}"
@@ -189,7 +189,7 @@ def get_validated_domain_override() -> str | None:
                 return None
             if "/" in domain_override:
                 logger.warning(
-                    "Invalid domain override '%s': domain without protocol should not contain " "path separators (/)",
+                    "Invalid domain override '%s': domain without protocol should not contain path separators (/)",
                     domain_override,
                 )
                 return None
@@ -404,9 +404,8 @@ def _create_default_token_resolver() -> Callable[[str, str], Optional[str]]:
     if fic_available:
         logger.info("FIC env vars detected \u2014 using FIC token resolver for A365.")
         return _create_fic_token_resolver()
-    else:
-        logger.info("FIC env vars not set \u2014 falling back to DefaultAzureCredential for A365.")
-        return _create_dac_token_resolver()
+    logger.info("FIC env vars not set \u2014 falling back to DefaultAzureCredential for A365.")
+    return _create_dac_token_resolver()
 
 
 @dataclass
@@ -446,6 +445,7 @@ def create_a365_components(
       - ``A365_USE_S2S_ENDPOINT`` -- defaults to False
       - ``A365_SUPPRESS_INVOKE_AGENT_INPUT`` -- defaults to False
     """
+    # pylint: disable=import-outside-toplevel,cyclic-import
     from microsoft.agents.a365.observability.core.exporters.enriching_span_processor import _EnrichingBatchSpanProcessor
     from microsoft.agents.a365.observability.core.exporters.agent365_exporter import _Agent365Exporter
     from microsoft.agents.a365.observability.core.exporters.agent365_exporter_options import Agent365ExporterOptions

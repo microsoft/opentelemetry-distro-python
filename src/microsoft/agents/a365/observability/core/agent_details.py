@@ -6,6 +6,7 @@ from typing import Optional
 
 
 @dataclass
+# pylint: disable=too-many-instance-attributes
 class AgentDetails:
     """Details about an AI agent in the system."""
 

@@ -9,7 +9,6 @@ from opentelemetry.sdk.trace.export import SpanExportResult
 from opentelemetry.trace import SpanKind, StatusCode
 
 from microsoft.agents.a365.observability.core.exporters.agent365_exporter import (
-    DEFAULT_ENDPOINT_URL,
     _Agent365Exporter,
 )
 
