@@ -80,7 +80,7 @@ class TestDefaultBehavior(unittest.TestCase):
     @patch.dict(os.environ, {"APPLICATIONINSIGHTS_CONNECTION_STRING": "InstrumentationKey=env-test;IngestionEndpoint=https://test.in.ai.azure.com/"})
     @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
     def test_enabled_when_env_var_set(self, append_mock):
-        """Azure Monitor is enabled when APPLICATIONINSIGHTS_CONNECTION_STRING env var is set."""  #pylint: disable=line-too-long
+        """Azure Monitor is enabled when APPLICATIONINSIGHTS_CONNECTION_STRING env var is set."""  # pylint: disable=line-too-long
         use_microsoft_opentelemetry()
         append_mock.assert_called_once()
 
