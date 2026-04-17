@@ -95,7 +95,7 @@ class TestTruncateSpan(unittest.TestCase):
         large_value = "x" * (MAX_SPAN_SIZE_BYTES + 1000)
         span = {"name": "test", "attributes": {"big": large_value}}
         truncate_span(span)
-        self.assertEqual(span["attributes"]["big"], large_value)
+        self.assertEqual(span["attributes"]["big"], large_value)  # type: ignore[index]
 
     def test_empty_attributes(self):
         span = {"name": "test", "attributes": {}}
