@@ -24,7 +24,7 @@ pip install -r requirements.txt
 | `AZURE_OPENAI_API_KEY`                  | Azure OpenAI API key                                     |
 | `AZURE_OPENAI_DEPLOYMENT`               | Azure OpenAI deployment/model name                       |
 | `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` | Set to capture GenAI message content (prompts and completions). The options are `SPAN_ONLY`, `EVENT_ONLY` and `SPAN_AND_EVENT` |
-| `OTEL_SEMCONV_STABILITY_OPT_IN`        | Set to `gen_ai_latest_experimental` to enable to enable experimental attributes. (must be set if the above is set) |
+| `OTEL_SEMCONV_STABILITY_OPT_IN`        | Set to `gen_ai_latest_experimental` to enable experimental attributes. (must be set if the above is set) |
 
 ## Samples
 
