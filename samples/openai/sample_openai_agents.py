@@ -15,15 +15,19 @@ Environment variables:
 
 import os
 
-os.environ.setdefault("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "SPAN_AND_EVENT")
-os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "gen_ai_latest_experimental")
-
-from agents import Agent, Runner, function_tool
-from agents import Agent, Runner, set_default_openai_api, set_default_openai_client
+from agents import (
+    Agent,
+    Runner,
+    function_tool,
+    set_default_openai_api,
+    set_default_openai_client,
+)
 from openai import AsyncAzureOpenAI
 
 from microsoft.opentelemetry import use_microsoft_opentelemetry
 
+os.environ.setdefault("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "SPAN_AND_EVENT")
+os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "gen_ai_latest_experimental")
 # Connection string can also be passed directly:
 # azure_monitor_connection_string="InstrumentationKey=..."
 use_microsoft_opentelemetry(
