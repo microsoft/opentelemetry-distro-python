@@ -5,6 +5,7 @@
 # --------------------------------------------------------------------------
 from functools import cached_property
 from logging import getLogger, Formatter
+import os
 from typing import Any, Dict, List, Optional
 
 from opentelemetry.metrics import set_meter_provider
@@ -29,7 +30,6 @@ from microsoft.opentelemetry._constants import (
     DISABLE_TRACING_ARG,
     ENABLE_A365_ARG,
     A365_TOKEN_RESOLVER_ARG,
-    ENABLE_AZURE_MONITOR_ARG,
     INSTRUMENTATION_OPTIONS_ARG,
     LOGGER_NAME_ARG,
     LOGGING_FORMATTER_ARG,
@@ -39,6 +39,7 @@ from microsoft.opentelemetry._constants import (
     SPAN_PROCESSORS_ARG,
     VIEWS_ARG,
     _AZURE_MONITOR_KWARG_MAP,
+    _APPLICATIONINSIGHTS_CONNECTION_STRING_ENV,
     _SUPPORTED_INSTRUMENTED_LIBRARIES,
 )
 from microsoft.opentelemetry._instrumentation import get_dist_dependency_conflicts
@@ -55,14 +56,11 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
 
     This function sets up the OpenTelemetry global providers
     (TracerProvider, MeterProvider, LoggerProvider) and optionally
-    configures Azure Monitor as an exporter.  Non-Azure Monitor
-    scenarios are supported: disable Azure Monitor via
-    ``enable_azure_monitor=False`` and the core OTel providers
-    will still be initialised normally.
+    configures Azure Monitor as an exporter.  Azure Monitor is
+    automatically enabled when a connection string is provided
+    via the ``azure_monitor_connection_string`` keyword or the
+    ``APPLICATIONINSIGHTS_CONNECTION_STRING`` environment variable.
 
-    :keyword bool enable_azure_monitor:
-        Enable Azure Monitor export.
-        Defaults to True. Set to False to skip Azure Monitor setup.
     :keyword str azure_monitor_connection_string:
         Connection string for Application Insights resource.
     :keyword azure_monitor_exporter_credential:
@@ -104,13 +102,20 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     :rtype: None
     """
 
-    enable_azure_monitor = kwargs.pop(ENABLE_AZURE_MONITOR_ARG, True)
     enable_a365 = kwargs.pop(ENABLE_A365_ARG, False)
     a365_token_resolver = kwargs.pop(A365_TOKEN_RESOLVER_ARG, None)
 
     # Separate Azure Monitor kwargs from generic OTel kwargs
     otel_kwargs: Dict[str, Any] = {k: v for k, v in kwargs.items() if k not in _AZURE_MONITOR_KWARG_MAP}
-    azure_monitor_kwargs: Dict[str, Any] = {_AZURE_MONITOR_KWARG_MAP[k]: v for k, v in kwargs.items() if k in _AZURE_MONITOR_KWARG_MAP} # pylint: disable=line-too-long
+    azure_monitor_kwargs: Dict[str, Any] = {
+        _AZURE_MONITOR_KWARG_MAP[k]: v for k, v in kwargs.items() if k in _AZURE_MONITOR_KWARG_MAP
+    }
+
+    # Enabled when a connection string is provided
+    # via kwarg or APPLICATIONINSIGHTS_CONNECTION_STRING env var.
+    enable_azure_monitor = bool(
+        azure_monitor_kwargs.get("connection_string") or os.environ.get(_APPLICATIONINSIGHTS_CONNECTION_STRING_ENV)
+    )
 
     # ---- OTLP exporters (append to user-supplied processors/readers) ----
     _append_otlp_components(otel_kwargs)
@@ -198,7 +203,7 @@ def _append_a365_components(
 
     try:
         handlers: A365Handlers = create_a365_components(token_resolver=token_resolver)  # type: ignore[arg-type]
-    except Exception: # pylint: disable=broad-exception-caught
+    except Exception:  # pylint: disable=broad-exception-caught
         _logger.exception("Failed to create A365 components.")
         return
 

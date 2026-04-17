@@ -44,7 +44,7 @@ _SUPPORTED_INSTRUMENTED_LIBRARIES = (
 
 # --- Microsoft Distro Constants ---
 
-ENABLE_AZURE_MONITOR_ARG = "enable_azure_monitor"
+_APPLICATIONINSIGHTS_CONNECTION_STRING_ENV = "APPLICATIONINSIGHTS_CONNECTION_STRING"
 
 # --- OTLP Environment Variable Constants ---
 

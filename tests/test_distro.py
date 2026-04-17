@@ -34,8 +34,10 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
 
     @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
     def test_azure_monitor_enabled_by_default(self, append_mock):
-        """Azure Monitor is enabled by default; components are collected."""
-        use_microsoft_opentelemetry()
+        """Azure Monitor is enabled when a connection string is provided."""
+        use_microsoft_opentelemetry(
+            azure_monitor_connection_string=TEST_CONNECTION_STRING,
+        )
         append_mock.assert_called_once()
 
     @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
@@ -86,11 +88,8 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
     @patch("microsoft.opentelemetry._distro._setup_metrics")
     @patch("microsoft.opentelemetry._distro._setup_tracing")
     def test_explicit_disable(self, tracing_mock, metrics_mock, logging_mock, append_mock):
-        """Explicitly disabling Azure Monitor still creates providers."""
-        use_microsoft_opentelemetry(
-            azure_monitor_connection_string=TEST_CONNECTION_STRING,
-            enable_azure_monitor=False,
-        )
+        """Without a connection string, Azure Monitor is not set up."""
+        use_microsoft_opentelemetry()
         tracing_mock.assert_called_once()
         metrics_mock.assert_called_once()
         logging_mock.assert_called_once()
@@ -98,10 +97,9 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
 
     @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
     def test_enable_key_not_forwarded(self, append_mock):
-        """enable_azure_monitor is consumed, not forwarded."""
+        """Azure Monitor kwargs do not leak into otel_kwargs."""
         use_microsoft_opentelemetry(
             azure_monitor_connection_string=TEST_CONNECTION_STRING,
-            enable_azure_monitor=True,
         )
         otel_kwargs, azure_kwargs = append_mock.call_args[0]
         self.assertNotIn("enable_azure_monitor", otel_kwargs)
@@ -112,7 +110,7 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
     @patch("microsoft.opentelemetry._distro._setup_tracing")
     def test_disable_tracing_skips_tracing(self, tracing_mock, metrics_mock, logging_mock):
         """disable_tracing=True skips TracerProvider creation."""
-        use_microsoft_opentelemetry(disable_tracing=True, enable_azure_monitor=False)
+        use_microsoft_opentelemetry(disable_tracing=True)
         tracing_mock.assert_not_called()
         metrics_mock.assert_called_once()
         logging_mock.assert_called_once()
@@ -122,7 +120,7 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
     @patch("microsoft.opentelemetry._distro._setup_tracing")
     def test_disable_metrics_skips_metrics(self, tracing_mock, metrics_mock, logging_mock):
         """disable_metrics=True skips MeterProvider creation."""
-        use_microsoft_opentelemetry(disable_metrics=True, enable_azure_monitor=False)
+        use_microsoft_opentelemetry(disable_metrics=True)
         tracing_mock.assert_called_once()
         metrics_mock.assert_not_called()
         logging_mock.assert_called_once()
@@ -132,7 +130,7 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
     @patch("microsoft.opentelemetry._distro._setup_tracing")
     def test_disable_logging_skips_logging(self, tracing_mock, metrics_mock, logging_mock):
         """disable_logging=True skips LoggerProvider creation."""
-        use_microsoft_opentelemetry(disable_logging=True, enable_azure_monitor=False)
+        use_microsoft_opentelemetry(disable_logging=True)
         tracing_mock.assert_called_once()
         metrics_mock.assert_called_once()
         logging_mock.assert_not_called()
@@ -398,7 +396,7 @@ class TestA365Components(unittest.TestCase):
             "microsoft.opentelemetry.a365.create_a365_components",
             return_value=mock_handlers,
         ):
-            use_microsoft_opentelemetry(enable_a365=True, enable_azure_monitor=False)
+            use_microsoft_opentelemetry(enable_a365=True)
 
         from opentelemetry.trace import get_tracer_provider
 

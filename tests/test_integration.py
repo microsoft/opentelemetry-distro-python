@@ -44,10 +44,10 @@ class TestPublicAPISurface(unittest.TestCase):
 
     def test_constants_reexported(self):
         from microsoft.opentelemetry._constants import (
-            ENABLE_AZURE_MONITOR_ARG,
+            RESOURCE_ARG,
         )
 
-        self.assertIsInstance(ENABLE_AZURE_MONITOR_ARG, str)
+        self.assertIsInstance(RESOURCE_ARG, str)
 
     def test_types_reexported(self):
         from microsoft.opentelemetry._types import ConfigurationValue
@@ -59,21 +59,21 @@ class TestPublicAPISurface(unittest.TestCase):
 
 
 class TestDefaultBehavior(unittest.TestCase):
-    """Tests that Azure Monitor is enabled by default."""
+    """Tests that Azure Monitor is auto-detected from connection string."""
 
     @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
-    def test_enabled_by_default_no_args(self, append_mock):
-        use_microsoft_opentelemetry()
+    def test_enabled_when_connection_string_provided(self, append_mock):
+        use_microsoft_opentelemetry(
+            azure_monitor_connection_string="InstrumentationKey=test;IngestionEndpoint=https://test.in.ai.azure.com/",
+        )
         append_mock.assert_called_once()
 
     @patch("microsoft.opentelemetry._distro._append_azure_monitor_components")
     @patch("microsoft.opentelemetry._distro._setup_logging")
     @patch("microsoft.opentelemetry._distro._setup_metrics")
     @patch("microsoft.opentelemetry._distro._setup_tracing")
-    def test_disabled_when_explicitly_set(self, tracing_mock, metrics_mock, logging_mock, append_mock):
-        use_microsoft_opentelemetry(
-            enable_azure_monitor=False,
-        )
+    def test_disabled_when_no_connection_string(self, tracing_mock, metrics_mock, logging_mock, append_mock):
+        use_microsoft_opentelemetry()
         append_mock.assert_not_called()
 
 
