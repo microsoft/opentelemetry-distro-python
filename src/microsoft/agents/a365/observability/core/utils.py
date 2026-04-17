@@ -68,7 +68,7 @@ def safe_json_dumps(obj: Any, **kwargs: Any) -> str:
 
 
 def as_utc_nano(dt: datetime.datetime) -> int:
-    return int(dt.astimezone(datetime.UTC).timestamp() * 1_000_000_000)
+    return int(dt.astimezone(datetime.timezone.utc).timestamp() * 1_000_000_000)
 
 
 KeyType = TypeVar("KeyType")
@@ -141,7 +141,7 @@ K = TypeVar("K", bound=Hashable)
 V = TypeVar("V")
 
 
-class DictWithLock(ObjectProxy, Generic[K, V]):  # type: ignore
+class DictWithLock(ObjectProxy, Generic[K, V]):  # type: ignore  # pylint: disable=abstract-method
     """
     A wrapped dictionary with lock
     """
