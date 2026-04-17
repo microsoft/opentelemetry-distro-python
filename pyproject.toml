@@ -31,6 +31,7 @@ dependencies = [
     "opentelemetry-util-genai>=0.3b0",
     "microsoft-agents-activity>=0.9.0",
     "microsoft-agents-hosting-core>=0.9.0",
+    "aiohttp>=3.8.0"
 ]
 
 [project.optional-dependencies]
