@@ -11,13 +11,17 @@ and agent runs produce OTel spans that flow through the A365 span processors.
 A365 auto-enables when ENABLE_A365_OBSERVABILITY_EXPORTER=true is set.
 
 Environment variables:
-  OPENAI_API_KEY=<key>                         OpenAI API key
-  ENABLE_A365_OBSERVABILITY_EXPORTER=true      Enable A365 HTTP exporter (required)
+  AZURE_OPENAI_API_KEY=<key>                   Azure OpenAI API key
+  AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/
+  OPENAI_API_VERSION=2024-10-21                 API version (optional, defaults to 2024-10-21)
+  ENABLE_A365_OBSERVABILITY_EXPORTER=true       Enable A365 HTTP exporter (required)
 """
+
+import os
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
-from langchain_openai import ChatOpenAI
+from langchain_openai import AzureChatOpenAI
 
 from microsoft.opentelemetry import use_microsoft_opentelemetry
 
@@ -51,7 +55,11 @@ def get_weather(city: str) -> str:
 
 
 def main():
-    llm = ChatOpenAI(model="gpt-4o", temperature=0)
+    llm = AzureChatOpenAI(
+        azure_deployment="gpt-4o",
+        api_version=os.environ.get("OPENAI_API_VERSION", "2024-10-21"),
+        temperature=0,
+    )
 
     # Simple LLM call — automatically traced
     messages = [

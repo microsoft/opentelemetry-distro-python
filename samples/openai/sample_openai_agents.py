@@ -34,10 +34,12 @@ use_microsoft_opentelemetry(
     azure_monitor_connection_string=os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING", ""),
 )
 
+
 @function_tool
 def get_weather(city: str) -> str:
     """Return a mock weather forecast for a city."""
     return f"The weather in {city} is sunny, 25°C."
+
 
 # --- OpenAI ---
 agent = Agent(
@@ -53,12 +55,14 @@ ENDPOINT = os.environ.get("AZURE_OPENAI_ENDPOINT", "")
 API_KEY = os.environ.get("AZURE_OPENAI_API_KEY", "")
 API_VER = "2024-06-01"
 
+
 def _make_azure_client() -> AsyncAzureOpenAI:
     return AsyncAzureOpenAI(
         azure_endpoint=ENDPOINT,
         api_key=API_KEY,
         api_version=API_VER,
     )
+
 
 # Configure the openai-agents SDK to use the Azure OpenAI client.
 # use_for_tracing=False so the SDK doesn't try to upload its own traces.

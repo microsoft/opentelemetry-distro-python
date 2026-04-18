@@ -12,7 +12,7 @@ Validates that the microsoft distro wrapper:
 """
 
 import unittest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
@@ -356,7 +356,10 @@ class TestA365KwargsConfiguration(unittest.TestCase):
     @patch("microsoft.opentelemetry._distro._append_a365_components")
     def test_a365_kwargs_forwarded(self, a365_mock):
         """A365 kwargs are parsed and forwarded to _append_a365_components."""
-        token_fn = lambda aid, tid: "token"
+
+        def token_fn(aid, tid):
+            return "token"
+
         use_microsoft_opentelemetry(
             enable_a365=True,
             a365_token_resolver=token_fn,
@@ -400,7 +403,10 @@ class TestA365KwargsConfiguration(unittest.TestCase):
     @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
     def test_kwargs_override_env_vars(self, default_resolver_mock, enabled_mock):
         """Kwargs take precedence over environment variables."""
-        custom_resolver = lambda aid, tid: "custom-token"
+
+        def custom_resolver(aid, tid):
+            return "custom-token"
+
         default_resolver_mock.return_value = lambda aid, tid: "default-token"
 
         env = {
@@ -463,6 +469,7 @@ class TestA365KwargsConfiguration(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
 
 class TestA365Components(unittest.TestCase):
     """Tests for A365 enable_a365 flag and _append_a365_components."""
