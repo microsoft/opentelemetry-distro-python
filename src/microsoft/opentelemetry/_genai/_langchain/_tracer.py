@@ -88,7 +88,7 @@ CONTEXT_ATTRIBUTES = (
 )
 
 
-# pylint: disable=broad-exception-caught
+# pylint: disable=broad-exception-caught, too-many-branches, too-many-statements
 class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-many-instance-attributes
     _MAX_TRACKED_RUNS = 10000
 

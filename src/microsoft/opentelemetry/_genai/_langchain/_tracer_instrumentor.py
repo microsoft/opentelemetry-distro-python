@@ -141,7 +141,7 @@ class _BaseCallbackManagerInit:
                         instance.inheritable_handlers.append(self._processor)
                     elif hasattr(instance, "handlers"):
                         instance.handlers.append(self._processor)
-                except Exception:
+                except Exception:  # pylint: disable=broad-exception-caught
                     logger.debug("Could not add tracer to callback manager", exc_info=True)
 
 

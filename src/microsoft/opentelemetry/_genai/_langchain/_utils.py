@@ -531,7 +531,7 @@ def add_operation_type(run: Run) -> Iterator[tuple[str, str]]:
         yield GEN_AI_OPERATION_NAME_KEY, EXECUTE_TOOL_OPERATION_NAME
 
 
-def build_llm_invocation(run: Run) -> LLMInvocation:
+def build_llm_invocation(run: Run) -> LLMInvocation:  # pylint: disable=too-many-statements
     """Build an ``LLMInvocation`` from a LangChain ``Run`` for LLM-type spans.
 
     This bridges LangChain's run data model to the canonical OTel GenAI
