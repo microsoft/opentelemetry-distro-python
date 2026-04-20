@@ -45,6 +45,7 @@ from microsoft.opentelemetry._genai._langchain._utils import (
     GEN_AI_AGENT_DESCRIPTION_KEY,
     GEN_AI_AGENT_ID_KEY,
     GEN_AI_AGENT_NAME_KEY,
+    GEN_AI_AGENT_VERSION_KEY,
     GEN_AI_INPUT_MESSAGES_KEY,
     GEN_AI_OPERATION_NAME_KEY,
     GEN_AI_OUTPUT_MESSAGES_KEY,
@@ -204,7 +205,6 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                     "provider": None,
                     "input_tokens": 0,
                     "output_tokens": 0,
-                    "finish_reasons": [],
                 }
                 if wrapper_span is not None:
                     self._agent_wrapper_spans[run.id] = wrapper_span
@@ -219,7 +219,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                 agent_span.set_attribute(GEN_AI_AGENT_DESCRIPTION_KEY, agent_desc)
             agent_version = self._agent_config.get("agent_version")
             if agent_version:
-                agent_span.set_attribute("gen_ai.agent.version", agent_version)
+                agent_span.set_attribute(GEN_AI_AGENT_VERSION_KEY, agent_version)
             agent_span.set_attributes(dict(flatten(extract_agent_metadata(run))))
             server_addr = self._agent_config.get("server_address")
             if server_addr:
@@ -444,8 +444,10 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                     break
 
             # Capture tool results
-            if run_type == "tool" and run.outputs:
-                if output := run.outputs.get("output"):
+            if run_type == "tool" and run.outputs and hasattr(run.outputs, "get"):
+                _sentinel = object()
+                output = run.outputs.get("output", _sentinel)
+                if output is not _sentinel:
                     result_str = output if isinstance(output, str) else safe_json_dumps(output)
                     content["output_messages"].append(result_str)
 

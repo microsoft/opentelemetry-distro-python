@@ -6,6 +6,7 @@
 import datetime
 import json
 import logging
+import math
 from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
 from copy import deepcopy
 from enum import Enum
@@ -60,6 +61,13 @@ try:
     )
 except ImportError:
     GEN_AI_TOOL_DEFINITIONS = "gen_ai.tool.definitions"
+
+try:
+    from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+        GEN_AI_AGENT_VERSION,
+    )
+except ImportError:
+    GEN_AI_AGENT_VERSION = "gen_ai.agent.version"
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -203,6 +211,7 @@ GEN_AI_TOOL_ARGS_KEY = GEN_AI_TOOL_CALL_ARGUMENTS
 GEN_AI_TOOL_CALL_RESULT_KEY = GEN_AI_TOOL_CALL_RESULT
 GEN_AI_TOOL_TYPE_KEY = GEN_AI_TOOL_TYPE
 GEN_AI_TOOL_DEFINITIONS_KEY = GEN_AI_TOOL_DEFINITIONS
+GEN_AI_AGENT_VERSION_KEY = GEN_AI_AGENT_VERSION
 
 SESSION_ID_KEY = "microsoft.session.id"
 
@@ -467,13 +476,17 @@ def tools(run: Run) -> Iterator[tuple[str, str]]:
             yield GEN_AI_TOOL_CALL_ID_KEY, tool_call_id
     if _should_capture_content_on_spans():
         if run.inputs and hasattr(run.inputs, "get"):
-            if input_val := run.inputs.get("input"):
+            _sentinel = object()
+            input_val = run.inputs.get("input", _sentinel)
+            if input_val is not _sentinel:
                 if isinstance(input_val, str):
                     yield GEN_AI_TOOL_ARGS_KEY, input_val
                 else:
                     yield GEN_AI_TOOL_ARGS_KEY, safe_json_dumps(input_val)
         if run.outputs and hasattr(run.outputs, "get"):
-            if result := run.outputs.get("output"):
+            _sentinel = object()
+            result = run.outputs.get("output", _sentinel)
+            if result is not _sentinel:
                 if isinstance(result, BaseMessage):
                     result_content: str = str(result.content) if hasattr(result, "content") else str(result)
                 elif hasattr(result, "content"):
@@ -540,18 +553,44 @@ def build_llm_invocation(run: Run) -> LLMInvocation:
     if run.extra and isinstance(run.extra, Mapping):
         inv_params = run.extra.get("invocation_params") or {}
         if isinstance(inv_params, Mapping):
-            if (temp := inv_params.get("temperature")) is not None:
-                inv.temperature = float(temp)
-            if (tp := inv_params.get("top_p")) is not None:
-                inv.top_p = float(tp)
-            if (mt := inv_params.get("max_tokens")) is not None:
-                inv.max_tokens = int(mt)
-            if (fp := inv_params.get("frequency_penalty")) is not None:
-                inv.frequency_penalty = float(fp)
-            if (pp := inv_params.get("presence_penalty")) is not None:
-                inv.presence_penalty = float(pp)
-            if (seed_val := inv_params.get("seed")) is not None:
-                inv.seed = int(seed_val)
+            try:
+                if (temp := inv_params.get("temperature")) is not None:
+                    val = float(temp)
+                    if math.isfinite(val):
+                        inv.temperature = val
+            except (ValueError, TypeError):
+                pass
+            try:
+                if (tp := inv_params.get("top_p")) is not None:
+                    val = float(tp)
+                    if math.isfinite(val):
+                        inv.top_p = val
+            except (ValueError, TypeError):
+                pass
+            try:
+                if (mt := inv_params.get("max_tokens")) is not None:
+                    inv.max_tokens = int(mt)
+            except (ValueError, TypeError):
+                pass
+            try:
+                if (fp := inv_params.get("frequency_penalty")) is not None:
+                    val = float(fp)
+                    if math.isfinite(val):
+                        inv.frequency_penalty = val
+            except (ValueError, TypeError):
+                pass
+            try:
+                if (pp := inv_params.get("presence_penalty")) is not None:
+                    val = float(pp)
+                    if math.isfinite(val):
+                        inv.presence_penalty = val
+            except (ValueError, TypeError):
+                pass
+            try:
+                if (seed_val := inv_params.get("seed")) is not None:
+                    inv.seed = int(seed_val)
+            except (ValueError, TypeError):
+                pass
             stop = inv_params.get("stop")
             if stop is not None:
                 if isinstance(stop, str):

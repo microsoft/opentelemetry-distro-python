@@ -12,10 +12,6 @@ Uses FakeListLLM (no API key needed).
 import os
 import sys
 
-# Enable content capture for validation
-os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] = "gen_ai_latest_experimental"
-os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] = "SPAN_ONLY"
-
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor, SpanExporter, SpanExportResult
 from opentelemetry.sdk.resources import Resource
@@ -38,12 +34,16 @@ class MemoryExporter(SpanExporter):
 
 
 def main():
+    # Enable content capture for validation (must be set before instrumentation)
+    os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] = "gen_ai_latest_experimental"
+    os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] = "SPAN_ONLY"
+
     mem = MemoryExporter()
     provider = TracerProvider(resource=Resource.create({"service.name": "e2e-validation"}))
     provider.add_span_processor(SimpleSpanProcessor(mem))
     set_tracer_provider(provider)
 
-    from microsoft.genai._langchain._tracer_instrumentor import LangChainInstrumentor
+    from microsoft.opentelemetry._genai._langchain._tracer_instrumentor import LangChainInstrumentor
 
     inst = LangChainInstrumentor()
     inst.instrument(

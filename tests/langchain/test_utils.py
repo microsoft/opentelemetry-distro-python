@@ -385,7 +385,7 @@ class TestFunctionCalls(TestCase):
         self.assertNotIn(GEN_AI_OPERATION_NAME_KEY, result)
         self.assertNotIn(GEN_AI_TOOL_ARGS_KEY, result)
 
-    @patch("microsoft.genai._langchain._utils._should_capture_content_on_spans", return_value=True)
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=True)
     def test_extracts_function_call_content_when_enabled(self, _mock_capture):
         outputs = {
             "generations": [
@@ -431,7 +431,7 @@ class TestTools(TestCase):
         self.assertNotIn(GEN_AI_TOOL_CALL_RESULT_KEY, result)
         self.assertEqual(result[GEN_AI_TOOL_CALL_ID_KEY], "tc-1")
 
-    @patch("microsoft.genai._langchain._utils._should_capture_content_on_spans", return_value=True)
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=True)
     def test_extracts_tool_payloads_when_content_capture_enabled(self, _mock_capture):
         run = _make_run(
             run_type="tool",
@@ -455,7 +455,7 @@ class TestChainNodeMessages(TestCase):
         data = {"messages": [{"content": "Hello", "role": "human"}]}
         self.assertEqual(list(chain_node_messages(data, GEN_AI_INPUT_MESSAGES_KEY)), [])
 
-    @patch("microsoft.genai._langchain._utils._should_capture_content_on_spans", return_value=True)
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=True)
     def test_extracts_messages_from_dict(self, _mock_capture):
         data = {"messages": [{"content": "Hello", "role": "human"}]}
         result = list(chain_node_messages(data, GEN_AI_INPUT_MESSAGES_KEY))
