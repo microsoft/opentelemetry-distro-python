@@ -33,7 +33,7 @@ class MemoryExporter(SpanExporter):
         pass
 
 
-def main():
+def main(): # pylint: disable=too-many-statements
     # Enable content capture for validation (must be set before instrumentation)
     os.environ["OTEL_SEMCONV_STABILITY_OPT_IN"] = "gen_ai_latest_experimental"
     os.environ["OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"] = "SPAN_ONLY"
