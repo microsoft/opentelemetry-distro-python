@@ -60,14 +60,14 @@ try:
         GEN_AI_TOOL_DEFINITIONS,
     )
 except ImportError:
-    GEN_AI_TOOL_DEFINITIONS = "gen_ai.tool.definitions"
+    GEN_AI_TOOL_DEFINITIONS = "gen_ai.tool.definitions"  # type: ignore[misc]
 
 try:
     from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
         GEN_AI_AGENT_VERSION,
     )
 except ImportError:
-    GEN_AI_AGENT_VERSION = "gen_ai.agent.version"
+    GEN_AI_AGENT_VERSION = "gen_ai.agent.version"  # type: ignore[misc]
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
