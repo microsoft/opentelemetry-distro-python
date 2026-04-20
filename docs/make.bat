@@ -25,6 +25,12 @@ if errorlevel 9009 (
 	exit /b 1
 )
 
+if "%SPHINXAPIDOC%" == "" (
+	set SPHINXAPIDOC=sphinx-apidoc
+)
+
+%SPHINXAPIDOC% -o api ..\src\microsoft --force --module-first --separate
+
 if "%1" == "" goto help
 
 %SPHINXBUILD% -M %1 %SOURCEDIR% %BUILDDIR% %SPHINXOPTS% %O%

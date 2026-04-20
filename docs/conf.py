@@ -9,7 +9,7 @@ import sys
 # -- Path setup --------------------------------------------------------------
 
 # Add the src directory so autodoc can find the modules
-sys.path.insert(0, os.path.abspath("../src"))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 # -- Project information -----------------------------------------------------
 
