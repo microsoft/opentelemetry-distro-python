@@ -4,7 +4,7 @@
 
 ### Features Added
 
-- Remove the A365 vendored code and instead take dependency on the core observability package -
+- Remove the A365 vendored code and instead take dependency on the core observability package
   ([#45](https://github.com/microsoft/opentelemetry-distro-python/pull/45))
 - Support openai-v2 and openai-agents-v2
   ([#37](https://github.com/microsoft/opentelemetry-distro-python/pull/37))
