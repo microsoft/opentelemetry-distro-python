@@ -132,7 +132,8 @@ class _BaseCallbackManagerInit:
         kwargs: dict[str, Any],
     ) -> None:
         wrapped(*args, **kwargs)
-        if not any(isinstance(h, type(self._processor)) for h in instance.inheritable_handlers):
+        existing = getattr(instance, "inheritable_handlers", None) or getattr(instance, "handlers", None) or []
+        if not any(isinstance(h, type(self._processor)) for h in existing):
             try:
                 instance.add_handler(self._processor, inherit=True)
             except TypeError:
