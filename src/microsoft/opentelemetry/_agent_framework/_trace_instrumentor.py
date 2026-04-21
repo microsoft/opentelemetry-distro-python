@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Collection
 from typing import Any
 
@@ -16,6 +17,7 @@ from opentelemetry.trace import get_tracer_provider
 from microsoft.opentelemetry._agent_framework._span_enricher import enrich_agent_framework_span
 from microsoft.opentelemetry._agent_framework._span_processor import AgentFrameworkSpanProcessor
 
+_logger = logging.getLogger(__name__)
 _instruments = ("agent-framework >= 1.0.0",)
 
 
@@ -31,7 +33,13 @@ class AgentFrameworkInstrumentor(BaseInstrumentor):
         self._processor = AgentFrameworkSpanProcessor()
         provider.add_span_processor(self._processor)
 
-        register_span_enricher(enrich_agent_framework_span)
+        try:
+            register_span_enricher(enrich_agent_framework_span)
+        except RuntimeError:
+            _logger.debug(
+                "A span enricher is already registered. "
+                "Skipping Agent Framework enricher registration."
+            )
 
     def _uninstrument(self, **kwargs: Any) -> None:
         unregister_span_enricher()

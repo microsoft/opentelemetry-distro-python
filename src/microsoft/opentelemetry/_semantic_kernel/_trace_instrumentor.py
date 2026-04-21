@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Collection
 from typing import Any
 
@@ -16,6 +17,7 @@ from opentelemetry.trace import get_tracer_provider
 from microsoft.opentelemetry._semantic_kernel._span_enricher import enrich_semantic_kernel_span
 from microsoft.opentelemetry._semantic_kernel._span_processor import SemanticKernelSpanProcessor
 
+_logger = logging.getLogger(__name__)
 _instruments = ("semantic-kernel >= 1.0.0",)
 
 
@@ -31,7 +33,13 @@ class SemanticKernelInstrumentor(BaseInstrumentor):
         self._processor = SemanticKernelSpanProcessor()
         provider.add_span_processor(self._processor)
 
-        register_span_enricher(enrich_semantic_kernel_span)
+        try:
+            register_span_enricher(enrich_semantic_kernel_span)
+        except RuntimeError:
+            _logger.debug(
+                "A span enricher is already registered. "
+                "Skipping Semantic Kernel enricher registration."
+            )
 
     def _uninstrument(self, **kwargs: Any) -> None:
         unregister_span_enricher()
