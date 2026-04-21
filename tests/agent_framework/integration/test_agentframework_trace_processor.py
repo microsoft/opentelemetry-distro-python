@@ -4,15 +4,12 @@
 """Integration tests for Agent Framework trace processor with real Azure OpenAI."""
 
 import logging
+import os
 import time
 
 import pytest
-
-from microsoft_agents_a365.observability.core.constants import (
-    GEN_AI_PROVIDER_NAME_KEY,
-    GEN_AI_REQUEST_MODEL_KEY,
-    TENANT_ID_KEY,
-)
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.trace import get_tracer_provider, set_tracer_provider
 
 try:
     from agent_framework import RawAgent, tool
@@ -26,6 +23,15 @@ except ImportError:
     )
 
 from microsoft.opentelemetry._agent_framework._trace_instrumentor import AgentFrameworkInstrumentor
+
+_azure_openai_config = {
+    "endpoint": os.environ.get("AZURE_OPENAI_ENDPOINT", ""),
+    "deployment": os.environ.get("AZURE_OPENAI_DEPLOYMENT", "gpt-4"),
+}
+_agent365_config = {
+    "tenant_id": os.environ.get("AGENT365_TEST_TENANT_ID", ""),
+    "agent_id": os.environ.get("AGENT365_TEST_AGENT_ID", ""),
+}
 
 
 @tool
@@ -60,21 +66,21 @@ class _MockSpanProcessor:
 class TestAgentFrameworkTraceProcessorIntegration:
     """Integration tests for AgentFramework trace processor with real Azure OpenAI."""
 
+    _mock_processor: _MockSpanProcessor
+
     def setup_method(self):
         self._mock_processor = _MockSpanProcessor()
 
     def test_agentframework_trace_processor_integration(self, azure_openai_config, agent365_config):
         """Test AgentFramework trace processor with real Azure OpenAI call."""
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.trace import get_tracer_provider, set_tracer_provider
 
         current = get_tracer_provider()
         if isinstance(current, TracerProvider):
             current.add_span_processor(self._mock_processor)
         else:
-            provider = TracerProvider()
-            provider.add_span_processor(self._mock_processor)
-            set_tracer_provider(provider)
+            tracer_provider = TracerProvider()
+            tracer_provider.add_span_processor(self._mock_processor)
+            set_tracer_provider(tracer_provider)
 
         enable_instrumentation()
         instrumentor = AgentFrameworkInstrumentor()
@@ -109,16 +115,13 @@ class TestAgentFrameworkTraceProcessorIntegration:
 
     def test_agentframework_trace_processor_with_tool_calls(self, azure_openai_config, agent365_config):
         """Test AgentFramework trace processor with tool calls."""
-        from opentelemetry.sdk.trace import TracerProvider
-        from opentelemetry.trace import get_tracer_provider, set_tracer_provider
-
         current = get_tracer_provider()
         if isinstance(current, TracerProvider):
             current.add_span_processor(self._mock_processor)
         else:
-            provider = TracerProvider()
-            provider.add_span_processor(self._mock_processor)
-            set_tracer_provider(provider)
+            tracer_provider = TracerProvider()
+            tracer_provider.add_span_processor(self._mock_processor)
+            set_tracer_provider(tracer_provider)
 
         enable_instrumentation()
         instrumentor = AgentFrameworkInstrumentor()
@@ -153,59 +156,46 @@ class TestAgentFrameworkTraceProcessorIntegration:
             instrumentor.uninstrument()
 
 
-if __name__ == "__main__":
-    import os
-    from os import environ
-
+def _run_manual_tests():
     logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     logger = logging.getLogger(__name__)
 
     logger.info("=== Starting Agent Framework Integration Test ===")
 
-    # Build config from env vars
-    azure_openai_config = {
-        "endpoint": environ.get("AZURE_OPENAI_ENDPOINT", ""),
-        "deployment": environ.get("AZURE_OPENAI_DEPLOYMENT_NAME", ""),
-    }
-    agent365_config = {
-        "tenant_id": environ.get("A365_TENANT_ID", ""),
-        "agent_id": environ.get("A365_AGENT_ID", ""),
-    }
-
-    logger.info(f"Azure OpenAI endpoint: {azure_openai_config['endpoint']}")
-    logger.info(f"Azure OpenAI deployment: {azure_openai_config['deployment']}")
-    logger.info(f"Agent365 tenant: {agent365_config['tenant_id']}")
-    logger.info(f"Agent365 agent: {agent365_config['agent_id']}")
-
-    # Set up TracerProvider once — it cannot be overridden after the first call
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.trace import set_tracer_provider
+    logger.info("Azure OpenAI endpoint: %s", _azure_openai_config['endpoint'])
+    logger.info("Azure OpenAI deployment: %s", _azure_openai_config['deployment'])
+    logger.info("Agent365 tenant: %s", _agent365_config['tenant_id'])
+    logger.info("Agent365 agent: %s", _agent365_config['agent_id'])
 
     shared_processor = _MockSpanProcessor()
-    provider = TracerProvider()
-    provider.add_span_processor(shared_processor)
-    set_tracer_provider(provider)
+    tracer_provider = TracerProvider()
+    tracer_provider.add_span_processor(shared_processor)
+    set_tracer_provider(tracer_provider)
 
     test_instance = TestAgentFrameworkTraceProcessorIntegration()
     test_instance._mock_processor = shared_processor
 
     logger.info("--- Running test: trace processor integration ---")
     try:
-        test_instance.test_agentframework_trace_processor_integration(azure_openai_config, agent365_config)
+        test_instance.test_agentframework_trace_processor_integration(_azure_openai_config, _agent365_config)
         logger.info("PASSED: trace processor integration")
-        logger.info(f"  Captured spans: {len(shared_processor.captured_spans)}")
-    except Exception as e:
-        logger.error(f"FAILED: trace processor integration - {e}", exc_info=True)
+        logger.info("  Captured spans: %d", len(shared_processor.captured_spans))
+    except (AssertionError, RuntimeError, OSError) as e:
+        logger.error("FAILED: trace processor integration - %s", e, exc_info=True)
 
     # Clear captured spans for second test, reuse same provider/processor
     shared_processor.captured_spans.clear()
 
     logger.info("--- Running test: trace processor with tool calls ---")
     try:
-        test_instance.test_agentframework_trace_processor_with_tool_calls(azure_openai_config, agent365_config)
+        test_instance.test_agentframework_trace_processor_with_tool_calls(_azure_openai_config, _agent365_config)
         logger.info("PASSED: trace processor with tool calls")
-        logger.info(f"  Captured spans: {len(shared_processor.captured_spans)}")
-    except Exception as e:
-        logger.error(f"FAILED: trace processor with tool calls - {e}", exc_info=True)
+        logger.info("  Captured spans: %d", len(shared_processor.captured_spans))
+    except (AssertionError, RuntimeError, OSError) as e:
+        logger.error("FAILED: trace processor with tool calls - %s", e, exc_info=True)
 
     logger.info("=== Done ===")
+
+
+if __name__ == "__main__":
+    _run_manual_tests()

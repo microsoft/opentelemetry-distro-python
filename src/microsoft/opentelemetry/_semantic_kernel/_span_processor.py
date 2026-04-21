@@ -19,7 +19,7 @@ class SemanticKernelSpanProcessor(SpanProcessor):
     def __init__(self, service_name: str | None = None):
         self.service_name = service_name
 
-    def on_start(self, span: Span, parent_context: context_api.Context | None) -> None:
+    def on_start(self, span: Span, parent_context: context_api.Context | None = None) -> None:
         if span.name.startswith("chat."):
             span.set_attribute(GEN_AI_OPERATION_NAME_KEY, InferenceOperationType.CHAT.value.lower())
             model_name = extract_model_name(span.name)

@@ -17,7 +17,7 @@ class AgentFrameworkSpanProcessor(SpanProcessor):
         self.service_name = service_name
         super().__init__()
 
-    def on_start(self, span, parent_context):
+    def on_start(self, span, parent_context=None):
         pass
 
     def on_end(self, span):

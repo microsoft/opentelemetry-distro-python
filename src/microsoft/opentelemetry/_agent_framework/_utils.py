@@ -8,7 +8,9 @@ from __future__ import annotations
 import json
 
 
-def extract_content_as_string_list(messages_json: str, role_filter: str | None = None) -> str:
+def extract_content_as_string_list(  # pylint: disable=too-many-nested-blocks
+    messages_json: str, role_filter: str | None = None
+) -> str:
     """Extract content values from messages JSON and return as JSON string list.
 
     Handles Agent Framework message format with ``"parts"`` arrays.

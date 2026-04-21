@@ -24,6 +24,8 @@ _instruments = ("semantic-kernel >= 1.0.0",)
 class SemanticKernelInstrumentor(BaseInstrumentor):
     """Instruments Semantic Kernel with Agent365 observability."""
 
+    _processor: SemanticKernelSpanProcessor | None = None
+
     def instrumentation_dependencies(self) -> Collection[str]:
         return _instruments
 
@@ -44,5 +46,5 @@ class SemanticKernelInstrumentor(BaseInstrumentor):
     def _uninstrument(self, **kwargs: Any) -> None:
         unregister_span_enricher()
 
-        if hasattr(self, "_processor"):
+        if self._processor is not None:
             self._processor.shutdown()
