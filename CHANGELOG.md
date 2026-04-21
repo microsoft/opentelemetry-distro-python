@@ -1,11 +1,24 @@
 # Release History
 
+## 0.1.0a2 (2026-04-20)
+
+### Features Added
+
+- Integrate A365 observability into distro
+  ([#45](https://github.com/microsoft/opentelemetry-distro-python/pull/45))
+- Support openai-v2 and openai-agents-v2
+  ([#37](https://github.com/microsoft/opentelemetry-distro-python/pull/37))
+
+### Other Changes
+
+- Modify the logic to add providers when azure monitor config is disabled
+  ([#24](https://github.com/microsoft/opentelemetry-distro-python/pull/24))
+
+
 ## 0.1.0a1 (2026-04-10)
 
 ### Features Added
 
-- Integrate A365 observability into distro with `enable_a365` kwarg, add samples and migration instructions
-  ([#40](https://github.com/microsoft/opentelemetry-distro-python/pull/40))
 - Add langchain instrumentation 
   ([#26](https://github.com/microsoft/opentelemetry-distro-python/pull/26))
 - Add Microsoft Opentelemetry Distro Configuration
@@ -17,13 +30,8 @@
 - Added `azure-monitor-opentelemetry` package source for Azure Monitor OpenTelemetry distro integration.
   ([#7](https://github.com/microsoft/opentelemetry-distro-python/pull/7))
 
-### Breaking Changes
-
-### Bugs Fixed
-
 ### Other Changes
 
-- Modify the logic to add providers when azure monitor config is disabled
 - Add support for local mypy, pylint, black checks
   ([#14](https://github.com/microsoft/opentelemetry-distro-python/pull/14))
 - Add mypy and pyright checks
