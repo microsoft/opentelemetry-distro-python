@@ -11,6 +11,8 @@ class AgentFrameworkSpanProcessor(SpanProcessor):
     are intentional no-ops.
     """
 
+    TOOL_CALL_RESULT_TAG = "gen_ai.tool.call.result"
+
     def __init__(self, service_name: str | None = None):
         self.service_name = service_name
         super().__init__()

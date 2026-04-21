@@ -27,8 +27,8 @@ class TestSemanticKernelSpanEnricher(unittest.TestCase):
         mock_span = Mock()
         mock_span.name = "invoke_agent test-agent"
         mock_span.attributes = {
-            "gen_ai.agent.invocation_input": '[{"role": "user", "content": "Hello"}]',
-            "gen_ai.agent.invocation_output": '[{"role": "assistant", "content": "Hi there!"}]',
+            GEN_AI_INPUT_MESSAGES_KEY: '[{"role": "user", "content": "Hello"}]',
+            GEN_AI_OUTPUT_MESSAGES_KEY: '[{"role": "assistant", "content": "Hi there!"}]',
         }
 
         enriched = enrich_semantic_kernel_span(mock_span)
@@ -37,22 +37,6 @@ class TestSemanticKernelSpanEnricher(unittest.TestCase):
         attributes = enriched.attributes
         self.assertEqual(attributes[GEN_AI_INPUT_MESSAGES_KEY], '["Hello"]')
         self.assertEqual(attributes[GEN_AI_OUTPUT_MESSAGES_KEY], '["Hi there!"]')
-
-    def test_invoke_agent_span_falls_back_to_standard_keys(self):
-        """Test fallback to gen_ai.input.messages when SK-specific keys are absent."""
-        mock_span = Mock()
-        mock_span.name = "invoke_agent test-agent"
-        mock_span.attributes = {
-            GEN_AI_INPUT_MESSAGES_KEY: '[{"role": "user", "content": "Fallback input"}]',
-            GEN_AI_OUTPUT_MESSAGES_KEY: '[{"role": "assistant", "content": "Fallback output"}]',
-        }
-
-        enriched = enrich_semantic_kernel_span(mock_span)
-
-        self.assertNotEqual(enriched, mock_span)
-        attributes = enriched.attributes
-        self.assertEqual(attributes[GEN_AI_INPUT_MESSAGES_KEY], '["Fallback input"]')
-        self.assertEqual(attributes[GEN_AI_OUTPUT_MESSAGES_KEY], '["Fallback output"]')
 
     def test_execute_tool_span_maps_tool_attributes(self):
         """Test that execute_tool spans map tool arguments and results."""
