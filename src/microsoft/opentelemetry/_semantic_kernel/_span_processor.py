@@ -25,7 +25,7 @@ class SemanticKernelSpanProcessor(SpanProcessor):
             span.set_attribute(GEN_AI_OPERATION_NAME_KEY, operation_name)
             model_name = extract_model_name(span.name)
             if model_name:
-                span.update_name("%s %s" % (operation_name, model_name))
+                span.update_name(f"{operation_name} {model_name}")
             else:
                 span.update_name(operation_name)
 
