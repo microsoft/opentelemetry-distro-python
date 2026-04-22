@@ -10,7 +10,7 @@
   ([#50](https://github.com/microsoft/opentelemetry-distro-python/pull/50))
 - Add Spectra Collector sidecar support with graceful fallback 
   ([#48](https://github.com/microsoft/opentelemetry-distro-python/pull/48))
-- Add add console exporter for traces, metrics, and logs
+- Add console exporter for traces, metrics, and logs
   ([#54](https://github.com/microsoft/opentelemetry-distro-python/pull/54))
 
 ## 0.1.0a2 (2026-04-20)
