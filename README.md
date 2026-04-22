@@ -248,7 +248,7 @@ The software may collect information about you and your use of the software and 
 
 ### Internal Telemetry
 
-Internal telemetry can be disabled by setting the environment variable `APPLICATIONINSIGHTS_STATSBEAT_DISABLED_ALL` to `true`.
+SDK self-telemetry (Statsbeat) can be disabled by setting the environment variable `APPLICATIONINSIGHTS_STATSBEAT_DISABLED_ALL` to `true`.
 
 ## Trademarks
 
