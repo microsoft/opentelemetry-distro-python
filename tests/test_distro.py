@@ -468,10 +468,6 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         self.assertEqual(otel_kwargs["span_processors"], [])
 
 
-if __name__ == "__main__":
-    unittest.main()
-
-
 class TestA365Components(unittest.TestCase):
     """Tests for A365 enable_a365 flag and _append_a365_components."""
 
@@ -552,12 +548,14 @@ class TestSpectraComponents(unittest.TestCase):
         """Falls back to HTTP when gRPC package is not installed."""
         mock_http_exporter = MagicMock()
 
-        def grpc_import_error(*args, **kwargs):
-            raise ImportError("no grpc")
-
         otel_kwargs = {}
-        with patch.dict("sys.modules", {"opentelemetry.exporter.otlp.proto.grpc": None,
-                                         "opentelemetry.exporter.otlp.proto.grpc.trace_exporter": None}):
+        with patch.dict(
+            "sys.modules",
+            {
+                "opentelemetry.exporter.otlp.proto.grpc": None,
+                "opentelemetry.exporter.otlp.proto.grpc.trace_exporter": None,
+            },
+        ):
             with patch(
                 "opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter",
                 return_value=mock_http_exporter,
@@ -586,9 +584,7 @@ class TestSpectraComponents(unittest.TestCase):
     def test_http_custom_endpoint(self, mock_exporter_cls):
         """Custom endpoint is forwarded to the exporter."""
         mock_exporter_cls.return_value = MagicMock()
-        _append_spectra_components(
-            True, {}, protocol="http", endpoint="http://spectra.local:9999"
-        )
+        _append_spectra_components(True, {}, protocol="http", endpoint="http://spectra.local:9999")
         call_kwargs = mock_exporter_cls.call_args
         self.assertEqual(call_kwargs[1]["endpoint"], "http://spectra.local:9999")
 
@@ -616,12 +612,15 @@ class TestSpectraComponents(unittest.TestCase):
     def test_no_exporter_packages_skips_gracefully(self):
         """When neither gRPC nor HTTP packages are installed, no crash."""
         otel_kwargs = {}
-        with patch.dict("sys.modules", {
-            "opentelemetry.exporter.otlp.proto.grpc": None,
-            "opentelemetry.exporter.otlp.proto.grpc.trace_exporter": None,
-            "opentelemetry.exporter.otlp.proto.http": None,
-            "opentelemetry.exporter.otlp.proto.http.trace_exporter": None,
-        }):
+        with patch.dict(
+            "sys.modules",
+            {
+                "opentelemetry.exporter.otlp.proto.grpc": None,
+                "opentelemetry.exporter.otlp.proto.grpc.trace_exporter": None,
+                "opentelemetry.exporter.otlp.proto.http": None,
+                "opentelemetry.exporter.otlp.proto.http.trace_exporter": None,
+            },
+        ):
             _append_spectra_components(True, otel_kwargs, protocol="grpc")
         self.assertEqual(otel_kwargs.get("span_processors", []), [])
 

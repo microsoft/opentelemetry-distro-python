@@ -50,6 +50,8 @@ from microsoft.opentelemetry._constants import (
     VIEWS_ARG,
     _AZURE_MONITOR_KWARG_MAP,
     _SUPPORTED_INSTRUMENTED_LIBRARIES,
+    _SPECTRA_DEFAULT_GRPC_ENDPOINT,
+    _SPECTRA_DEFAULT_HTTP_ENDPOINT,
     _SPECTRA_ENDPOINT_ENV,
     _SPECTRA_PROTOCOL_ENV,
 )
@@ -335,9 +337,6 @@ def _append_a365_components(
 # Spectra Sidecar (OTLP gRPC / HTTP) support
 # ---------------------------------------------------------------------------
 
-_SPECTRA_DEFAULT_GRPC_ENDPOINT = "http://localhost:4317"
-_SPECTRA_DEFAULT_HTTP_ENDPOINT = "http://localhost:4318"
-
 
 def _append_spectra_components(
     enable_spectra: bool,
@@ -360,9 +359,19 @@ def _append_spectra_components(
     if otel_kwargs.get(DISABLE_TRACING_ARG, False):
         return
 
-    resolved_protocol = protocol or os.environ.get(_SPECTRA_PROTOCOL_ENV, "grpc")
+    raw_protocol = protocol or os.environ.get(_SPECTRA_PROTOCOL_ENV, "grpc")
+    resolved_protocol = str(raw_protocol).strip().lower()
     resolved_insecure = insecure if insecure is not None else True
     resolved_endpoint = endpoint or os.environ.get(_SPECTRA_ENDPOINT_ENV)
+
+    if resolved_protocol not in {"grpc", "http"}:
+        _logger.error(
+            "Invalid Spectra protocol %r (normalized: %r). Supported values are 'grpc' and 'http'. "
+            "Spectra sidecar export is disabled.",
+            raw_protocol,
+            resolved_protocol,
+        )
+        return
 
     exporter = None
 
