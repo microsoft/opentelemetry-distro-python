@@ -35,6 +35,7 @@ class TestSemanticKernelSpanEnricher(unittest.TestCase):
 
         self.assertNotEqual(enriched, mock_span)
         attributes = enriched.attributes
+        assert attributes is not None
         self.assertEqual(attributes[GEN_AI_INPUT_MESSAGES_KEY], '["Hello"]')
         self.assertEqual(attributes[GEN_AI_OUTPUT_MESSAGES_KEY], '["Hi there!"]')
 
@@ -51,6 +52,7 @@ class TestSemanticKernelSpanEnricher(unittest.TestCase):
 
         self.assertNotEqual(enriched, mock_span)
         attributes = enriched.attributes
+        assert attributes is not None
         self.assertEqual(attributes[GEN_AI_TOOL_ARGS_KEY], '{"expression": "2+2"}')
         self.assertEqual(attributes[GEN_AI_TOOL_CALL_RESULT_KEY], "4")
 

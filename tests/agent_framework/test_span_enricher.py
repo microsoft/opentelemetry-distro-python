@@ -37,6 +37,7 @@ class TestAgentFrameworkSpanEnricher(unittest.TestCase):
 
         result = enrich_agent_framework_span(span)
 
+        assert result.attributes is not None
         self.assertEqual(result.attributes[GEN_AI_INPUT_MESSAGES_KEY], '["Compute 15 % 4"]')
         self.assertEqual(result.attributes[GEN_AI_OUTPUT_MESSAGES_KEY], '["Result is 3."]')
 
@@ -51,6 +52,7 @@ class TestAgentFrameworkSpanEnricher(unittest.TestCase):
 
         result = enrich_agent_framework_span(span)
 
+        assert result.attributes is not None
         self.assertEqual(result.attributes[GEN_AI_TOOL_ARGS_KEY], '{"expression": "2 + 2"}')
         self.assertEqual(result.attributes[GEN_AI_TOOL_CALL_RESULT_KEY], "Result is 4")
 
