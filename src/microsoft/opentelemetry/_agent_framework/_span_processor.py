@@ -17,8 +17,8 @@ class AgentFrameworkSpanProcessor(SpanProcessor):
         self.service_name = service_name
         super().__init__()
 
-    def on_start(self, span, parent_context=None):
+    def on_start(self, span, parent_context=None):  # type: ignore[override]
         pass
 
-    def on_end(self, span):
+    def on_end(self, span):  # type: ignore[override]
         pass

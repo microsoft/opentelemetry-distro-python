@@ -34,18 +34,18 @@ def enrich_agent_framework_span(span: ReadableSpan) -> ReadableSpan:
     if span.name.startswith(INVOKE_AGENT_OPERATION_NAME):
         input_messages = attributes.get(GEN_AI_INPUT_MESSAGES_KEY)
         if input_messages:
-            extra_attributes[GEN_AI_INPUT_MESSAGES_KEY] = extract_input_content(input_messages)
+            extra_attributes[GEN_AI_INPUT_MESSAGES_KEY] = extract_input_content(str(input_messages))
 
         output_messages = attributes.get(GEN_AI_OUTPUT_MESSAGES_KEY)
         if output_messages:
-            extra_attributes[GEN_AI_OUTPUT_MESSAGES_KEY] = extract_output_content(output_messages)
+            extra_attributes[GEN_AI_OUTPUT_MESSAGES_KEY] = extract_output_content(str(output_messages))
 
     elif span.name.startswith(EXECUTE_TOOL_OPERATION_NAME):
         if AF_TOOL_CALL_ARGUMENTS_KEY in attributes:
-            extra_attributes[GEN_AI_TOOL_ARGS_KEY] = attributes[AF_TOOL_CALL_ARGUMENTS_KEY]
+            extra_attributes[GEN_AI_TOOL_ARGS_KEY] = str(attributes[AF_TOOL_CALL_ARGUMENTS_KEY])
 
         if AF_TOOL_CALL_RESULT_KEY in attributes:
-            extra_attributes[GEN_AI_TOOL_CALL_RESULT_KEY] = attributes[AF_TOOL_CALL_RESULT_KEY]
+            extra_attributes[GEN_AI_TOOL_CALL_RESULT_KEY] = str(attributes[AF_TOOL_CALL_RESULT_KEY])
 
     if extra_attributes:
         return EnrichedReadableSpan(span, extra_attributes)

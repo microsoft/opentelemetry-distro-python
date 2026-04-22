@@ -11,7 +11,7 @@ from microsoft.opentelemetry.a365.core.exporters.enriching_span_processor import
     register_span_enricher,
     unregister_span_enricher,
 )
-from opentelemetry.instrumentation.instrumentor import BaseInstrumentor
+from opentelemetry.instrumentation.instrumentor import BaseInstrumentor  # type: ignore[attr-defined]
 from opentelemetry.trace import get_tracer_provider
 
 from microsoft.opentelemetry._agent_framework._span_enricher import enrich_agent_framework_span
@@ -33,7 +33,7 @@ class AgentFrameworkInstrumentor(BaseInstrumentor):
         provider = get_tracer_provider()
 
         self._processor = AgentFrameworkSpanProcessor()
-        provider.add_span_processor(self._processor)
+        provider.add_span_processor(self._processor)  # type: ignore[union-attr]
 
         try:
             register_span_enricher(enrich_agent_framework_span)
