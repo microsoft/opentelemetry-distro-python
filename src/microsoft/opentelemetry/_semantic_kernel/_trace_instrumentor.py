@@ -38,7 +38,7 @@ class SemanticKernelInstrumentor(BaseInstrumentor):
         try:
             register_span_enricher(enrich_semantic_kernel_span)
         except RuntimeError:
-            _logger.debug("A span enricher is already registered. " "Skipping Semantic Kernel enricher registration.")
+            _logger.debug("A span enricher is already registered. Skipping Semantic Kernel enricher registration.")
 
     def _uninstrument(self, **kwargs: Any) -> None:
         unregister_span_enricher()
