@@ -24,7 +24,7 @@ pip install microsoft-opentelemetry
 
 ### Usage
 
-Use `use_microsoft_opentelemetry` to set up instrumentation for your application. All pass-in parameters take priority over any related environment variables.
+Use `use_microsoft_opentelemetry` to set up instrumentation for your application. All passed-in parameters take priority over any related environment variables.
 
 ```python
 from microsoft.opentelemetry import use_microsoft_opentelemetry
