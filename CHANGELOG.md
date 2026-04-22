@@ -8,7 +8,7 @@
   ([#47](https://github.com/microsoft/opentelemetry-distro-python/pull/47))
 - Add agent framework and semantic kernel instrumentations
   ([#50](https://github.com/microsoft/opentelemetry-distro-python/pull/50))
-- Add Spectra Collector sidecar support with graceful fallback 
+- Add Spectra Collector sidecar support with graceful fallback
   ([#48](https://github.com/microsoft/opentelemetry-distro-python/pull/48))
 - Add console exporter for traces, metrics, and logs
   ([#54](https://github.com/microsoft/opentelemetry-distro-python/pull/54))
