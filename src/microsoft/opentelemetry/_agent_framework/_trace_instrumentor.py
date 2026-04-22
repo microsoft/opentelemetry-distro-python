@@ -34,7 +34,7 @@ class AgentFrameworkInstrumentor(BaseInstrumentor):
         provider = kwargs.get("tracer_provider") or get_tracer_provider()
 
         self._processor = AgentFrameworkSpanProcessor()
-        provider.add_span_processor(self._processor)  # type: ignore[attr-defined]
+        provider.add_span_processor(self._processor)  # type: ignore[union-attr, attr-defined]
 
         try:
             register_span_enricher(enrich_agent_framework_span)
