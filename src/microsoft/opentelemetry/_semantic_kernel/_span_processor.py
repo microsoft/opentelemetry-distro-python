@@ -21,9 +21,13 @@ class SemanticKernelSpanProcessor(SpanProcessor):
 
     def on_start(self, span: Span, parent_context: context_api.Context | None = None) -> None:
         if span.name.startswith("chat."):
-            span.set_attribute(GEN_AI_OPERATION_NAME_KEY, InferenceOperationType.CHAT.value.lower())
+            operation_name = InferenceOperationType.CHAT.value.lower()
+            span.set_attribute(GEN_AI_OPERATION_NAME_KEY, operation_name)
             model_name = extract_model_name(span.name)
-            span.update_name(f"{InferenceOperationType.CHAT.value.lower()} {model_name}")
+            if model_name:
+                span.update_name("%s %s" % (operation_name, model_name))
+            else:
+                span.update_name(operation_name)
 
     def on_end(self, span: ReadableSpan) -> None:
         pass

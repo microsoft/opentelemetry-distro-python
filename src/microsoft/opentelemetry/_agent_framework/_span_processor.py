@@ -17,8 +17,14 @@ class AgentFrameworkSpanProcessor(SpanProcessor):
         self.service_name = service_name
         super().__init__()
 
-    def on_start(self, span, parent_context=None):  # type: ignore[override]
+    def on_start(self, span, parent_context=None):  # type: ignore[no-untyped-def, override]
         pass
 
-    def on_end(self, span):  # type: ignore[override]
+    def on_end(self, span):  # type: ignore[no-untyped-def, override]
         pass
+
+    def shutdown(self) -> None:
+        pass
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return True
