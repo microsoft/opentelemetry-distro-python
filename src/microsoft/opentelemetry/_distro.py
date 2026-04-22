@@ -36,6 +36,7 @@ from microsoft.opentelemetry._constants import (
     A365_USE_S2S_ENDPOINT_ARG,
     A365_SUPPRESS_INVOKE_AGENT_INPUT_ARG,
     ENABLE_AZURE_MONITOR_ARG,
+    ENABLE_CONSOLE_ARG,
     INSTRUMENTATION_OPTIONS_ARG,
     LOGGER_NAME_ARG,
     LOGGING_FORMATTER_ARG,
@@ -48,8 +49,10 @@ from microsoft.opentelemetry._constants import (
     _SUPPORTED_INSTRUMENTED_LIBRARIES,
 )
 from microsoft.opentelemetry._instrumentation import get_dist_dependency_conflicts
+from microsoft.opentelemetry._otlp import is_otlp_enabled
 from microsoft.opentelemetry._utils import (
     _append_azure_monitor_components,
+    _append_console_components,
     _append_otlp_components,
 )
 
@@ -120,10 +123,16 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     :keyword bool a365_suppress_invoke_agent_input:
         Strip input messages from InvokeAgent spans before export. Also read from
         ``A365_SUPPRESS_INVOKE_AGENT_INPUT`` env var. Defaults to False.
+    :keyword bool enable_console:
+        Enable console exporter for traces, metrics, and logs (development
+        only).  Mirrors ``ExportTarget.Console`` from the .NET distro.
+        Auto-enables when no other exporter is active (Azure Monitor off,
+        OTLP off, A365 off).  Defaults to False.
     :rtype: None
     """
 
     enable_azure_monitor = kwargs.pop(ENABLE_AZURE_MONITOR_ARG, True)
+    enable_console: bool = bool(kwargs.pop(ENABLE_CONSOLE_ARG, False))
     enable_a365: bool = bool(kwargs.pop(ENABLE_A365_ARG, False))
     a365_token_resolver = kwargs.pop(A365_TOKEN_RESOLVER_ARG, None)
     a365_tenant_id = kwargs.pop(A365_TENANT_ID_ARG, None)
@@ -152,6 +161,12 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
         use_s2s_endpoint=a365_use_s2s_endpoint,
         suppress_invoke_agent_input=a365_suppress_invoke_agent_input,
     )
+
+    # ---- Console exporters (dev-only, mirrors ExportTarget.Console) ----
+    # Auto-enable when no other exporter destination is active.
+    if not enable_console and not enable_azure_monitor and not enable_a365 and not is_otlp_enabled():
+        enable_console = True
+    _append_console_components(otel_kwargs, enable_console)
 
     # ---- Build and register providers ----
     tracer_provider: Optional[TracerProvider] = None
