@@ -1,13 +1,18 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+import os
 import time
 
 from opentelemetry import trace
 
 from microsoft.opentelemetry import use_microsoft_opentelemetry
 
-use_microsoft_opentelemetry()
+# Connection string can also be passed directly:
+# azure_monitor_connection_string="InstrumentationKey=..."
+use_microsoft_opentelemetry(
+    azure_monitor_connection_string=os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING", ""),
+)
 
 tracer = trace.get_tracer(__name__)
 

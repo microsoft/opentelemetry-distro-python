@@ -44,52 +44,52 @@ Key principles:
 ## Phase 1: Package Foundation
 
 - ~~Finalize the published package name and import path~~ — **Decided: `microsoft-opentelemetry` on PyPI**
-- Decide whether the public import should be `microsoft.opentelemetry` or a repo-local transitional name
-- Supported Python versions follow the OpenTelemetry SDK/API supported versions — no independent decision needed
-- Add package metadata, classifiers, and Python version constraints matching OpenTelemetry
-- Add lint, format, and test tooling
-- Add CI for unit tests and package validation
+- ~~Decide whether the public import should be `microsoft.opentelemetry` or a repo-local transitional name~~ — **Decided: `microsoft.opentelemetry`**
+- ~~Supported Python versions follow the OpenTelemetry SDK/API supported versions — no independent decision needed~~
+- ~~Add package metadata, classifiers, and Python version constraints matching OpenTelemetry~~
+- ~~Add lint, format, and test tooling~~
+- ~~Add CI for unit tests and package validation~~
 
 ## Phase 2: Configuration Surface
 
-- Define the `use_microsoft_opentelemetry()` function signature
-- Mirror the POC options that are core to the distro story
-- Separate stable public options from experimental ones
-- Add environment-variable parsing for all supported flags and endpoints
-- Define validation and error messages for incompatible options
+- ~~Define the `use_microsoft_opentelemetry()` function signature~~
+- ~~Mirror the POC options that are core to the distro story~~
+- ~~Separate stable public options from experimental ones~~
+- ~~Add environment-variable parsing for all supported flags and endpoints~~
+- ~~Define validation and error messages for incompatible options~~
 
 ### Configuration Scoping
 
 Each configuration option must be clearly identified by scope so consumers know which options are relevant to their scenario:
 
-- **Global** — Options that apply to all setups regardless of backend (e.g., sampling rate, resource attributes, instrumentation enablement, log level, Python-level OTel settings)
-- **Azure Monitor** — Options specific to Azure Monitor export and behavior (e.g., connection string, live metrics, browser SDK loader, Azure Monitor-specific processors)
+- ~~**Global** — Options that apply to all setups regardless of backend (e.g., sampling rate, resource attributes, instrumentation enablement, log level, Python-level OTel settings)~~
+- ~~**Azure Monitor** — Options specific to Azure Monitor export and behavior (e.g., connection string, live metrics, browser SDK loader, Azure Monitor-specific processors)~~
 - **A365** — Options specific to A365 agent observability (e.g., A365 exporter endpoint, baggage extensions, Microsoft Agent Framework instrumentation toggles, A365-specific span processors)
-- **OTLP** — Options specific to OTLP export (e.g., OTLP endpoint, protocol, headers, compression)
+- ~~**OTLP** — Options specific to OTLP export (e.g., OTLP endpoint, protocol, headers, compression)~~
 
 Design guidelines:
 
-- Use clear naming conventions or prefixes to signal scope (e.g., `azure_monitor_*`, `a365_*`, `otlp_*` for scoped options; no prefix for global)
-- Environment variables should follow the same scoping convention (e.g., `MICROSOFT_OTEL_AZURE_MONITOR_*`, `MICROSOFT_OTEL_A365_*`)
-- Validation should warn when scope-specific options are set but the corresponding backend/feature is not enabled
-- Documentation and help text for each option must state its scope
+- ~~Use clear naming conventions or prefixes to signal scope (e.g., `azure_monitor_*`, `a365_*`, `otlp_*` for scoped options; no prefix for global)~~
+- ~~Environment variables should follow the same scoping convention~~ — **Not needed: Azure Monitor uses `APPLICATIONINSIGHTS_CONNECTION_STRING` natively; OTLP uses standard `OTEL_EXPORTER_OTLP_*` env vars**
+- ~~Validation should warn when scope-specific options are set but the corresponding backend/feature is not enabled~~
+- ~~Documentation and help text for each option must state its scope~~
 
 ## Phase 3: Azure Monitor Code Migration
 
-- Migrate the relevant Azure Monitor OpenTelemetry Distro code into this repository under a well-defined module boundary
-- Refactor the migrated code to support exporter-optional setup (skip automatic Azure Monitor exporter attachment when not needed)
-- Expose provider instances (TracerProvider, MeterProvider, LoggerProvider) after setup so the distro can add exporters
-- Ensure instrumentation enablement can be driven by the distro configuration without pulling in Azure Monitor-specific export
+- ~~Migrate the relevant Azure Monitor OpenTelemetry Distro code into this repository under a well-defined module boundary~~
+- ~~Refactor the migrated code to support exporter-optional setup (skip automatic Azure Monitor exporter attachment when not needed)~~
+- ~~Expose provider instances (TracerProvider, MeterProvider, LoggerProvider) after setup so the distro can add exporters~~
+- ~~Ensure instrumentation enablement can be driven by the distro configuration without pulling in Azure Monitor-specific export~~
 - Validate that the migrated code produces identical behavior to the standalone `azure-monitor-opentelemetry` package
 
 ## Phase 4: Core OpenTelemetry Setup (This Package)
 
-- Use the in-repo Azure Monitor code directly for provider creation and standard instrumentation
-- When Azure Monitor export is requested, attach the Azure Monitor exporter using the migrated code
-- When Azure Monitor export is not requested, create providers without the exporter (now trivial since the code is in-repo)
-- Add OTLP export for traces, logs, and metrics on top of the providers
-- Add hooks for custom span processors, log processors, metric readers, and views
-- Add sampling configuration support
+- ~~Use the in-repo Azure Monitor code directly for provider creation and standard instrumentation~~
+- ~~When Azure Monitor export is requested, attach the Azure Monitor exporter using the migrated code~~
+- ~~When Azure Monitor export is not requested, create providers without the exporter (now trivial since the code is in-repo)~~
+- ~~Add OTLP export for traces, logs, and metrics on top of the providers~~
+- ~~Add hooks for custom span processors, log processors, metric readers, and views~~
+- Add sampling configuration support — **TODO: post-stable**
 
 ## Phase 5: Additional Instrumentation (This Package Only)
 
@@ -104,29 +104,29 @@ All GenAI instrumentations in this package (both direct dependencies and interna
 
 ### GenAI Instrumentations
 
-- Add GenAI instrumentations:
-  - OpenAI instrumentation from `opentelemetry-instrumentation-openai` (contrib) — **direct dependency**
-  - OpenAI Agents SDK v2 instrumentation from `opentelemetry-instrumentation-openai-agents` (contrib) — **direct dependency**
-  - LangChain instrumentation — **internal implementation in this repo** (see below)
-- Do NOT include Traceloop instrumentations (these use the `opentelemetry` namespace but are not official OpenTelemetry contrib packages)
-- Do NOT include Arize instrumentations as direct dependencies
-- Standard Python instrumentations (Flask, Django, FastAPI, requests, urllib, etc.) are provided by the in-repo Azure Monitor code — do NOT reimplement them in a separate layer
-- Decide whether GenAI instrumentations are hard dependencies or optional extras
-- Make instrumentation enablement explicit and debuggable
+- ~~Add GenAI instrumentations:~~
+  - ~~OpenAI v2 instrumentation from `opentelemetry-instrumentation-openai-v2` (contrib) — **direct dependency**~~
+  - ~~OpenAI Agents SDK v2 instrumentation from `opentelemetry-instrumentation-openai-agents-v2` (contrib) — **direct dependency**~~
+  - ~~LangChain instrumentation — **internal implementation in this repo** (see below)~~
+- ~~Do NOT include Traceloop instrumentations (these use the `opentelemetry` namespace but are not official OpenTelemetry contrib packages)~~
+- ~~Do NOT include Arize instrumentations as direct dependencies~~
+- ~~Standard Python instrumentations (Flask, Django, FastAPI, requests, urllib, etc.) are provided by the in-repo Azure Monitor code — do NOT reimplement them in a separate layer~~
+- ~~Treat the OpenAI and OpenAI Agents GenAI instrumentations as direct dependencies rather than optional extras~~
+- ~~Make instrumentation enablement explicit and debuggable~~
 
-### Internal LangChain Instrumentation
+### ~~Internal LangChain Instrumentation~~
 
-Upstream OpenTelemetry contrib does not yet publish a LangChain instrumentation to PyPI. Rather than wait, we will build an internal LangChain instrumentation in this repository as a hybrid of three sources:
+~~Upstream OpenTelemetry contrib does not yet publish a LangChain instrumentation to PyPI. Rather than wait, we will build an internal LangChain instrumentation in this repository as a hybrid of three sources:~~
 
-1. **A365 LangChain instrumentation** — existing internal instrumentation used in A365 agent observability scenarios
-2. **OpenTelemetry contrib LangChain instrumentation** — the unreleased/in-progress instrumentation from the OpenTelemetry Python contrib repository
-3. **Azure LangChain SDK observability** — the observability hooks and tracing surface from the Azure LangChain SDK
+1. ~~**A365 LangChain instrumentation** — existing internal instrumentation used in A365 agent observability scenarios~~
+2. ~~**OpenTelemetry contrib LangChain instrumentation** — the unreleased/in-progress instrumentation from the OpenTelemetry Python contrib repository~~
+3. ~~**Azure LangChain SDK observability** — the observability hooks and tracing surface from the Azure LangChain SDK~~
 
-Design guidelines for the internal instrumentation:
+~~Design guidelines for the internal instrumentation:~~
 
-- Conform to the GenAI Semantic Conventions Reference defined above
-- Structure the code as a standard OpenTelemetry instrumentor (implement `BaseInstrumentor`) so it can be swapped out cleanly
-- Keep the instrumentation in a clearly marked internal module (e.g., `_langchain/`) with explicit documentation that it is temporary
+- ~~Conform to the GenAI Semantic Conventions Reference defined above~~
+- ~~Structure the code as a standard OpenTelemetry instrumentor (implement `BaseInstrumentor`) so it can be swapped out cleanly~~
+- ~~Keep the instrumentation in a clearly marked internal module (e.g., `_langchain/`) with explicit documentation that it is temporary~~
 - Migration to the upstream OpenTelemetry contrib LangChain instrumentation should only happen when **all** of the following criteria are met:
   1. The upstream package is published to PyPI
   2. The upstream instrumentation follows the **latest** OpenTelemetry GenAI semantic conventions (not an outdated or draft version)
@@ -150,6 +150,7 @@ The A365 observability runtime will be **migrated as code into this repository**
 ### Migration and Convergence Plan
 
 - Migrate A365 observability runtime code under a clearly defined internal module boundary (e.g., `_a365/`)
+- **TODO: Investigate Spectra Collector sidecar export path.** The old standalone `config.py` supported a `SpectraExporterOptions` code path that created a standard OTLP exporter (gRPC or HTTP) to a Kubernetes sidecar on localhost (`localhost:4317`/`localhost:4318`). This was dropped during distro integration — need to determine if Spectra sidecar export is actively used, and if so, add it as a distro option (e.g., `a365_exporter_options` kwarg or a dedicated `enable_spectra` flag). The `SpectraExporterOptions` config class still exists but is currently dead code. Re-adding this path would also require restoring the `opentelemetry-exporter-otlp-proto-grpc` dependency.
 - The A365 LangChain instrumentation is partially consumed in Phase 5 as one of the sources for the internal LangChain instrumentation — coordinate with the A365 team to avoid divergence
 - Audit migrated A365 instrumentations and determine which can be contributed to upstream OpenTelemetry contrib — for those with existing upstream equivalents, plan a migration path and deprecation timeline; for those with no upstream equivalent (e.g., Microsoft Agent Framework), keep as Microsoft-specific extensions and evaluate contributing them
 - Validate that existing A365 telemetry pipelines continue to work under the new distro setup with the in-repo code
@@ -195,7 +196,7 @@ Provide runnable sample apps covering the main scenarios:
 
 The following phases are not required for the 1.0.0 release and can be worked on after the May 2026 timeline. They provide additional value and can be prioritized independently based on customer demand.
 
-## Phase 9 (Optional): SDKStats (SdkStats) Decoupling
+## Phase 9 (Optional): SDKStats Decoupling
 
 The SDK self-telemetry feature (sdkstats) currently lives in the Azure Monitor Exporter package (`azure.monitor.opentelemetry.exporter.statsbeat`) and is only active when the Azure Monitor Exporter is configured. This creates a gap for customers who use the distro exclusively for A365 scenarios — they lose SDK health and usage telemetry because sdkstats is never initialized without the Azure Monitor export path.
 

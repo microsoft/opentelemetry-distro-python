@@ -1,5 +1,33 @@
 # Release History
 
+## 0.1.0a3 (2026-04-22)
+
+### Features Added
+
+- Vendor A365 core observability code
+  ([#47](https://github.com/microsoft/opentelemetry-distro-python/pull/47))
+- Add agent framework and semantic kernel instrumentations
+  ([#50](https://github.com/microsoft/opentelemetry-distro-python/pull/50))
+- Add Spectra Collector sidecar support with graceful fallback
+  ([#48](https://github.com/microsoft/opentelemetry-distro-python/pull/48))
+- Add console exporter for traces, metrics, and logs
+  ([#54](https://github.com/microsoft/opentelemetry-distro-python/pull/54))
+
+## 0.1.0a2 (2026-04-20)
+
+### Features Added
+
+- Integrate A365 observability into distro
+  ([#45](https://github.com/microsoft/opentelemetry-distro-python/pull/45))
+- Support openai-v2 and openai-agents-v2
+  ([#37](https://github.com/microsoft/opentelemetry-distro-python/pull/37))
+
+### Other Changes
+
+- Modify the logic to add providers when azure monitor config is disabled
+  ([#24](https://github.com/microsoft/opentelemetry-distro-python/pull/24))
+
+
 ## 0.1.0a1 (2026-04-10)
 
 ### Features Added
@@ -15,13 +43,8 @@
 - Added `azure-monitor-opentelemetry` package source for Azure Monitor OpenTelemetry distro integration.
   ([#7](https://github.com/microsoft/opentelemetry-distro-python/pull/7))
 
-### Breaking Changes
-
-### Bugs Fixed
-
 ### Other Changes
 
-- Modify the logic to add providers when azure monitor config is disabled
 - Add support for local mypy, pylint, black checks
   ([#14](https://github.com/microsoft/opentelemetry-distro-python/pull/14))
 - Add mypy and pyright checks

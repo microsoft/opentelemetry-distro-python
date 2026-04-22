@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+import os
 import time
 import random
 
@@ -8,7 +9,11 @@ from opentelemetry import metrics
 
 from microsoft.opentelemetry import use_microsoft_opentelemetry
 
-use_microsoft_opentelemetry()
+# Connection string can also be passed directly:
+# azure_monitor_connection_string="InstrumentationKey=..."
+use_microsoft_opentelemetry(
+    azure_monitor_connection_string=os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING", ""),
+)
 
 meter = metrics.get_meter(__name__)
 

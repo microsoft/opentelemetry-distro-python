@@ -26,7 +26,7 @@ from opentelemetry.instrumentation.instrumentor import BaseInstrumentor  # type:
 from opentelemetry.trace import Span
 from wrapt import wrap_function_wrapper
 
-from microsoft.genai._langchain._tracer import LangChainTracer
+from microsoft.opentelemetry._genai._langchain._tracer import LangChainTracer
 
 logger = logging.getLogger(__name__)
 
@@ -63,6 +63,7 @@ class LangChainInstrumentor(BaseInstrumentor):
             "agent_name": kwargs.get("agent_name"),
             "agent_id": kwargs.get("agent_id"),
             "agent_description": kwargs.get("agent_description"),
+            "agent_version": kwargs.get("agent_version"),
             "server_address": kwargs.get("server_address"),
             "server_port": kwargs.get("server_port"),
         }
@@ -131,8 +132,18 @@ class _BaseCallbackManagerInit:
         kwargs: dict[str, Any],
     ) -> None:
         wrapped(*args, **kwargs)
-        if not any(isinstance(h, type(self._processor)) for h in instance.inheritable_handlers):
-            instance.add_handler(self._processor, inherit=True)
+        existing = getattr(instance, "inheritable_handlers", None) or getattr(instance, "handlers", None) or []
+        if not any(isinstance(h, type(self._processor)) for h in existing):
+            try:
+                instance.add_handler(self._processor, inherit=True)
+            except TypeError:
+                try:
+                    if hasattr(instance, "inheritable_handlers"):
+                        instance.inheritable_handlers.append(self._processor)
+                    elif hasattr(instance, "handlers"):
+                        instance.handlers.append(self._processor)
+                except Exception:  # pylint: disable=broad-exception-caught
+                    logger.debug("Could not add tracer to callback manager", exc_info=True)
 
 
 # ------------------------------ Convenience APIs ------------------------------
