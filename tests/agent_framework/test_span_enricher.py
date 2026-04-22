@@ -27,9 +27,7 @@ class TestAgentFrameworkSpanEnricher(unittest.TestCase):
         span = Mock()
         span.name = "invoke_agent Agent365Assistant"
         span.attributes = {
-            GEN_AI_INPUT_MESSAGES_KEY: (
-                '[{"role": "user", "parts": [{"type": "text", "content": "Compute 15 % 4"}]}]'
-            ),
+            GEN_AI_INPUT_MESSAGES_KEY: ('[{"role": "user", "parts": [{"type": "text", "content": "Compute 15 % 4"}]}]'),
             GEN_AI_OUTPUT_MESSAGES_KEY: (
                 '[{"role": "assistant", "parts": [{"type": "tool_call", "id": "c1"}]}, '
                 '{"role": "tool", "parts": [{"type": "tool_call_response"}]}, '

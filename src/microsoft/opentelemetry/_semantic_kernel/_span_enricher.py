@@ -35,15 +35,11 @@ def enrich_semantic_kernel_span(span: ReadableSpan) -> ReadableSpan:
     if span.name.startswith(INVOKE_AGENT_OPERATION_NAME):
         input_messages = attributes.get(GEN_AI_INPUT_MESSAGES_KEY)
         if input_messages:
-            extra_attributes[GEN_AI_INPUT_MESSAGES_KEY] = extract_content_as_string_list(
-                input_messages
-            )
+            extra_attributes[GEN_AI_INPUT_MESSAGES_KEY] = extract_content_as_string_list(input_messages)
 
         output_messages = attributes.get(GEN_AI_OUTPUT_MESSAGES_KEY)
         if output_messages:
-            extra_attributes[GEN_AI_OUTPUT_MESSAGES_KEY] = extract_content_as_string_list(
-                output_messages
-            )
+            extra_attributes[GEN_AI_OUTPUT_MESSAGES_KEY] = extract_content_as_string_list(output_messages)
 
     elif span.name.startswith(EXECUTE_TOOL_OPERATION_NAME):
         if SK_TOOL_CALL_ARGUMENTS_KEY in attributes:

@@ -162,10 +162,10 @@ def _run_manual_tests():
 
     logger.info("=== Starting Agent Framework Integration Test ===")
 
-    logger.info("Azure OpenAI endpoint: %s", _azure_openai_config['endpoint'])
-    logger.info("Azure OpenAI deployment: %s", _azure_openai_config['deployment'])
-    logger.info("Agent365 tenant: %s", _agent365_config['tenant_id'])
-    logger.info("Agent365 agent: %s", _agent365_config['agent_id'])
+    logger.info("Azure OpenAI endpoint: %s", _azure_openai_config["endpoint"])
+    logger.info("Azure OpenAI deployment: %s", _azure_openai_config["deployment"])
+    logger.info("Agent365 tenant: %s", _agent365_config["tenant_id"])
+    logger.info("Agent365 agent: %s", _agent365_config["agent_id"])
 
     shared_processor = _MockSpanProcessor()
     tracer_provider = TracerProvider()

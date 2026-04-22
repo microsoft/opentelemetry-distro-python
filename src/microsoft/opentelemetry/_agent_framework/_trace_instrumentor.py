@@ -38,10 +38,7 @@ class AgentFrameworkInstrumentor(BaseInstrumentor):
         try:
             register_span_enricher(enrich_agent_framework_span)
         except RuntimeError:
-            _logger.debug(
-                "A span enricher is already registered. "
-                "Skipping Agent Framework enricher registration."
-            )
+            _logger.debug("A span enricher is already registered. " "Skipping Agent Framework enricher registration.")
 
     def _uninstrument(self, **kwargs: Any) -> None:
         unregister_span_enricher()
