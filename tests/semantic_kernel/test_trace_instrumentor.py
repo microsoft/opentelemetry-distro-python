@@ -6,7 +6,7 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
-from microsoft_agents_a365.observability.core.exporters.enriching_span_processor import unregister_span_enricher
+from microsoft.opentelemetry.a365.core.exporters.enriching_span_processor import unregister_span_enricher
 
 from microsoft.opentelemetry._semantic_kernel._span_processor import SemanticKernelSpanProcessor
 from microsoft.opentelemetry._semantic_kernel._trace_instrumentor import SemanticKernelInstrumentor

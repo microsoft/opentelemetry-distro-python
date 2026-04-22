@@ -7,7 +7,7 @@ import logging
 from collections.abc import Collection
 from typing import Any
 
-from microsoft_agents_a365.observability.core.exporters.enriching_span_processor import (
+from microsoft.opentelemetry.a365.core.exporters.enriching_span_processor import (
     register_span_enricher,
     unregister_span_enricher,
 )

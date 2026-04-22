@@ -3,7 +3,7 @@
 
 """Span enricher for Agent Framework."""
 
-from microsoft_agents_a365.observability.core.constants import (
+from microsoft.opentelemetry.a365.core.constants import (
     EXECUTE_TOOL_OPERATION_NAME,
     GEN_AI_INPUT_MESSAGES_KEY,
     GEN_AI_OUTPUT_MESSAGES_KEY,
@@ -11,7 +11,7 @@ from microsoft_agents_a365.observability.core.constants import (
     GEN_AI_TOOL_CALL_RESULT_KEY,
     INVOKE_AGENT_OPERATION_NAME,
 )
-from microsoft_agents_a365.observability.core.exporters.enriched_span import EnrichedReadableSpan
+from microsoft.opentelemetry.a365.core.exporters.enriched_span import EnrichedReadableSpan
 from opentelemetry.sdk.trace import ReadableSpan
 
 from ._utils import extract_input_content, extract_output_content

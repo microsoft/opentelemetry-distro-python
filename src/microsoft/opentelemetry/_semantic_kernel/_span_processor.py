@@ -1,9 +1,9 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-from microsoft_agents_a365.observability.core.constants import GEN_AI_OPERATION_NAME_KEY
-from microsoft_agents_a365.observability.core.inference_operation_type import InferenceOperationType
-from microsoft_agents_a365.observability.core.utils import extract_model_name
+from microsoft.opentelemetry.a365.core.constants import GEN_AI_OPERATION_NAME_KEY
+from microsoft.opentelemetry.a365.core.inference_operation_type import InferenceOperationType
+from microsoft.opentelemetry.a365.core.utils import extract_model_name
 from opentelemetry import context as context_api
 from opentelemetry.sdk.trace import ReadableSpan, Span
 from opentelemetry.sdk.trace.export import SpanProcessor

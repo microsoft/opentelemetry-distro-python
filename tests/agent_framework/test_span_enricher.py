@@ -6,7 +6,7 @@
 import unittest
 from unittest.mock import Mock
 
-from microsoft_agents_a365.observability.core.constants import (
+from microsoft.opentelemetry.a365.core.constants import (
     GEN_AI_INPUT_MESSAGES_KEY,
     GEN_AI_OUTPUT_MESSAGES_KEY,
     GEN_AI_TOOL_ARGS_KEY,
