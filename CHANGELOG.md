@@ -2,6 +2,8 @@
 
 ## 0.1.0a4 (Unreleased)
 
+### Breaking Changes
+
 - Remove tenant_id, agent_id and cluster category from config options
   ([#59](https://github.com/microsoft/opentelemetry-distro-python/pull/59))
 
