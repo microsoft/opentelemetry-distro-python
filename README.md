@@ -30,6 +30,7 @@ Use `use_microsoft_opentelemetry` to set up instrumentation for your application
 from microsoft.opentelemetry import use_microsoft_opentelemetry
 
 use_microsoft_opentelemetry(
+    enable_azure_monitor=True,
     azure_monitor_connection_string="InstrumentationKey=...;IngestionEndpoint=...",
 )
 ```
