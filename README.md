@@ -38,7 +38,7 @@ use_microsoft_opentelemetry(
 
 | Keyword argument | Type | Default | Description |
 |---|---|---|---|
-| `enable_azure_monitor` | `bool` | `True` | Enable Azure Monitor export. |
+| `enable_azure_monitor` | `bool` | `False` | Enable Azure Monitor export. |
 | `azure_monitor_connection_string` | `str` | `None` | Connection string for Application Insights. Also read from `APPLICATIONINSIGHTS_CONNECTION_STRING` env var. |
 | `azure_monitor_exporter_credential` | `TokenCredential` | `None` | Azure AD token credential for authentication. |
 | `azure_monitor_enable_live_metrics` | `bool` | `True` | Enable live metrics collection. |
@@ -163,7 +163,6 @@ Console export **auto-enables when no other exporter is active** (Azure Monitor 
 ```python
 use_microsoft_opentelemetry(
     enable_console=True,
-    enable_azure_monitor=False,
 )
 ```
 

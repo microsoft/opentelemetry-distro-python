@@ -53,7 +53,6 @@ def main():
     # ------------------------------------------------------------------ #
     use_microsoft_opentelemetry(
         enable_a365=True,
-        enable_azure_monitor=False,
     )
     print("Telemetry configured.\n")
 
