@@ -98,6 +98,7 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
         """Explicitly disabling Azure Monitor still creates providers."""
         use_microsoft_opentelemetry(
             azure_monitor_connection_string=TEST_CONNECTION_STRING,
+            enable_azure_monitor=False,
         )
         tracing_mock.assert_called_once()
         metrics_mock.assert_called_once()
