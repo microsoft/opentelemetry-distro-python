@@ -8,8 +8,8 @@ applyTo: "**/*.py"
 Users are migrating from the standalone A365 observability PyPI packages under
 `microsoft-agents-a365-observability-*` to a single distro package: `microsoft-opentelemetry`.
 
-This migration covers the **observability** packages including the **hosting** and **runtime** packages. Other A365 packages (notifications, tooling)
-are not part of this distro.
+This migration covers the **observability** packages, along with the related **hosting** and **runtime** packages.
+Other A365 packages, such as notifications and tooling, are not part of this distro.
 
 The distro bundles:
 - **`a365/core`** — Scope classes, span enrichment, A365 exporter, baggage middleware
