@@ -81,7 +81,9 @@ class TestDefaultBehavior(unittest.TestCase):
     @patch("microsoft.opentelemetry._distro._setup_metrics")
     @patch("microsoft.opentelemetry._distro._setup_tracing")
     def test_disabled_when_explicitly_set(self, tracing_mock, metrics_mock, logging_mock, append_mock):
-        use_microsoft_opentelemetry()
+        use_microsoft_opentelemetry(
+            enable_azure_monitor=False,
+        )
         append_mock.assert_not_called()
 
 
