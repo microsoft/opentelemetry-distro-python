@@ -2,7 +2,7 @@ name: Notify code owners on new issues
 
 on:
   issues:
-    types: [opened]
+    types: [opened, labeled]
 
 jobs:
   notify:
@@ -13,7 +13,7 @@ jobs:
       - uses: actions/github-script@v7
         with:
           script: |
-            const codeOwners = [
+            const defaultOwners = [
               'hectorhdzg',
               'JacksonWeber',
               'lzchen',
@@ -21,10 +21,23 @@ jobs:
               'jeremydvoss',
             ];
 
-            // Assign default code owners to the issue
+            const labelCoOwners = {
+              'a365': ['nikhilNava', 'juliomenendez'],
+              'langchain': ['nagkumar91'],
+            };
+
+            const labels = context.payload.issue.labels.map(l => l.name.toLowerCase());
+            const assignees = new Set(defaultOwners);
+
+            for (const [label, owners] of Object.entries(labelCoOwners)) {
+              if (labels.includes(label)) {
+                owners.forEach(o => assignees.add(o));
+              }
+            }
+
             await github.rest.issues.addAssignees({
               owner: context.repo.owner,
               repo: context.repo.repo,
               issue_number: context.issue.number,
-              assignees: codeOwners,
+              assignees: [...assignees],
             });
