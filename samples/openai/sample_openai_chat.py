@@ -22,6 +22,7 @@ from microsoft.opentelemetry import use_microsoft_opentelemetry
 # Connection string can also be passed directly:
 # azure_monitor_connection_string="InstrumentationKey=..."
 use_microsoft_opentelemetry(
+    enable_azure_monitor=True,
     azure_monitor_connection_string=os.environ.get("APPLICATIONINSIGHTS_CONNECTION_STRING", ""),
 )
 

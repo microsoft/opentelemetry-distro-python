@@ -197,11 +197,13 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     tracer_provider: Optional[TracerProvider] = None
     meter_provider: Optional[MeterProvider] = None
     logger_provider: Optional[LoggerProvider] = None
+    azure_monitor_succeeded = False
 
     if enable_azure_monitor:
         tracer_provider, meter_provider, logger_provider = _append_azure_monitor_components(
             otel_kwargs, azure_monitor_kwargs
         )
+        azure_monitor_succeeded = any(p is not None for p in (tracer_provider, meter_provider, logger_provider))
 
     # If Azure Monitor was disabled or failed to create a provider for a
     # signal, fall back to creating a plain provider from otel_kwargs so
@@ -233,7 +235,7 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     # ---- Instrumentations (always, after providers are set) ----
     _setup_instrumentations(otel_kwargs)
 
-    if enable_azure_monitor:
+    if enable_azure_monitor and azure_monitor_succeeded:
         _logger.info("Azure Monitor exporter enabled.")
 
 
