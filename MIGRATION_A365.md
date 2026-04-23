@@ -139,7 +139,6 @@ from microsoft.opentelemetry.a365.hosting import (
     ObservabilityHostingManager,
     ObservabilityHostingOptions,
 )
-from microsoft.opentelemetry.a365.hosting.middleware.baggage_middleware import BaggageMiddleware
 from microsoft.opentelemetry.a365.hosting.scope_helpers.populate_baggage import populate_baggage
 from microsoft.opentelemetry.a365.hosting.scope_helpers.populate_invoke_agent_scope import populate_invoke_agent_scope
 ```
