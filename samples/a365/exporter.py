@@ -15,6 +15,8 @@ Environment variables:
   AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/
   OPENAI_API_VERSION=2024-10-21                 API version (optional, defaults to 2024-10-21)
   ENABLE_A365_OBSERVABILITY_EXPORTER=true       Enable A365 HTTP exporter (required)
+  A365_CLUSTER_CATEGORY=prod                    Cluster category (optional, defaults to "prod")
+
 """
 
 import os
@@ -34,8 +36,6 @@ def get_token(agent_id: str, tenant_id: str) -> str | None:
 use_microsoft_opentelemetry(
     enable_a365=True,
     a365_token_resolver=get_token,
-    a365_tenant_id="my-tenant",
-    a365_agent_id="my-agent",
     enable_azure_monitor=False,
     instrumentation_options={
         "langchain": {"enabled": True},

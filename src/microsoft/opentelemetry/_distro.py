@@ -34,9 +34,6 @@ from microsoft.opentelemetry._constants import (
     SPECTRA_PROTOCOL_ARG,
     SPECTRA_INSECURE_ARG,
     A365_TOKEN_RESOLVER_ARG,
-    A365_TENANT_ID_ARG,
-    A365_AGENT_ID_ARG,
-    A365_CLUSTER_CATEGORY_ARG,
     A365_USE_S2S_ENDPOINT_ARG,
     A365_SUPPRESS_INVOKE_AGENT_INPUT_ARG,
     ENABLE_AZURE_MONITOR_ARG,
@@ -118,13 +115,6 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
         Optional callable ``(agent_id: str, tenant_id: str) -> str | None``
         used to authenticate with the Agent365 endpoint.  When omitted,
         ``DefaultAzureCredential`` is used.
-    :keyword str a365_tenant_id:
-        Tenant ID stamped on every span. Also read from ``A365_TENANT_ID`` env var.
-    :keyword str a365_agent_id:
-        Agent ID stamped on every span. Also read from ``A365_AGENT_ID`` env var.
-    :keyword str a365_cluster_category:
-        Cluster category for endpoint discovery. Also read from ``A365_CLUSTER_CATEGORY``
-        env var. Defaults to ``"prod"``.
     :keyword bool a365_use_s2s_endpoint:
         Use the S2S endpoint. Also read from ``A365_USE_S2S_ENDPOINT`` env var.
         Defaults to False.
@@ -157,9 +147,6 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     enable_console: bool = bool(kwargs.pop(ENABLE_CONSOLE_ARG, False))
     enable_a365: bool = bool(kwargs.pop(ENABLE_A365_ARG, False))
     a365_token_resolver = kwargs.pop(A365_TOKEN_RESOLVER_ARG, None)
-    a365_tenant_id = kwargs.pop(A365_TENANT_ID_ARG, None)
-    a365_agent_id = kwargs.pop(A365_AGENT_ID_ARG, None)
-    a365_cluster_category = kwargs.pop(A365_CLUSTER_CATEGORY_ARG, None)
     a365_use_s2s_endpoint = kwargs.pop(A365_USE_S2S_ENDPOINT_ARG, None)
     a365_suppress_invoke_agent_input = kwargs.pop(A365_SUPPRESS_INVOKE_AGENT_INPUT_ARG, None)
 
@@ -191,9 +178,6 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
         enable_a365,
         otel_kwargs,
         token_resolver=a365_token_resolver,
-        tenant_id=a365_tenant_id,
-        agent_id=a365_agent_id,
-        cluster_category=a365_cluster_category,
         use_s2s_endpoint=a365_use_s2s_endpoint,
         suppress_invoke_agent_input=a365_suppress_invoke_agent_input,
     )
@@ -262,9 +246,6 @@ def _append_a365_components(
     enable_a365: bool,
     otel_kwargs: Dict[str, Any],
     token_resolver: Any = None,
-    tenant_id: Any = None,
-    agent_id: Any = None,
-    cluster_category: Any = None,
     use_s2s_endpoint: Any = None,
     suppress_invoke_agent_input: Any = None,
 ) -> None:
@@ -284,8 +265,6 @@ def _append_a365_components(
         return
 
     from microsoft.opentelemetry.a365.constants import (
-        A365_TENANT_ID_ENV,
-        A365_AGENT_ID_ENV,
         A365_CLUSTER_CATEGORY_ENV,
         A365_USE_S2S_ENDPOINT_ENV,
         A365_SUPPRESS_INVOKE_AGENT_INPUT_ENV,
@@ -302,11 +281,8 @@ def _append_a365_components(
     )
 
     try:
-        # Resolve configuration: kwargs > env vars > defaults
         resolved_token_resolver = token_resolver or _create_default_token_resolver()
-        resolved_tenant_id = tenant_id or os.environ.get(A365_TENANT_ID_ENV)
-        resolved_agent_id = agent_id or os.environ.get(A365_AGENT_ID_ENV)
-        resolved_cluster_category = cluster_category or os.environ.get(A365_CLUSTER_CATEGORY_ENV, "prod")
+        resolved_cluster_category = os.environ.get(A365_CLUSTER_CATEGORY_ENV, "prod")
         resolved_use_s2s = use_s2s_endpoint if use_s2s_endpoint is not None else _env_bool(A365_USE_S2S_ENDPOINT_ENV)
         resolved_suppress_input = (
             suppress_invoke_agent_input
@@ -334,11 +310,9 @@ def _append_a365_components(
             suppress_invoke_agent_input=resolved_suppress_input,
         )
 
-        # Identity stamping + baggage-to-span attribute propagation
-        baggage_processor = A365SpanProcessor(
-            tenant_id=resolved_tenant_id,
-            agent_id=resolved_agent_id,
-        )
+        # Baggage-to-span attribute propagation. Tenant/agent IDs are
+        # supplied per-request via BaggageBuilder / AgentDetails.
+        baggage_processor = A365SpanProcessor()
 
         otel_kwargs[SPAN_PROCESSORS_ARG] = list(otel_kwargs.get(SPAN_PROCESSORS_ARG) or [])
         otel_kwargs[SPAN_PROCESSORS_ARG].append(batch_processor)

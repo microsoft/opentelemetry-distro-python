@@ -364,9 +364,6 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         use_microsoft_opentelemetry(
             enable_a365=True,
             a365_token_resolver=token_fn,
-            a365_tenant_id="test-tenant",
-            a365_agent_id="test-agent",
-            a365_cluster_category="gov",
             a365_use_s2s_endpoint=True,
             a365_suppress_invoke_agent_input=True,
             enable_azure_monitor=False,
@@ -374,9 +371,6 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         a365_mock.assert_called_once()
         _, kwargs = a365_mock.call_args
         self.assertEqual(kwargs["token_resolver"], token_fn)
-        self.assertEqual(kwargs["tenant_id"], "test-tenant")
-        self.assertEqual(kwargs["agent_id"], "test-agent")
-        self.assertEqual(kwargs["cluster_category"], "gov")
         self.assertEqual(kwargs["use_s2s_endpoint"], True)
         self.assertEqual(kwargs["suppress_invoke_agent_input"], True)
 
@@ -393,62 +387,20 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         """A365 kwargs are consumed and not forwarded to OTel kwargs."""
         use_microsoft_opentelemetry(
             enable_a365=True,
-            a365_tenant_id="test-tenant",
             enable_azure_monitor=False,
         )
         otel_kwargs = a365_mock.call_args[0][1]
-        self.assertNotIn("a365_tenant_id", otel_kwargs)
         self.assertNotIn("enable_a365", otel_kwargs)
 
     @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=True)
     @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
-    def test_kwargs_override_env_vars(self, default_resolver_mock, enabled_mock):
-        """Kwargs take precedence over environment variables."""
-
-        def custom_resolver(aid, tid):
-            return "custom-token"
-
-        default_resolver_mock.return_value = lambda aid, tid: "default-token"
-
-        env = {
-            "A365_TENANT_ID": "env-tenant",
-            "A365_AGENT_ID": "env-agent",
-            "A365_CLUSTER_CATEGORY": "mooncake",
-            "A365_USE_S2S_ENDPOINT": "true",
-            "A365_SUPPRESS_INVOKE_AGENT_INPUT": "true",
-        }
-        with patch.dict("os.environ", env, clear=False):
-            otel_kwargs = {"span_processors": []}
-            _append_a365_components(
-                True,
-                otel_kwargs,
-                token_resolver=custom_resolver,
-                tenant_id="kwarg-tenant",
-                agent_id="kwarg-agent",
-                cluster_category="gov",
-                use_s2s_endpoint=False,
-                suppress_invoke_agent_input=False,
-            )
-
-        # Two processors should have been added
-        processors = otel_kwargs["span_processors"]
-        self.assertEqual(len(processors), 2)
-
-        # The baggage processor (last one) should have kwarg values, not env values
-        baggage_proc = processors[1]
-        self.assertEqual(baggage_proc._tenant_id, "kwarg-tenant")
-        self.assertEqual(baggage_proc._agent_id, "kwarg-agent")
-
-    @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=True)
-    @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
-    def test_env_vars_used_as_fallback(self, default_resolver_mock, enabled_mock):
-        """Environment variables are used when kwargs are not provided."""
+    def test_tenant_and_agent_ids_not_sourced_from_env(self, default_resolver_mock, enabled_mock):
+    
         default_resolver_mock.return_value = lambda aid, tid: "token"
 
         env = {
             "A365_TENANT_ID": "env-tenant",
             "A365_AGENT_ID": "env-agent",
-            "A365_CLUSTER_CATEGORY": "gov",
         }
         with patch.dict("os.environ", env, clear=False):
             otel_kwargs = {"span_processors": []}
@@ -458,8 +410,8 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         self.assertEqual(len(processors), 2)
 
         baggage_proc = processors[1]
-        self.assertEqual(baggage_proc._tenant_id, "env-tenant")
-        self.assertEqual(baggage_proc._agent_id, "env-agent")
+        self.assertIsNone(baggage_proc._tenant_id)
+        self.assertIsNone(baggage_proc._agent_id)
 
     def test_a365_skipped_when_disabled(self):
         """No processors added when enable_a365=False."""
