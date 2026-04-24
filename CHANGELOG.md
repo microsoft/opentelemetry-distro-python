@@ -1,6 +1,6 @@
 # Release History
 
-## 0.1.0a4 (Unreleased)
+## 0.1.0a4 (2026-04-24)
 
 ### Breaking Changes
 
@@ -8,6 +8,9 @@
   ([#59](https://github.com/microsoft/opentelemetry-distro-python/pull/59))
 
 ### Features Added
+
+- `enable_azure_monitor` is off by default
+  ([#60](https://github.com/microsoft/opentelemetry-distro-python/pull/60))
 
 - Match Upstream Changes: Update scope value to support new exporter path
   ([#62](https://github.com/microsoft/opentelemetry-distro-python/pull/62))
