@@ -15,7 +15,6 @@ Environment variables:
   AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/
   OPENAI_API_VERSION=2024-10-21                 API version (optional, defaults to 2024-10-21)
   ENABLE_A365_OBSERVABILITY_EXPORTER=true       Enable A365 HTTP exporter (required)
-
 """
 
 import os
