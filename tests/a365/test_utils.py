@@ -154,7 +154,7 @@ class TestBuildExportUrl(unittest.TestCase):
         url = build_export_url("https://example.com", "agent1", "tenant1")
         self.assertEqual(
             url,
-            "https://example.com/observability/tenants/tenant1/agents/agent1/traces?api-version=1",
+            "https://example.com/observability/tenants/tenant1/otlp/agents/agent1/traces?api-version=1",
         )
 
     def test_s2s_endpoint(self):

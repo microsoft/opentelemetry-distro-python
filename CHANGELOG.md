@@ -1,5 +1,17 @@
 # Release History
 
+## 0.1.0a4 (Unreleased)
+
+### Breaking Changes
+
+- Remove tenant_id, agent_id from config options
+  ([#59](https://github.com/microsoft/opentelemetry-distro-python/pull/59))
+
+### Features Added
+
+- Match Upstream Changes: Update scope value to support new exporter path
+  ([#62](https://github.com/microsoft/opentelemetry-distro-python/pull/62))
+
 ## 0.1.0a3 (2026-04-22)
 
 ### Features Added

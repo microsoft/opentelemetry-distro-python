@@ -27,7 +27,6 @@ from opentelemetry.trace import SpanKind, StatusCode
 
 from microsoft.opentelemetry.a365.constants import (
     A365_AGENT_APP_INSTANCE_ID_ENV,
-    A365_AGENT_ID_ENV,
     A365_AGENTIC_USER_ID_ENV,
     A365_CLUSTER_CATEGORY_ENV,
     A365_OBSERVABILITY_DOMAIN_OVERRIDE,
@@ -35,7 +34,6 @@ from microsoft.opentelemetry.a365.constants import (
     A365_SERVICE_CLIENT_SECRET_ENV,
     A365_SERVICE_TENANT_ID_ENV,
     A365_SUPPRESS_INVOKE_AGENT_INPUT_ENV,
-    A365_TENANT_ID_ENV,
     A365_USE_S2S_ENDPOINT_ENV,
     ENABLE_A365_OBSERVABILITY_EXPORTER,
     GEN_AI_AGENT_ID_KEY,
@@ -210,9 +208,9 @@ def get_validated_domain_override() -> str | None:
 def build_export_url(endpoint: str, agent_id: str, tenant_id: str, use_s2s_endpoint: bool = False) -> str:
     """Construct the full export URL from endpoint and agent ID."""
     endpoint_path = (
-        f"/observabilityService/tenants/{tenant_id}/agents/{agent_id}/traces"
+        f"/observabilityService/tenants/{tenant_id}/otlp/agents/{agent_id}/traces"
         if use_s2s_endpoint
-        else f"/observability/tenants/{tenant_id}/agents/{agent_id}/traces"
+        else f"/observability/tenants/{tenant_id}/otlp/agents/{agent_id}/traces"
     )
 
     parsed = urlparse(endpoint)
@@ -241,7 +239,7 @@ def is_agent365_exporter_enabled() -> bool:
     return enable_exporter in ("true", "1", "yes", "on")
 
 
-_A365_DEFAULT_SCOPE = "api://9b975845-388f-4429-889e-eab1ef63949c/.default"
+_A365_DEFAULT_SCOPE = "api://9b975845-388f-4429-889e-eab1ef63949c/Agent365.Observability.OtelWrite"
 
 
 def _create_fic_token_resolver() -> Callable[[str, str], Optional[str]]:
@@ -440,8 +438,6 @@ def create_a365_components(
 
     All other configuration is read from environment variables:
       - ``ENABLE_A365_OBSERVABILITY_EXPORTER`` -- must be true for the HTTP exporter
-      - ``A365_TENANT_ID`` -- auto-stamped on every span
-      - ``A365_AGENT_ID`` -- auto-stamped on every span
       - ``A365_CLUSTER_CATEGORY`` -- defaults to ``"prod"``
       - ``A365_USE_S2S_ENDPOINT`` -- defaults to False
       - ``A365_SUPPRESS_INVOKE_AGENT_INPUT`` -- defaults to False
@@ -488,12 +484,8 @@ def create_a365_components(
         max_export_batch_size=options.max_export_batch_size,
     )
 
-    # Identity stamping + baggage-to-span attribute propagation processor
-    tenant_id = os.environ.get(A365_TENANT_ID_ENV)
-    agent_id = os.environ.get(A365_AGENT_ID_ENV)
-    baggage_processor = A365SpanProcessor(
-        tenant_id=tenant_id,
-        agent_id=agent_id,
-    )
+    # Baggage-to-span attribute propagation processor. Tenant/agent IDs
+    # are supplied per-request via BaggageMiddleware / BaggageBuilder.
+    baggage_processor = A365SpanProcessor()
 
     return A365Handlers(span_processors=[batch_processor, baggage_processor])
