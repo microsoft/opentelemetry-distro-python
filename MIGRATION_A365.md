@@ -188,6 +188,7 @@ from microsoft.opentelemetry import use_microsoft_opentelemetry
 use_microsoft_opentelemetry(
     enable_a365=True,
     a365_token_resolver=my_token_resolver,
+    a365_cluster_category="prod",
     a365_use_s2s_endpoint=True,
     a365_suppress_invoke_agent_input=True,
 )
@@ -200,6 +201,7 @@ use_microsoft_opentelemetry(
 | `service_name` | `OTEL_SERVICE_NAME` env var or `resource` kwarg |
 | `service_namespace` | `resource` kwarg with `SERVICE_NAMESPACE` attribute |
 | `token_resolver` | `a365_token_resolver` kwarg |
+| `cluster_category` | `a365_cluster_category` kwarg or `A365_CLUSTER_CATEGORY` env var |
 | `exporter_options` | Individual kwargs or env vars (see below) |
 | `suppress_invoke_agent_input` | `a365_suppress_invoke_agent_input` kwarg or `A365_SUPPRESS_INVOKE_AGENT_INPUT` env var |
 
@@ -231,7 +233,7 @@ tracer = trace.get_tracer("my-module")
 | Old env var | New env var | Notes |
 |-------------|-------------|-------|
 | `ENABLE_A365_OBSERVABILITY_EXPORTER` | `ENABLE_A365_OBSERVABILITY_EXPORTER` | Same — enables A365 HTTP exporter |
-| `A365_CLUSTER_CATEGORY` | `A365_CLUSTER_CATEGORY` | Same — set via env var |
+| `A365_CLUSTER_CATEGORY` | `A365_CLUSTER_CATEGORY` | Same — or use `a365_cluster_category` kwarg |
 | `A365_USE_S2S_ENDPOINT` | `A365_USE_S2S_ENDPOINT` | Same — or use `a365_use_s2s_endpoint` kwarg |
 | `A365_SUPPRESS_INVOKE_AGENT_INPUT` | `A365_SUPPRESS_INVOKE_AGENT_INPUT` | Same — or use `a365_suppress_invoke_agent_input` kwarg |
 | `ENABLE_OTLP_EXPORTER` | `OTEL_EXPORTER_OTLP_ENDPOINT` | Use standard OTel env var instead |

@@ -60,6 +60,7 @@ use_microsoft_opentelemetry(
 | `enable_trace_based_sampling_for_logs` | `bool` | `False` | Enable trace-based sampling for logs. |
 | `enable_a365` | `bool` | `False` | Enable Agent365 telemetry export. |
 | `a365_token_resolver` | `Callable` | `None` | `(agent_id, tenant_id) -> token` callable for A365 auth. If omitted, defaults to FIC/DefaultAzureCredential. |
+| `a365_cluster_category` | `str` | `"prod"` | Cluster category for endpoint discovery. Falls back to `A365_CLUSTER_CATEGORY` env var. |
 | `a365_use_s2s_endpoint` | `bool` | `False` | Use the S2S endpoint. Falls back to `A365_USE_S2S_ENDPOINT` env var. |
 | `a365_suppress_invoke_agent_input` | `bool` | `False` | Strip input messages from InvokeAgent spans. Falls back to `A365_SUPPRESS_INVOKE_AGENT_INPUT` env var. |
 | `enable_console` | `bool` | `False` | Enable console exporter for traces, metrics, and logs (development only). Auto-enables when no other exporter is active. Mirrors `ExportTarget.Console` from the .NET distro. |

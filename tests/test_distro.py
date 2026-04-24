@@ -11,6 +11,7 @@ Validates that the microsoft distro wrapper:
   2. Optionally delegates Azure Monitor exporter setup.
 """
 
+import os
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -364,6 +365,7 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         use_microsoft_opentelemetry(
             enable_a365=True,
             a365_token_resolver=token_fn,
+            a365_cluster_category="gov",
             a365_use_s2s_endpoint=True,
             a365_suppress_invoke_agent_input=True,
             enable_azure_monitor=False,
@@ -371,6 +373,7 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         a365_mock.assert_called_once()
         _, kwargs = a365_mock.call_args
         self.assertEqual(kwargs["token_resolver"], token_fn)
+        self.assertEqual(kwargs["cluster_category"], "gov")
         self.assertEqual(kwargs["use_s2s_endpoint"], True)
         self.assertEqual(kwargs["suppress_invoke_agent_input"], True)
 
@@ -418,6 +421,49 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         otel_kwargs = {"span_processors": []}
         _append_a365_components(False, otel_kwargs)
         self.assertEqual(otel_kwargs["span_processors"], [])
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=True)
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
+    def test_cluster_category_kwarg_overrides_env(self, default_resolver_mock, enabled_mock):
+        """a365_cluster_category kwarg takes precedence over A365_CLUSTER_CATEGORY env var."""
+        default_resolver_mock.return_value = lambda aid, tid: "token"
+
+        with patch.dict("os.environ", {"A365_CLUSTER_CATEGORY": "mooncake"}, clear=False), \
+            patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
+            otel_kwargs = {"span_processors": []}
+            _append_a365_components(True, otel_kwargs, cluster_category="gov")
+
+        _, exporter_kwargs = exporter_mock.call_args
+        self.assertEqual(exporter_kwargs["cluster_category"], "gov")
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=True)
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
+    def test_cluster_category_falls_back_to_env(self, default_resolver_mock, enabled_mock):
+        """A365_CLUSTER_CATEGORY env var is used when kwarg not provided."""
+        default_resolver_mock.return_value = lambda aid, tid: "token"
+
+        with patch.dict("os.environ", {"A365_CLUSTER_CATEGORY": "gov"}, clear=False), \
+            patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
+            otel_kwargs = {"span_processors": []}
+            _append_a365_components(True, otel_kwargs)
+
+        _, exporter_kwargs = exporter_mock.call_args
+        self.assertEqual(exporter_kwargs["cluster_category"], "gov")
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=True)
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
+    def test_cluster_category_defaults_to_prod(self, default_resolver_mock, enabled_mock):
+        """cluster_category defaults to 'prod' when neither kwarg nor env var is set."""
+        default_resolver_mock.return_value = lambda aid, tid: "token"
+
+        env = {k: v for k, v in os.environ.items() if k != "A365_CLUSTER_CATEGORY"}
+        with patch.dict("os.environ", env, clear=True), \
+            patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
+            otel_kwargs = {"span_processors": []}
+            _append_a365_components(True, otel_kwargs)
+
+        _, exporter_kwargs = exporter_mock.call_args
+        self.assertEqual(exporter_kwargs["cluster_category"], "prod")
 
 
 class TestA365Components(unittest.TestCase):

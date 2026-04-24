@@ -34,6 +34,7 @@ from microsoft.opentelemetry._constants import (
     SPECTRA_PROTOCOL_ARG,
     SPECTRA_INSECURE_ARG,
     A365_TOKEN_RESOLVER_ARG,
+    A365_CLUSTER_CATEGORY_ARG,
     A365_USE_S2S_ENDPOINT_ARG,
     A365_SUPPRESS_INVOKE_AGENT_INPUT_ARG,
     ENABLE_AZURE_MONITOR_ARG,
@@ -115,6 +116,9 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
         Optional callable ``(agent_id: str, tenant_id: str) -> str | None``
         used to authenticate with the Agent365 endpoint.  When omitted,
         ``DefaultAzureCredential`` is used.
+    :keyword str a365_cluster_category:
+        Cluster category for endpoint discovery. Also read from ``A365_CLUSTER_CATEGORY``
+        env var. Defaults to ``"prod"``.
     :keyword bool a365_use_s2s_endpoint:
         Use the S2S endpoint. Also read from ``A365_USE_S2S_ENDPOINT`` env var.
         Defaults to False.
@@ -147,6 +151,7 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     enable_console: bool = bool(kwargs.pop(ENABLE_CONSOLE_ARG, False))
     enable_a365: bool = bool(kwargs.pop(ENABLE_A365_ARG, False))
     a365_token_resolver = kwargs.pop(A365_TOKEN_RESOLVER_ARG, None)
+    a365_cluster_category = kwargs.pop(A365_CLUSTER_CATEGORY_ARG, None)
     a365_use_s2s_endpoint = kwargs.pop(A365_USE_S2S_ENDPOINT_ARG, None)
     a365_suppress_invoke_agent_input = kwargs.pop(A365_SUPPRESS_INVOKE_AGENT_INPUT_ARG, None)
 
@@ -178,6 +183,7 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
         enable_a365,
         otel_kwargs,
         token_resolver=a365_token_resolver,
+        cluster_category=a365_cluster_category,
         use_s2s_endpoint=a365_use_s2s_endpoint,
         suppress_invoke_agent_input=a365_suppress_invoke_agent_input,
     )
@@ -246,6 +252,7 @@ def _append_a365_components(
     enable_a365: bool,
     otel_kwargs: Dict[str, Any],
     token_resolver: Any = None,
+    cluster_category: Any = None,
     use_s2s_endpoint: Any = None,
     suppress_invoke_agent_input: Any = None,
 ) -> None:
@@ -281,8 +288,9 @@ def _append_a365_components(
     )
 
     try:
+        # Resolve configuration: kwargs > env vars > defaults
         resolved_token_resolver = token_resolver or _create_default_token_resolver()
-        resolved_cluster_category = os.environ.get(A365_CLUSTER_CATEGORY_ENV, "prod")
+        resolved_cluster_category = cluster_category or os.environ.get(A365_CLUSTER_CATEGORY_ENV, "prod")
         resolved_use_s2s = use_s2s_endpoint if use_s2s_endpoint is not None else _env_bool(A365_USE_S2S_ENDPOINT_ENV)
         resolved_suppress_input = (
             suppress_invoke_agent_input
