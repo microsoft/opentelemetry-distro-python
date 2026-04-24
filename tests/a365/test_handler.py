@@ -57,14 +57,14 @@ class TestCreateA365Components(unittest.TestCase):
             "A365_AGENT_ID": "a1",
         },
     )
-    def test_passes_identity_from_env_to_span_processor(self):
+    def test_env_tenant_and_agent_ids_not_propagated_to_span_processor(self):
         handlers = create_a365_components()
         from microsoft.opentelemetry.a365.core.exporters.span_processor import A365SpanProcessor
 
         span_proc = handlers.span_processors[1]
         self.assertIsInstance(span_proc, A365SpanProcessor)
-        self.assertEqual(span_proc._tenant_id, "t1")
-        self.assertEqual(span_proc._agent_id, "a1")
+        self.assertIsNone(span_proc._tenant_id)
+        self.assertIsNone(span_proc._agent_id)
 
     @patch.dict(os.environ, {"ENABLE_A365_OBSERVABILITY_EXPORTER": "true"}, clear=False)
     def test_identity_defaults_to_none_when_env_not_set(self):
