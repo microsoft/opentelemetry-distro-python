@@ -70,14 +70,13 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
 
     This function sets up the OpenTelemetry global providers
     (TracerProvider, MeterProvider, LoggerProvider) and optionally
-    configures Azure Monitor as an exporter.  Non-Azure Monitor
-    scenarios are supported: disable Azure Monitor via
-    ``enable_azure_monitor=False`` and the core OTel providers
-    will still be initialised normally.
+    configures Azure Monitor as an exporter.  Azure Monitor is off
+    by default: enable it via ``enable_azure_monitor=True`` and
+    provide a connection string.
 
     :keyword bool enable_azure_monitor:
         Enable Azure Monitor export.
-        Defaults to True. Set to False to skip Azure Monitor setup.
+        Defaults to False. Set to True to enable Azure Monitor setup.
     :keyword str azure_monitor_connection_string:
         Connection string for Application Insights resource.
     :keyword azure_monitor_exporter_credential:
@@ -147,7 +146,7 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     :rtype: None
     """
 
-    enable_azure_monitor = kwargs.pop(ENABLE_AZURE_MONITOR_ARG, True)
+    enable_azure_monitor = kwargs.pop(ENABLE_AZURE_MONITOR_ARG, False)
     enable_console: bool = bool(kwargs.pop(ENABLE_CONSOLE_ARG, False))
     enable_a365: bool = bool(kwargs.pop(ENABLE_A365_ARG, False))
     a365_token_resolver = kwargs.pop(A365_TOKEN_RESOLVER_ARG, None)
@@ -234,10 +233,8 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     # ---- Instrumentations (always, after providers are set) ----
     _setup_instrumentations(otel_kwargs)
 
-    # Log when Azure Monitor is explicitly opted out, so users can
-    # confirm the setting took effect.
-    if not enable_azure_monitor:
-        _logger.info("Azure Monitor exporter explicitly disabled.")
+    if enable_azure_monitor:
+        _logger.info("Azure Monitor enabled.")
 
 
 def _env_bool(name: str, default: bool = False) -> bool:
