@@ -11,7 +11,6 @@
 
 - `enable_azure_monitor` is off by default
   ([#60](https://github.com/microsoft/opentelemetry-distro-python/pull/60))
-
 - Match Upstream Changes: Update scope value to support new exporter path
   ([#62](https://github.com/microsoft/opentelemetry-distro-python/pull/62))
 
