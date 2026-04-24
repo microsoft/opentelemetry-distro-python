@@ -208,9 +208,9 @@ def get_validated_domain_override() -> str | None:
 def build_export_url(endpoint: str, agent_id: str, tenant_id: str, use_s2s_endpoint: bool = False) -> str:
     """Construct the full export URL from endpoint and agent ID."""
     endpoint_path = (
-        f"/observabilityService/tenants/{tenant_id}/agents/{agent_id}/traces"
+        f"/observabilityService/tenants/{tenant_id}/otlp/agents/{agent_id}/traces"
         if use_s2s_endpoint
-        else f"/observability/tenants/{tenant_id}/agents/{agent_id}/traces"
+        else f"/observability/tenants/{tenant_id}/otlp/agents/{agent_id}/traces"
     )
 
     parsed = urlparse(endpoint)
@@ -239,7 +239,7 @@ def is_agent365_exporter_enabled() -> bool:
     return enable_exporter in ("true", "1", "yes", "on")
 
 
-_A365_DEFAULT_SCOPE = "api://9b975845-388f-4429-889e-eab1ef63949c/.default"
+_A365_DEFAULT_SCOPE = "api://9b975845-388f-4429-889e-eab1ef63949c/Agent365.Observability.OtelWrite"
 
 
 def _create_fic_token_resolver() -> Callable[[str, str], Optional[str]]:
