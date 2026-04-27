@@ -54,6 +54,7 @@ _A365_DISABLED_INSTRUMENTATIONS = (
     "requests",
     "urllib",
     "urllib3",
+    "azure_sdk",
 )
 
 # --- Console Exporter Constants ---

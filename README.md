@@ -212,6 +212,7 @@ following instrumentations by default** when `enable_a365=True`:
 | `requests` | disabled |
 | `urllib` | disabled |
 | `urllib3` | disabled |
+| `azure_sdk` | disabled |
 | `openai` | enabled |
 | `openai_agents` | enabled |
 | `langchain` | enabled |

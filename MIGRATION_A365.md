@@ -312,6 +312,7 @@ HTTP-client instrumentations by default**. GenAI instrumentations stay enabled.
 | `requests` | disabled |
 | `urllib` | disabled |
 | `urllib3` | disabled |
+| `azure_sdk` | disabled |
 | `openai` | enabled |
 | `openai_agents` | enabled |
 | `langchain` | enabled |
