@@ -166,10 +166,11 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None: # pylint: disable=too
         _AZURE_MONITOR_KWARG_MAP[k]: v for k, v in kwargs.items() if k in _AZURE_MONITOR_KWARG_MAP
     }  # pylint: disable=line-too-long
 
-    # When A365 is enabled, disable web-framework / HTTP-client
-    # instrumentations by default.  The user can still override by
-    # explicitly setting ``instrumentation_options={"django": {"enabled": True}}``.
-    if enable_a365:
+    # When A365 is enabled (and Azure Monitor is NOT enabled), disable
+    # web-framework / HTTP-client instrumentations by default.  The user can
+    # still override by explicitly setting
+    # ``instrumentation_options={"django": {"enabled": True}}``.
+    if enable_a365 and not enable_azure_monitor:
         inst_opts = otel_kwargs.get(INSTRUMENTATION_OPTIONS_ARG) or {}
         if not isinstance(inst_opts, dict):
             _logger.error(

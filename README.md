@@ -214,6 +214,11 @@ following instrumentations by default** when `enable_a365=True`:
 | `urllib3` | disabled |
 | `azure_sdk` | disabled |
 | `openai` | enabled |
+
+> **Note:** When both `enable_a365=True` and `enable_azure_monitor=True` are
+> set, the original (non-A365) defaults are used and the disabled libraries
+> above remain **enabled** so Azure Monitor continues to receive web/HTTP
+> telemetry.
 | `openai_agents` | enabled |
 | `langchain` | enabled |
 | `semantic_kernel` | enabled |

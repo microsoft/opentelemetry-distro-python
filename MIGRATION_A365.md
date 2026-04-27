@@ -303,6 +303,11 @@ The distro auto-discovers and activates supported OTel instrumentations.
 When `enable_a365=True`, the distro **disables web-framework /
 HTTP-client instrumentations by default**. GenAI instrumentations stay enabled.
 
+> **Note:** When both `enable_a365=True` and `enable_azure_monitor=True` are
+> set, the original (non-A365) defaults are used and the libraries below
+> remain **enabled** so Azure Monitor continues to receive web/HTTP
+> telemetry.
+
 | Library | Default with A365 |
 |---|---|
 | `django` | disabled |

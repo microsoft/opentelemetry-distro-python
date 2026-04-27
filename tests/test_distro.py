@@ -752,6 +752,28 @@ class TestA365DisablesWebInstrumentations(unittest.TestCase):
                 f"{lib} should be enabled when a365 is off",
             )
 
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    @patch("microsoft.opentelemetry._distro._setup_instrumentations")
+    @patch("microsoft.opentelemetry._distro._setup_logging")
+    @patch("microsoft.opentelemetry._distro._setup_metrics")
+    @patch("microsoft.opentelemetry._distro._setup_tracing")
+    def test_a365_defaults_skipped_when_azure_monitor_also_enabled(
+        self, _trc, _met, _log, setup_inst, _az
+    ):
+        """When both enable_a365 and enable_azure_monitor are True, the
+        non-A365 (original) defaults are preserved so web/HTTP libs stay on."""
+        use_microsoft_opentelemetry(
+            enable_a365=True,
+            enable_azure_monitor=True,
+            azure_monitor_connection_string=TEST_CONNECTION_STRING,
+        )
+        otel_kwargs = setup_inst.call_args[0][0]
+        for lib in self._WEB_DB_LIBS:
+            self.assertTrue(
+                _is_instrumentation_enabled(otel_kwargs, lib),
+                f"{lib} should remain enabled when both a365 and azure_monitor are on",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
