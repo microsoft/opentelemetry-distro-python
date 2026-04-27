@@ -196,6 +196,35 @@ use_microsoft_opentelemetry(
 )
 ```
 
+### Default Instrumentations When `enable_a365=True`
+
+The distro **automatically disables the
+following instrumentations by default** when `enable_a365=True`:
+
+| Disabled by default with A365 | Enabled by default with A365 |
+|---|---|
+| `django` | `langchain` |
+| `fastapi` | `openai` |
+| `flask` | `openai_agents` |
+| `psycopg2` | `semantic_kernel` |
+| `requests` | `agent_framework` |
+| `urllib` | |
+| `urllib3` | |
+
+You can re-enable any of these explicitly via `instrumentation_options`:
+
+```python
+use_microsoft_opentelemetry(
+    enable_a365=True,
+    instrumentation_options={
+        "fastapi": {"enabled": True},     # opt back in to FastAPI
+    },
+)
+```
+
+When `enable_a365=False` (the default), all supported instrumentations
+remain enabled by default.
+
 
 
 

@@ -47,6 +47,7 @@ from microsoft.opentelemetry._constants import (
     RESOURCE_ARG,
     SPAN_PROCESSORS_ARG,
     VIEWS_ARG,
+    _A365_DISABLED_INSTRUMENTATIONS,
     _AZURE_MONITOR_KWARG_MAP,
     _SUPPORTED_INSTRUMENTED_LIBRARIES,
     _SPECTRA_DEFAULT_GRPC_ENDPOINT,
@@ -164,6 +165,13 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     azure_monitor_kwargs: Dict[str, Any] = {
         _AZURE_MONITOR_KWARG_MAP[k]: v for k, v in kwargs.items() if k in _AZURE_MONITOR_KWARG_MAP
     }  # pylint: disable=line-too-long
+
+    # When A365 is enabled, disable web-framework / HTTP-client
+    # instrumentations by default.  The user can still override by
+    # explicitly setting ``instrumentation_options={"django": {"enabled": True}}``.
+    if enable_a365:
+        for lib in _A365_DISABLED_INSTRUMENTATIONS:
+            otel_kwargs.setdefault(INSTRUMENTATION_OPTIONS_ARG, {}).setdefault(lib, {}).setdefault("enabled", False)
 
     # ---- OTLP exporters (append to user-supplied processors/readers) ----
     _append_otlp_components(otel_kwargs)

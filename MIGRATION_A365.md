@@ -297,6 +297,36 @@ from opentelemetry import trace
 tracer = trace.get_tracer("my-module")
 ```
 
+## Default Instrumentations With A365 exporter enabled
+
+The distro auto-discovers and activates supported OTel instrumentations.
+When `enable_a365=True`, the distro **disables web-framework /
+HTTP-client instrumentations by default**. GenAI instrumentations stay enabled.
+
+| Disabled by default with A365 | Enabled by default with A365 |
+|---|---|
+| `django` | `langchain` |
+| `fastapi` | `openai` |
+| `flask` | `openai_agents` |
+| `psycopg2` | `semantic_kernel` |
+| `requests` | `agent_framework` |
+| `urllib` | |
+| `urllib3` | |
+
+To re-enable any of these, pass `instrumentation_options`:
+
+```python
+use_microsoft_opentelemetry(
+    enable_a365=True,
+    instrumentation_options={
+        "fastapi": {"enabled": True},
+    },
+)
+```
+
+When `enable_a365=False` (the default), all supported instrumentations
+remain enabled by default.
+
 ## Environment Variable Mapping
 
 | Old env var | New env var | Notes |

@@ -23,6 +23,7 @@ from microsoft.opentelemetry._distro import (
     use_microsoft_opentelemetry,
     _append_a365_components,
     _append_spectra_components,
+    _is_instrumentation_enabled,
     _setup_tracing,
     _setup_metrics,
     _setup_logging,
@@ -409,7 +410,7 @@ class TestA365KwargsConfiguration(unittest.TestCase):
     @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=True)
     @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
     def test_tenant_and_agent_ids_not_sourced_from_env(self, default_resolver_mock, enabled_mock):
-    
+
         default_resolver_mock.return_value = lambda aid, tid: "token"
 
         env = {
@@ -439,8 +440,10 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         """a365_cluster_category kwarg takes precedence over A365_CLUSTER_CATEGORY env var."""
         default_resolver_mock.return_value = lambda aid, tid: "token"
 
-        with patch.dict("os.environ", {"A365_CLUSTER_CATEGORY": "mooncake"}, clear=False), \
-            patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
+        with (
+            patch.dict("os.environ", {"A365_CLUSTER_CATEGORY": "mooncake"}, clear=False),
+            patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock,
+        ):
             otel_kwargs = {"span_processors": []}
             _append_a365_components(True, otel_kwargs, cluster_category="gov")
 
@@ -453,8 +456,10 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         """A365_CLUSTER_CATEGORY env var is used when kwarg not provided."""
         default_resolver_mock.return_value = lambda aid, tid: "token"
 
-        with patch.dict("os.environ", {"A365_CLUSTER_CATEGORY": "gov"}, clear=False), \
-            patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
+        with (
+            patch.dict("os.environ", {"A365_CLUSTER_CATEGORY": "gov"}, clear=False),
+            patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock,
+        ):
             otel_kwargs = {"span_processors": []}
             _append_a365_components(True, otel_kwargs)
 
@@ -468,8 +473,10 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         default_resolver_mock.return_value = lambda aid, tid: "token"
 
         env = {k: v for k, v in os.environ.items() if k != "A365_CLUSTER_CATEGORY"}
-        with patch.dict("os.environ", env, clear=True), \
-            patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
+        with (
+            patch.dict("os.environ", env, clear=True),
+            patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock,
+        ):
             otel_kwargs = {"span_processors": []}
             _append_a365_components(True, otel_kwargs)
 
@@ -668,6 +675,76 @@ class TestSpectraComponents(unittest.TestCase):
         self.assertNotIn("spectra_endpoint", otel_kwargs)
         self.assertNotIn("spectra_protocol", otel_kwargs)
         self.assertNotIn("spectra_insecure", otel_kwargs)
+
+
+class TestA365DisablesWebInstrumentations(unittest.TestCase):
+    """When enable_a365=True, web/DB instrumentations are off by default."""
+
+    _WEB_DB_LIBS = ("django", "fastapi", "flask", "psycopg2", "requests", "urllib", "urllib3")
+    _GENAI_LIBS = ("langchain", "openai", "openai_agents", "semantic_kernel", "agent_framework")
+
+    @patch("microsoft.opentelemetry._distro._setup_instrumentations")
+    @patch("microsoft.opentelemetry._distro._setup_logging")
+    @patch("microsoft.opentelemetry._distro._setup_metrics")
+    @patch("microsoft.opentelemetry._distro._setup_tracing")
+    def test_web_db_disabled_when_a365_enabled(self, _trc, _met, _log, setup_inst):
+        """Web/DB libs are disabled by default when A365 is on."""
+        use_microsoft_opentelemetry(enable_a365=True)
+        otel_kwargs = setup_inst.call_args[0][0]
+        for lib in self._WEB_DB_LIBS:
+            self.assertFalse(
+                _is_instrumentation_enabled(otel_kwargs, lib),
+                f"{lib} should be disabled when enable_a365=True",
+            )
+
+    @patch("microsoft.opentelemetry._distro._setup_instrumentations")
+    @patch("microsoft.opentelemetry._distro._setup_logging")
+    @patch("microsoft.opentelemetry._distro._setup_metrics")
+    @patch("microsoft.opentelemetry._distro._setup_tracing")
+    def test_genai_still_enabled_when_a365_enabled(self, _trc, _met, _log, setup_inst):
+        """GenAI libs remain enabled when A365 is on."""
+        use_microsoft_opentelemetry(enable_a365=True)
+        otel_kwargs = setup_inst.call_args[0][0]
+        for lib in self._GENAI_LIBS:
+            self.assertTrue(
+                _is_instrumentation_enabled(otel_kwargs, lib),
+                f"{lib} should still be enabled when enable_a365=True",
+            )
+
+    @patch("microsoft.opentelemetry._distro._setup_instrumentations")
+    @patch("microsoft.opentelemetry._distro._setup_logging")
+    @patch("microsoft.opentelemetry._distro._setup_metrics")
+    @patch("microsoft.opentelemetry._distro._setup_tracing")
+    def test_user_can_override_disabled_lib(self, _trc, _met, _log, setup_inst):
+        """User can explicitly re-enable a web lib even with A365 on."""
+        use_microsoft_opentelemetry(
+            enable_a365=True,
+            instrumentation_options={"django": {"enabled": True}},
+        )
+        otel_kwargs = setup_inst.call_args[0][0]
+        self.assertTrue(
+            _is_instrumentation_enabled(otel_kwargs, "django"),
+            "django should be enabled when user explicitly overrides",
+        )
+        # Other web libs should still be disabled
+        self.assertFalse(
+            _is_instrumentation_enabled(otel_kwargs, "flask"),
+            "flask should still be disabled",
+        )
+
+    @patch("microsoft.opentelemetry._distro._setup_instrumentations")
+    @patch("microsoft.opentelemetry._distro._setup_logging")
+    @patch("microsoft.opentelemetry._distro._setup_metrics")
+    @patch("microsoft.opentelemetry._distro._setup_tracing")
+    def test_no_effect_when_a365_disabled(self, _trc, _met, _log, setup_inst):
+        """Without enable_a365, all instrumentations remain enabled by default."""
+        use_microsoft_opentelemetry()
+        otel_kwargs = setup_inst.call_args[0][0]
+        for lib in self._WEB_DB_LIBS:
+            self.assertTrue(
+                _is_instrumentation_enabled(otel_kwargs, lib),
+                f"{lib} should be enabled when a365 is off",
+            )
 
 
 if __name__ == "__main__":
