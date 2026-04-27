@@ -1,6 +1,17 @@
 # Release History
 
-## 0.1.0a4 (Unreleased)
+## Unreleased
+
+### Features Added
+
+- Disable web-framework / HTTP-client instrumentations
+  (`django`, `fastapi`, `flask`, `psycopg2`, `requests`, `urllib`, `urllib3`)
+  by default when A365 is enabled. GenAI instrumentations
+  (`langchain`, `openai`, `openai_agents`, `semantic_kernel`,
+  `agent_framework`) remain enabled. Users can override either default via
+  `instrumentation_options`.
+
+## 0.1.0a4 (2026-04-24)
 
 ### Breaking Changes
 
@@ -9,6 +20,8 @@
 
 ### Features Added
 
+- `enable_azure_monitor` is off by default
+  ([#60](https://github.com/microsoft/opentelemetry-distro-python/pull/60))
 - Match Upstream Changes: Update scope value to support new exporter path
   ([#62](https://github.com/microsoft/opentelemetry-distro-python/pull/62))
 

@@ -14,6 +14,7 @@ deployment_name = "gpt-4.1"
 api_key = "<AZURE_OPENAI_API_KEY>"
 
 use_microsoft_opentelemetry(
+    enable_azure_monitor=True,
     sampling_ratio=1.0,
     instrumentation_options={
         "langchain": {"enabled": True},

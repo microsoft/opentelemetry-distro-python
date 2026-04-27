@@ -34,7 +34,6 @@ def get_token(agent_id: str, tenant_id: str) -> str | None:
 use_microsoft_opentelemetry(
     enable_a365=True,
     a365_token_resolver=get_token,
-    enable_azure_monitor=False,
     instrumentation_options={
         "langchain": {"enabled": True},
     },

@@ -198,7 +198,7 @@ class TestOtlpIntegrationWithDistro(unittest.TestCase):
         mock_create.return_value = OtlpHandlers()
         from microsoft.opentelemetry._distro import use_microsoft_opentelemetry
 
-        use_microsoft_opentelemetry(enable_azure_monitor=False)
+        use_microsoft_opentelemetry()
         mock_create.assert_called_once()
 
     @patch("microsoft.opentelemetry._distro._append_azure_monitor_components")
@@ -214,7 +214,7 @@ class TestOtlpIntegrationWithDistro(unittest.TestCase):
         """When OTLP is disabled, create_otlp_components is not called."""
         from microsoft.opentelemetry._distro import use_microsoft_opentelemetry
 
-        use_microsoft_opentelemetry(enable_azure_monitor=False)
+        use_microsoft_opentelemetry()
         mock_create.assert_not_called()
 
     @patch("microsoft.opentelemetry._distro.set_tracer_provider")
