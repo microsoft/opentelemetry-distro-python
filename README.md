@@ -183,6 +183,8 @@ The distro automatically instruments the following libraries when they are insta
 | `openai` | GenAI |
 | `openai_agents` | GenAI |
 | `langchain` | GenAI |
+| `semantic_kernel` | GenAI |
+| `agent_framework` | GenAI |
 | `azure_sdk` | Azure (enabled when Azure Monitor is active) |
 
 Individual instrumentations can be toggled via the `instrumentation_options` kwarg:
@@ -201,15 +203,20 @@ use_microsoft_opentelemetry(
 The distro **automatically disables the
 following instrumentations by default** when `enable_a365=True`:
 
-| Disabled by default with A365 | Enabled by default with A365 |
+| Library | Default with A365 |
 |---|---|
-| `django` | `langchain` |
-| `fastapi` | `openai` |
-| `flask` | `openai_agents` |
-| `psycopg2` | `semantic_kernel` |
-| `requests` | `agent_framework` |
-| `urllib`  |
-| `urllib3` |
+| `django` | disabled |
+| `fastapi` | disabled |
+| `flask` | disabled |
+| `psycopg2` | disabled |
+| `requests` | disabled |
+| `urllib` | disabled |
+| `urllib3` | disabled |
+| `openai` | enabled |
+| `openai_agents` | enabled |
+| `langchain` | enabled |
+| `semantic_kernel` | enabled |
+| `agent_framework` | enabled |
 
 You can re-enable any of these explicitly via `instrumentation_options`:
 

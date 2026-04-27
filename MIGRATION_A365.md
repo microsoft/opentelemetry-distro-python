@@ -303,15 +303,20 @@ The distro auto-discovers and activates supported OTel instrumentations.
 When `enable_a365=True`, the distro **disables web-framework /
 HTTP-client instrumentations by default**. GenAI instrumentations stay enabled.
 
-| Disabled by default with A365 | Enabled by default with A365 |
+| Library | Default with A365 |
 |---|---|
-| `django` | `langchain` |
-| `fastapi` | `openai` |
-| `flask` | `openai_agents` |
-| `psycopg2` | `semantic_kernel` |
-| `requests` | `agent_framework` |
-| `urllib`   |
-| `urllib3`  |
+| `django` | disabled |
+| `fastapi` | disabled |
+| `flask` | disabled |
+| `psycopg2` | disabled |
+| `requests` | disabled |
+| `urllib` | disabled |
+| `urllib3` | disabled |
+| `openai` | enabled |
+| `openai_agents` | enabled |
+| `langchain` | enabled |
+| `semantic_kernel` | enabled |
+| `agent_framework` | enabled |
 
 To re-enable any of these, pass `instrumentation_options`:
 
