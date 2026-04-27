@@ -103,7 +103,7 @@ class TestConsoleDistroIntegration(unittest.TestCase):
 
         from microsoft.opentelemetry._distro import use_microsoft_opentelemetry
 
-        use_microsoft_opentelemetry(enable_azure_monitor=False)
+        use_microsoft_opentelemetry()
         call_kwargs = tracing_mock.call_args[0][1]
         span_processors = call_kwargs.get("span_processors", [])
         self.assertFalse(any(isinstance(sp, SimpleSpanProcessor) for sp in span_processors))
@@ -120,7 +120,7 @@ class TestConsoleDistroIntegration(unittest.TestCase):
         from microsoft.opentelemetry._distro import use_microsoft_opentelemetry
         from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
-        use_microsoft_opentelemetry(enable_azure_monitor=False, enable_a365=False)
+        use_microsoft_opentelemetry()
         call_kwargs = tracing_mock.call_args[0][1]
         span_processors = call_kwargs.get("span_processors", [])
         self.assertTrue(any(isinstance(sp, SimpleSpanProcessor) for sp in span_processors))
@@ -146,7 +146,7 @@ class TestConsoleDistroIntegration(unittest.TestCase):
         """enable_console is consumed, not forwarded to otel_kwargs."""
         from microsoft.opentelemetry._distro import use_microsoft_opentelemetry
 
-        use_microsoft_opentelemetry(enable_console=True)
+        use_microsoft_opentelemetry(enable_console=True, enable_azure_monitor=True)
         otel_kwargs = append_mock.call_args[0][0]
         self.assertNotIn("enable_console", otel_kwargs)
 
@@ -161,5 +161,5 @@ class TestConsoleDistroIntegration(unittest.TestCase):
         """Console does not add span processor when tracing is disabled."""
         from microsoft.opentelemetry._distro import use_microsoft_opentelemetry
 
-        use_microsoft_opentelemetry(enable_console=True, disable_tracing=True, enable_azure_monitor=False)
+        use_microsoft_opentelemetry(enable_console=True, disable_tracing=True)
         tracing_mock.assert_not_called()

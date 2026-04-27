@@ -11,6 +11,7 @@ Validates that the microsoft distro wrapper:
   2. Optionally delegates Azure Monitor exporter setup.
 """
 
+import os
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -34,17 +35,21 @@ TEST_CONNECTION_STRING = "InstrumentationKey=test-key;IngestionEndpoint=https://
 class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
     """Tests for use_microsoft_opentelemetry() orchestration."""
 
+    @patch("microsoft.opentelemetry._distro._setup_logging")
+    @patch("microsoft.opentelemetry._distro._setup_metrics")
+    @patch("microsoft.opentelemetry._distro._setup_tracing")
     @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
-    def test_azure_monitor_enabled_by_default(self, append_mock):
-        """Azure Monitor is enabled by default; components are collected."""
+    def test_azure_monitor_disabled_by_default(self, append_mock, tracing_mock, metrics_mock, logging_mock):
+        """Azure Monitor is disabled by default; components are not collected."""
         use_microsoft_opentelemetry()
-        append_mock.assert_called_once()
+        append_mock.assert_not_called()
 
     @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
     def test_connection_string_remapped(self, append_mock):
         """azure_monitor_connection_string is remapped to connection_string."""
         use_microsoft_opentelemetry(
             azure_monitor_connection_string=TEST_CONNECTION_STRING,
+            enable_azure_monitor=True,
         )
         _, azure_kwargs = append_mock.call_args[0]
         self.assertEqual(azure_kwargs["connection_string"], TEST_CONNECTION_STRING)
@@ -53,6 +58,7 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
     def test_azure_monitor_kwargs_remapped(self, append_mock):
         """azure_monitor_ prefixed kwargs are remapped to internal names."""
         use_microsoft_opentelemetry(
+            enable_azure_monitor=True,
             azure_monitor_connection_string=TEST_CONNECTION_STRING,
             azure_monitor_exporter_credential="test_cred",
             azure_monitor_enable_live_metrics=False,
@@ -74,6 +80,7 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
     def test_general_otel_kwargs_forwarded(self, append_mock):
         """General OTel kwargs are forwarded via otel_kwargs."""
         use_microsoft_opentelemetry(
+            enable_azure_monitor=True,
             azure_monitor_connection_string=TEST_CONNECTION_STRING,
             sampling_ratio=0.5,
             logger_name="test",
@@ -114,7 +121,7 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
     @patch("microsoft.opentelemetry._distro._setup_tracing")
     def test_disable_tracing_skips_tracing(self, tracing_mock, metrics_mock, logging_mock):
         """disable_tracing=True skips TracerProvider creation."""
-        use_microsoft_opentelemetry(disable_tracing=True, enable_azure_monitor=False)
+        use_microsoft_opentelemetry(disable_tracing=True)
         tracing_mock.assert_not_called()
         metrics_mock.assert_called_once()
         logging_mock.assert_called_once()
@@ -124,7 +131,7 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
     @patch("microsoft.opentelemetry._distro._setup_tracing")
     def test_disable_metrics_skips_metrics(self, tracing_mock, metrics_mock, logging_mock):
         """disable_metrics=True skips MeterProvider creation."""
-        use_microsoft_opentelemetry(disable_metrics=True, enable_azure_monitor=False)
+        use_microsoft_opentelemetry(disable_metrics=True)
         tracing_mock.assert_called_once()
         metrics_mock.assert_not_called()
         logging_mock.assert_called_once()
@@ -134,7 +141,7 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
     @patch("microsoft.opentelemetry._distro._setup_tracing")
     def test_disable_logging_skips_logging(self, tracing_mock, metrics_mock, logging_mock):
         """disable_logging=True skips LoggerProvider creation."""
-        use_microsoft_opentelemetry(disable_logging=True, enable_azure_monitor=False)
+        use_microsoft_opentelemetry(disable_logging=True)
         tracing_mock.assert_called_once()
         metrics_mock.assert_called_once()
         logging_mock.assert_not_called()
@@ -168,6 +175,7 @@ class TestAzureMonitorComponentCollection(unittest.TestCase):
     def test_post_setup_skipped_on_failure(self, append_mock):
         """When component collection returns None configs, post-setup is skipped."""
         use_microsoft_opentelemetry(
+            enable_azure_monitor=True,
             azure_monitor_connection_string=TEST_CONNECTION_STRING,
         )
         append_mock.assert_called_once()
@@ -176,6 +184,7 @@ class TestAzureMonitorComponentCollection(unittest.TestCase):
     def test_providers_created_by_azure_monitor(self, append_mock):
         """Providers are created by Azure Monitor _setup_* and registered by distro."""
         use_microsoft_opentelemetry(
+            enable_azure_monitor=True,
             azure_monitor_connection_string=TEST_CONNECTION_STRING,
         )
         append_mock.assert_called_once()
@@ -184,6 +193,7 @@ class TestAzureMonitorComponentCollection(unittest.TestCase):
     def test_otel_and_azure_kwargs_forwarded(self, append_mock):
         """Both OTel and Azure Monitor kwargs are forwarded to component collection."""
         use_microsoft_opentelemetry(
+            enable_azure_monitor=True,
             azure_monitor_connection_string=TEST_CONNECTION_STRING,
             sampling_ratio=0.5,
             logger_name="test",
@@ -201,6 +211,7 @@ class TestEnableKwargsPassthrough(unittest.TestCase):
     def test_enable_live_metrics_passed_through(self, append_mock):
         """azure_monitor_enable_live_metrics is remapped and forwarded."""
         use_microsoft_opentelemetry(
+            enable_azure_monitor=True,
             azure_monitor_connection_string=TEST_CONNECTION_STRING,
             azure_monitor_enable_live_metrics=False,
         )
@@ -211,6 +222,7 @@ class TestEnableKwargsPassthrough(unittest.TestCase):
     def test_enable_performance_counters_passed_through(self, append_mock):
         """azure_monitor_enable_performance_counters is remapped and forwarded."""
         use_microsoft_opentelemetry(
+            enable_azure_monitor=True,
             azure_monitor_connection_string=TEST_CONNECTION_STRING,
             azure_monitor_enable_performance_counters=False,
         )
@@ -230,6 +242,7 @@ class TestAllConfigOptions(unittest.TestCase):
         formatter = Formatter("%(message)s")
 
         use_microsoft_opentelemetry(
+            enable_azure_monitor=True,
             # Azure Monitor options (remapped)
             azure_monitor_connection_string=TEST_CONNECTION_STRING,
             azure_monitor_exporter_credential="test_cred",
@@ -364,18 +377,13 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         use_microsoft_opentelemetry(
             enable_a365=True,
             a365_token_resolver=token_fn,
-            a365_tenant_id="test-tenant",
-            a365_agent_id="test-agent",
             a365_cluster_category="gov",
             a365_use_s2s_endpoint=True,
             a365_suppress_invoke_agent_input=True,
-            enable_azure_monitor=False,
         )
         a365_mock.assert_called_once()
         _, kwargs = a365_mock.call_args
         self.assertEqual(kwargs["token_resolver"], token_fn)
-        self.assertEqual(kwargs["tenant_id"], "test-tenant")
-        self.assertEqual(kwargs["agent_id"], "test-agent")
         self.assertEqual(kwargs["cluster_category"], "gov")
         self.assertEqual(kwargs["use_s2s_endpoint"], True)
         self.assertEqual(kwargs["suppress_invoke_agent_input"], True)
@@ -383,7 +391,7 @@ class TestA365KwargsConfiguration(unittest.TestCase):
     @patch("microsoft.opentelemetry._distro._append_a365_components")
     def test_a365_not_called_when_disabled(self, a365_mock):
         """_append_a365_components is called with enable_a365=False (skips internally)."""
-        use_microsoft_opentelemetry(enable_azure_monitor=False)
+        use_microsoft_opentelemetry()
         a365_mock.assert_called_once()
         args = a365_mock.call_args[0]
         self.assertFalse(args[0])  # enable_a365=False
@@ -393,62 +401,20 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         """A365 kwargs are consumed and not forwarded to OTel kwargs."""
         use_microsoft_opentelemetry(
             enable_a365=True,
-            a365_tenant_id="test-tenant",
             enable_azure_monitor=False,
         )
         otel_kwargs = a365_mock.call_args[0][1]
-        self.assertNotIn("a365_tenant_id", otel_kwargs)
         self.assertNotIn("enable_a365", otel_kwargs)
 
     @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=True)
     @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
-    def test_kwargs_override_env_vars(self, default_resolver_mock, enabled_mock):
-        """Kwargs take precedence over environment variables."""
-
-        def custom_resolver(aid, tid):
-            return "custom-token"
-
-        default_resolver_mock.return_value = lambda aid, tid: "default-token"
-
-        env = {
-            "A365_TENANT_ID": "env-tenant",
-            "A365_AGENT_ID": "env-agent",
-            "A365_CLUSTER_CATEGORY": "mooncake",
-            "A365_USE_S2S_ENDPOINT": "true",
-            "A365_SUPPRESS_INVOKE_AGENT_INPUT": "true",
-        }
-        with patch.dict("os.environ", env, clear=False):
-            otel_kwargs = {"span_processors": []}
-            _append_a365_components(
-                True,
-                otel_kwargs,
-                token_resolver=custom_resolver,
-                tenant_id="kwarg-tenant",
-                agent_id="kwarg-agent",
-                cluster_category="gov",
-                use_s2s_endpoint=False,
-                suppress_invoke_agent_input=False,
-            )
-
-        # Two processors should have been added
-        processors = otel_kwargs["span_processors"]
-        self.assertEqual(len(processors), 2)
-
-        # The baggage processor (last one) should have kwarg values, not env values
-        baggage_proc = processors[1]
-        self.assertEqual(baggage_proc._tenant_id, "kwarg-tenant")
-        self.assertEqual(baggage_proc._agent_id, "kwarg-agent")
-
-    @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=True)
-    @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
-    def test_env_vars_used_as_fallback(self, default_resolver_mock, enabled_mock):
-        """Environment variables are used when kwargs are not provided."""
+    def test_tenant_and_agent_ids_not_sourced_from_env(self, default_resolver_mock, enabled_mock):
+    
         default_resolver_mock.return_value = lambda aid, tid: "token"
 
         env = {
             "A365_TENANT_ID": "env-tenant",
             "A365_AGENT_ID": "env-agent",
-            "A365_CLUSTER_CATEGORY": "gov",
         }
         with patch.dict("os.environ", env, clear=False):
             otel_kwargs = {"span_processors": []}
@@ -458,14 +424,57 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         self.assertEqual(len(processors), 2)
 
         baggage_proc = processors[1]
-        self.assertEqual(baggage_proc._tenant_id, "env-tenant")
-        self.assertEqual(baggage_proc._agent_id, "env-agent")
+        self.assertIsNone(baggage_proc._tenant_id)
+        self.assertIsNone(baggage_proc._agent_id)
 
     def test_a365_skipped_when_disabled(self):
         """No processors added when enable_a365=False."""
         otel_kwargs = {"span_processors": []}
         _append_a365_components(False, otel_kwargs)
         self.assertEqual(otel_kwargs["span_processors"], [])
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=True)
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
+    def test_cluster_category_kwarg_overrides_env(self, default_resolver_mock, enabled_mock):
+        """a365_cluster_category kwarg takes precedence over A365_CLUSTER_CATEGORY env var."""
+        default_resolver_mock.return_value = lambda aid, tid: "token"
+
+        with patch.dict("os.environ", {"A365_CLUSTER_CATEGORY": "mooncake"}, clear=False), \
+            patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
+            otel_kwargs = {"span_processors": []}
+            _append_a365_components(True, otel_kwargs, cluster_category="gov")
+
+        _, exporter_kwargs = exporter_mock.call_args
+        self.assertEqual(exporter_kwargs["cluster_category"], "gov")
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=True)
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
+    def test_cluster_category_falls_back_to_env(self, default_resolver_mock, enabled_mock):
+        """A365_CLUSTER_CATEGORY env var is used when kwarg not provided."""
+        default_resolver_mock.return_value = lambda aid, tid: "token"
+
+        with patch.dict("os.environ", {"A365_CLUSTER_CATEGORY": "gov"}, clear=False), \
+            patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
+            otel_kwargs = {"span_processors": []}
+            _append_a365_components(True, otel_kwargs)
+
+        _, exporter_kwargs = exporter_mock.call_args
+        self.assertEqual(exporter_kwargs["cluster_category"], "gov")
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=True)
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
+    def test_cluster_category_defaults_to_prod(self, default_resolver_mock, enabled_mock):
+        """cluster_category defaults to 'prod' when neither kwarg nor env var is set."""
+        default_resolver_mock.return_value = lambda aid, tid: "token"
+
+        env = {k: v for k, v in os.environ.items() if k != "A365_CLUSTER_CATEGORY"}
+        with patch.dict("os.environ", env, clear=True), \
+            patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
+            otel_kwargs = {"span_processors": []}
+            _append_a365_components(True, otel_kwargs)
+
+        _, exporter_kwargs = exporter_mock.call_args
+        self.assertEqual(exporter_kwargs["cluster_category"], "prod")
 
 
 class TestA365Components(unittest.TestCase):
@@ -497,6 +506,7 @@ class TestA365Components(unittest.TestCase):
     def test_a365_flag_not_in_otel_kwargs(self, a365_mock, azure_monitor_mock):
         """enable_a365 should not leak into azure_monitor_kwargs."""
         use_microsoft_opentelemetry(
+            enable_azure_monitor=True,
             enable_a365=True,
             azure_monitor_connection_string=TEST_CONNECTION_STRING,
         )
@@ -517,7 +527,7 @@ class TestA365Components(unittest.TestCase):
             "microsoft.opentelemetry.a365.create_a365_components",
             return_value=mock_handlers,
         ):
-            use_microsoft_opentelemetry(enable_a365=True, enable_azure_monitor=False)
+            use_microsoft_opentelemetry(enable_a365=True)
 
         from opentelemetry.trace import get_tracer_provider
 
@@ -632,7 +642,6 @@ class TestSpectraComponents(unittest.TestCase):
             spectra_endpoint="http://my-sidecar:4317",
             spectra_protocol="grpc",
             spectra_insecure=False,
-            enable_azure_monitor=False,
         )
         spectra_mock.assert_called_once()
         _, kwargs = spectra_mock.call_args
@@ -643,7 +652,7 @@ class TestSpectraComponents(unittest.TestCase):
     @patch("microsoft.opentelemetry._distro._append_spectra_components")
     def test_spectra_disabled_by_default(self, spectra_mock):
         """Spectra is disabled by default."""
-        use_microsoft_opentelemetry(enable_azure_monitor=False)
+        use_microsoft_opentelemetry()
         spectra_mock.assert_called_once()
         self.assertFalse(spectra_mock.call_args[0][0])
 
@@ -653,7 +662,6 @@ class TestSpectraComponents(unittest.TestCase):
         use_microsoft_opentelemetry(
             enable_spectra=True,
             spectra_endpoint="http://localhost:4317",
-            enable_azure_monitor=False,
         )
         otel_kwargs = spectra_mock.call_args[0][1]
         self.assertNotIn("enable_spectra", otel_kwargs)

@@ -21,9 +21,7 @@ from microsoft.opentelemetry import use_microsoft_opentelemetry
 
 os.environ.setdefault("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4318")
 
-use_microsoft_opentelemetry(
-    enable_azure_monitor=False,
-)
+use_microsoft_opentelemetry()
 
 tracer = trace.get_tracer(__name__)
 

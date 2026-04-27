@@ -30,6 +30,7 @@ Use `use_microsoft_opentelemetry` to set up instrumentation for your application
 from microsoft.opentelemetry import use_microsoft_opentelemetry
 
 use_microsoft_opentelemetry(
+    enable_azure_monitor=True,
     azure_monitor_connection_string="InstrumentationKey=...;IngestionEndpoint=...",
 )
 ```
@@ -38,7 +39,7 @@ use_microsoft_opentelemetry(
 
 | Keyword argument | Type | Default | Description |
 |---|---|---|---|
-| `enable_azure_monitor` | `bool` | `True` | Enable Azure Monitor export. |
+| `enable_azure_monitor` | `bool` | `False` | Enable Azure Monitor export. |
 | `azure_monitor_connection_string` | `str` | `None` | Connection string for Application Insights. Also read from `APPLICATIONINSIGHTS_CONNECTION_STRING` env var. |
 | `azure_monitor_exporter_credential` | `TokenCredential` | `None` | Azure AD token credential for authentication. |
 | `azure_monitor_enable_live_metrics` | `bool` | `True` | Enable live metrics collection. |
@@ -60,8 +61,6 @@ use_microsoft_opentelemetry(
 | `enable_trace_based_sampling_for_logs` | `bool` | `False` | Enable trace-based sampling for logs. |
 | `enable_a365` | `bool` | `False` | Enable Agent365 telemetry export. |
 | `a365_token_resolver` | `Callable` | `None` | `(agent_id, tenant_id) -> token` callable for A365 auth. If omitted, defaults to FIC/DefaultAzureCredential. |
-| `a365_tenant_id` | `str` | `None` | Tenant ID stamped on spans. Falls back to `A365_TENANT_ID` env var. |
-| `a365_agent_id` | `str` | `None` | Agent ID stamped on spans. Falls back to `A365_AGENT_ID` env var. |
 | `a365_cluster_category` | `str` | `"prod"` | Cluster category for endpoint discovery. Falls back to `A365_CLUSTER_CATEGORY` env var. |
 | `a365_use_s2s_endpoint` | `bool` | `False` | Use the S2S endpoint. Falls back to `A365_USE_S2S_ENDPOINT` env var. |
 | `a365_suppress_invoke_agent_input` | `bool` | `False` | Strip input messages from InvokeAgent spans. Falls back to `A365_SUPPRESS_INVOKE_AGENT_INPUT` env var. |
@@ -119,8 +118,6 @@ When `enable_a365=True`, the distro adds A365 span processors to the tracing pip
 | Environment variable | Default | Description |
 |---|---|---|
 | `ENABLE_A365_OBSERVABILITY_EXPORTER` | `false` | Enable the A365 HTTP exporter. When `false`, no A365 span processors are added and no A365-specific processing occurs. |
-| `A365_TENANT_ID` | `None` | Tenant ID stamped on every span. |
-| `A365_AGENT_ID` | `None` | Agent ID stamped on every span. |
 | `A365_CLUSTER_CATEGORY` | `prod` | Cluster category for endpoint discovery (`prod`, `gov`, `dod`, `mooncake`). |
 | `A365_USE_S2S_ENDPOINT` | `false` | Use the S2S endpoint instead of the standard endpoint. |
 | `A365_SUPPRESS_INVOKE_AGENT_INPUT` | `false` | Strip input messages from InvokeAgent spans before export. |
@@ -131,8 +128,6 @@ When `enable_a365=True`, the distro adds A365 span processors to the tracing pip
 ```bash
 export ENABLE_OBSERVABILITY=true
 export ENABLE_A365_OBSERVABILITY_EXPORTER=true
-export A365_TENANT_ID=my-tenant-id
-export A365_AGENT_ID=my-agent-id
 ```
 
 ### OTLP Export Configuration
@@ -169,7 +164,6 @@ Console export **auto-enables when no other exporter is active** (Azure Monitor 
 ```python
 use_microsoft_opentelemetry(
     enable_console=True,
-    enable_azure_monitor=False,
 )
 ```
 
