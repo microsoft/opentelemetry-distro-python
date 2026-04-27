@@ -267,8 +267,8 @@ use_microsoft_opentelemetry(
 
 | Old `configure()` parameter | New equivalent |
 |-----------------------------|----------------|
-| `service_name` | `resource=Resource.create({"service.name": ...})` or `OTEL_SERVICE_NAME` env var |
-| `service_namespace` | `resource=Resource.create({"service.namespace": ...})` or `OTEL_RESOURCE_ATTRIBUTES` env var |
+| `service_name` | `OTEL_SERVICE_NAME` env var or `resource` kwarg |
+| `service_namespace` | `resource` kwarg with `service.namespace` attribute |
 | `token_resolver` | `a365_token_resolver` kwarg |
 | `cluster_category` | `a365_cluster_category` kwarg or `A365_CLUSTER_CATEGORY` env var |
 | `exporter_options` | Individual kwargs or env vars (see below) |
