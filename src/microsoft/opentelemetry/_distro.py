@@ -66,7 +66,7 @@ from microsoft.opentelemetry._utils import (
 _logger = getLogger(__name__)
 
 
-def use_microsoft_opentelemetry(**kwargs: object) -> None:
+def use_microsoft_opentelemetry(**kwargs: object) -> None: # pylint: disable=too-many-statements
     """Configure OpenTelemetry with optional Azure Monitor support.
 
     This function sets up the OpenTelemetry global providers
