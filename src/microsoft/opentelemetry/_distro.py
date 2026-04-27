@@ -170,8 +170,17 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:
     # instrumentations by default.  The user can still override by
     # explicitly setting ``instrumentation_options={"django": {"enabled": True}}``.
     if enable_a365:
+        inst_opts = otel_kwargs.get(INSTRUMENTATION_OPTIONS_ARG) or {}
+        if not isinstance(inst_opts, dict):
+            _logger.error(
+                "%s must be a dict, got %s; ignoring user value and using defaults.",
+                INSTRUMENTATION_OPTIONS_ARG,
+                type(inst_opts).__name__,
+            )
+            inst_opts = {}
         for lib in _A365_DISABLED_INSTRUMENTATIONS:
-            otel_kwargs.setdefault(INSTRUMENTATION_OPTIONS_ARG, {}).setdefault(lib, {}).setdefault("enabled", False)
+            inst_opts.setdefault(lib, {}).setdefault("enabled", False)
+        otel_kwargs[INSTRUMENTATION_OPTIONS_ARG] = inst_opts
 
     # ---- OTLP exporters (append to user-supplied processors/readers) ----
     _append_otlp_components(otel_kwargs)

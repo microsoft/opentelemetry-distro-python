@@ -208,8 +208,8 @@ following instrumentations by default** when `enable_a365=True`:
 | `flask` | `openai_agents` |
 | `psycopg2` | `semantic_kernel` |
 | `requests` | `agent_framework` |
-| `urllib` | |
-| `urllib3` | |
+| `urllib`  |
+| `urllib3` |
 
 You can re-enable any of these explicitly via `instrumentation_options`:
 

@@ -19,6 +19,10 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.metrics import MeterProvider
 
+from microsoft.opentelemetry._constants import (
+    _A365_DISABLED_INSTRUMENTATIONS,
+    _SUPPORTED_INSTRUMENTED_LIBRARIES,
+)
 from microsoft.opentelemetry._distro import (
     use_microsoft_opentelemetry,
     _append_a365_components,
@@ -680,8 +684,10 @@ class TestSpectraComponents(unittest.TestCase):
 class TestA365DisablesWebInstrumentations(unittest.TestCase):
     """When enable_a365=True, web/DB instrumentations are off by default."""
 
-    _WEB_DB_LIBS = ("django", "fastapi", "flask", "psycopg2", "requests", "urllib", "urllib3")
-    _GENAI_LIBS = ("langchain", "openai", "openai_agents", "semantic_kernel", "agent_framework")
+    _WEB_DB_LIBS = _A365_DISABLED_INSTRUMENTATIONS
+    _GENAI_LIBS = tuple(
+        lib for lib in _SUPPORTED_INSTRUMENTED_LIBRARIES if lib not in _A365_DISABLED_INSTRUMENTATIONS
+    )
 
     @patch("microsoft.opentelemetry._distro._setup_instrumentations")
     @patch("microsoft.opentelemetry._distro._setup_logging")

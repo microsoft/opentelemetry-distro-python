@@ -310,8 +310,8 @@ HTTP-client instrumentations by default**. GenAI instrumentations stay enabled.
 | `flask` | `openai_agents` |
 | `psycopg2` | `semantic_kernel` |
 | `requests` | `agent_framework` |
-| `urllib` | |
-| `urllib3` | |
+| `urllib`   |
+| `urllib3`  |
 
 To re-enable any of these, pass `instrumentation_options`:
 
