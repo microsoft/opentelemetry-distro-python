@@ -4,7 +4,7 @@
 
 ### Features Added
 
-- Enusre baggage properties propogate to child spans when the console exporter is chosen and A365 exporter is disabled
+- Ensure baggage properties propagate to child spans when the console exporter is chosen and A365 exporter is disabled
   ([#74](https://github.com/microsoft/opentelemetry-distro-python/pull/74))
 - Disable web-framework / HTTP-client instrumentations
   (`django`, `fastapi`, `flask`, `psycopg2`, `requests`, `urllib`, `urllib3`)
@@ -16,7 +16,7 @@
 
 ### Bugs Fixed
 
-- Fetch the distro version instead of the upstream core package 
+- Fetch the distro version instead of the upstream core package
   ([#73](https://github.com/microsoft/opentelemetry-distro-python/pull/73))
 
 ## 0.1.0a4 (2026-04-24)
