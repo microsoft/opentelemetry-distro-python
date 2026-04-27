@@ -1,15 +1,15 @@
 ---
-description: "Use when migrating code from the standalone Agent365 Python SDK packages (microsoft-agents-a365-*) to the Microsoft OpenTelemetry Distro (microsoft-opentelemetry). Covers pip dependency changes, import path rewrites, configure() removal, exporter options, and environment variable mappings."
+description: "Use when migrating code from the standalone Agent365 Python SDK packages (microsoft-agents-a365-*) to the Microsoft OpenTelemetry (microsoft-opentelemetry). Covers pip dependency changes, import path rewrites, configure() removal, exporter options, and environment variable mappings."
 applyTo: "**/*.py"
 ---
 
-# Agent365 Python SDK → Microsoft OpenTelemetry Distro Migration
+# Agent365 Python SDK → Microsoft OpenTelemetry Migration
 
 Users are migrating from the standalone A365 observability PyPI packages under
-`microsoft-agents-a365-observability-*` to a single distro package: `microsoft-opentelemetry`.
+`microsoft-agents-a365-observability-*` to a single package: `microsoft-opentelemetry`.
 
 This migration covers the **observability** packages, along with the related **hosting** and **runtime** packages.
-Other A365 packages, such as notifications and tooling, are not part of this distro.
+Other A365 packages, such as notifications and tooling, are not part of this package.
 
 The distro bundles:
 - **`a365/core`** — Scope classes, span enrichment, A365 exporter, baggage middleware
@@ -18,7 +18,7 @@ The distro bundles:
 
 ## Step 1 — Replace pip Dependencies
 
-Remove the standalone A365 observability packages and install the distro:
+Remove the standalone A365 observability packages and install microsoft-opentelemetry:
 
 ```
 # ❌ OLD — multiple observability packages
