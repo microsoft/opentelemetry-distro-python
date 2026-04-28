@@ -1,6 +1,10 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+import pytest
+
+pytest.importorskip("langchain_core")
+
 import datetime
 from collections import OrderedDict
 from unittest import TestCase

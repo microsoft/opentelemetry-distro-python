@@ -59,13 +59,7 @@ class LangChainInstrumentor(BaseInstrumentor):
 
     def _instrument(self, **kwargs: Any) -> None:
         if not langchain_available:
-            logger.warning(
-                "Skipping LangChain instrumentation: 'langchain-core' is not installed. "
-                "Install the optional extra with "
-                "`pip install microsoft-opentelemetry[langchain]` to enable it."
-            )
             return
-
         tracer_provider = kwargs.get("tracer_provider")
         tracer = trace_api.get_tracer(
             __name__,
