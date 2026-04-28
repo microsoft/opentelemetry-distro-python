@@ -1,5 +1,11 @@
 # Release History
 
+## Unreleased
+
+### Bugs Fixed
+- Ensure baggage properties propagate to child spans for all exporters
+  ([#81](https://github.com/microsoft/opentelemetry-distro-python/pull/81))
+
 ## 0.1.0b1 (2026-04-27)
 
 ### Features Added
