@@ -66,7 +66,7 @@ from microsoft.opentelemetry._utils import (
 _logger = getLogger(__name__)
 
 
-def use_microsoft_opentelemetry(**kwargs: object) -> None: # pylint: disable=too-many-statements
+def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=too-many-statements
     """Configure OpenTelemetry with optional Azure Monitor support.
 
     This function sets up the OpenTelemetry global providers
@@ -315,11 +315,17 @@ def _append_a365_components(
     if disable_tracing:
         return
 
+    # Tell scope classes that telemetry is enabled without env vars.
+    # The standalone SDK gates on ENABLE_OBSERVABILITY / ENABLE_A365_OBSERVABILITY
+    # env vars, but when the distro is told enable_a365=True that's sufficient.
+    from microsoft.opentelemetry.a365.core.opentelemetry_scope import OpenTelemetryScope
+
+    OpenTelemetryScope._enabled_by_distro = True
+
     from microsoft.opentelemetry.a365.constants import (
         A365_CLUSTER_CATEGORY_ENV,
         A365_USE_S2S_ENDPOINT_ENV,
         A365_SUPPRESS_INVOKE_AGENT_INPUT_ENV,
-        ENABLE_A365_OBSERVABILITY_EXPORTER,
     )
     from microsoft.opentelemetry.a365.core.exporters.agent365_exporter import _Agent365Exporter
     from microsoft.opentelemetry.a365.core.exporters.enriching_span_processor import (
@@ -327,7 +333,6 @@ def _append_a365_components(
     )
     from microsoft.opentelemetry.a365.core.exporters.utils import (
         _create_default_token_resolver,
-        is_agent365_exporter_enabled,
     )
 
     try:
@@ -343,11 +348,11 @@ def _append_a365_components(
             else _env_bool(A365_SUPPRESS_INVOKE_AGENT_INPUT_ENV)
         )
 
-        # Build the exporter (A365 HTTP or skip if not enabled)
-        if not is_agent365_exporter_enabled() or resolved_token_resolver is None:
+        # Build the exporter — enable_a365=True already implies the exporter
+        # should be active, so skip the is_agent365_exporter_enabled() env check.
+        if resolved_token_resolver is None:
             _logger.warning(
-                "%s not set or token_resolver not provided. A365 exporter will not be active.",
-                ENABLE_A365_OBSERVABILITY_EXPORTER,
+                "token_resolver not provided. A365 exporter will not be active.",
             )
             return
 

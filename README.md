@@ -4,7 +4,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python versions](https://img.shields.io/pypi/pyversions/microsoft-opentelemetry)](https://pypi.org/project/microsoft-opentelemetry/)
 
-Python package for a Microsoft OpenTelemetry distribution that provides a single onboarding experience for observability across Azure Monitor, OTLP-compatible backends, and Microsoft Agent 365 style integrations.
+Python package for a Microsoft OpenTelemetry distribution that provides a single onboarding experience for observability across Azure Monitor, OTLP-compatible backends, and Microsoft Agent 365 integrations.
 
 ## Getting Started
 
@@ -14,17 +14,17 @@ Python package for a Microsoft OpenTelemetry distribution that provides a single
 - Azure subscription (optional, for Azure Monitor) — [Create a free account](https://azure.microsoft.com/free/)
 - Application Insights resource (optional) — [How to use Application Insights](https://learn.microsoft.com/azure/azure-monitor/app/app-insights-overview)
 
-### Install the package
-
-Install the Microsoft OpenTelemetry Distro with [pip](https://pypi.org/project/pip/):
+### Install the Package
 
 ```bash
 pip install microsoft-opentelemetry
 ```
 
-### Usage
+### Quick Start
 
 Use `use_microsoft_opentelemetry` to set up instrumentation for your application. All passed-in parameters take priority over any related environment variables.
+
+**Azure Monitor:**
 
 ```python
 from microsoft.opentelemetry import use_microsoft_opentelemetry
@@ -35,18 +35,51 @@ use_microsoft_opentelemetry(
 )
 ```
 
-#### Configuration Options
+The connection string can also be set via `APPLICATIONINSIGHTS_CONNECTION_STRING` env var. For Entra-based auth:
+
+```python
+from azure.identity import DefaultAzureCredential
+
+use_microsoft_opentelemetry(
+    enable_azure_monitor=True,
+    azure_monitor_connection_string="InstrumentationKey=...;IngestionEndpoint=...",
+    azure_monitor_exporter_credential=DefaultAzureCredential(),
+)
+```
+
+**Agent 365:**
+
+```python
+from microsoft.opentelemetry import use_microsoft_opentelemetry
+
+use_microsoft_opentelemetry(
+    enable_a365=True,
+    a365_token_resolver=my_token_resolver,
+)
+```
+
+**Both + OTLP:**
+
+```python
+# Set OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 for OTLP
+use_microsoft_opentelemetry(
+    enable_azure_monitor=True,
+    enable_a365=True,
+    a365_token_resolver=my_token_resolver,
+)
+```
+
+See the [A365 guide](docs/A365_DOCUMENTATION.md) for A365-specific configuration.
+
+---
+
+## Configuration Reference
+
+### All Options
 
 | Keyword argument | Type | Default | Description |
 |---|---|---|---|
-| `enable_azure_monitor` | `bool` | `False` | Enable Azure Monitor export. |
-| `azure_monitor_connection_string` | `str` | `None` | Connection string for Application Insights. Also read from `APPLICATIONINSIGHTS_CONNECTION_STRING` env var. |
-| `azure_monitor_exporter_credential` | `TokenCredential` | `None` | Azure AD token credential for authentication. |
-| `azure_monitor_enable_live_metrics` | `bool` | `True` | Enable live metrics collection. |
-| `azure_monitor_enable_performance_counters` | `bool` | `True` | Enable performance counter collection. |
-| `azure_monitor_exporter_disable_offline_storage` | `bool` | `False` | Disable offline retry storage for failed telemetry. |
-| `azure_monitor_exporter_storage_directory` | `str` | `None` | Custom directory for offline telemetry storage. |
-| `azure_monitor_browser_sdk_loader_config` | `dict` | `None` | Browser SDK loader configuration. |
+| **General** | | | |
 | `disable_logging` | `bool` | `False` | Disable the logging pipeline. |
 | `disable_tracing` | `bool` | `False` | Disable the tracing pipeline. |
 | `disable_metrics` | `bool` | `False` | Disable the metrics pipeline. |
@@ -59,59 +92,53 @@ use_microsoft_opentelemetry(
 | `logging_formatter` | `Formatter` | `None` | Formatter for collected logs. |
 | `instrumentation_options` | `dict` | `None` | Per-library instrumentation enable/disable options. |
 | `enable_trace_based_sampling_for_logs` | `bool` | `False` | Enable trace-based sampling for logs. |
-| `enable_a365` | `bool` | `False` | Enable Agent365 telemetry export. |
-| `a365_token_resolver` | `Callable` | `None` | `(agent_id, tenant_id) -> token` callable for A365 auth. If omitted, defaults to FIC/DefaultAzureCredential. |
-| `a365_cluster_category` | `str` | `"prod"` | Cluster category for endpoint discovery. Falls back to `A365_CLUSTER_CATEGORY` env var. |
-| `a365_use_s2s_endpoint` | `bool` | `False` | Use the S2S endpoint. Falls back to `A365_USE_S2S_ENDPOINT` env var. |
-| `a365_suppress_invoke_agent_input` | `bool` | `False` | Strip input messages from InvokeAgent spans. Falls back to `A365_SUPPRESS_INVOKE_AGENT_INPUT` env var. |
-| `enable_console` | `bool` | `False` | Enable console exporter for traces, metrics, and logs (development only). Auto-enables when no other exporter is active. Mirrors `ExportTarget.Console` from the .NET distro. |
+| `enable_console` | `bool` | `False` | Console exporter (dev only). Auto-enables when no other exporter is active. |
+| **Azure Monitor** | | | |
+| `enable_azure_monitor` | `bool` | `False` | Enable Azure Monitor export. |
+| `azure_monitor_connection_string` | `str` | `None` | Connection string. Also read from `APPLICATIONINSIGHTS_CONNECTION_STRING`. |
+| `azure_monitor_exporter_credential` | `TokenCredential` | `None` | Azure AD token credential. |
+| `azure_monitor_enable_live_metrics` | `bool` | `True` | Enable live metrics. |
+| `azure_monitor_enable_performance_counters` | `bool` | `True` | Enable performance counters. |
+| `azure_monitor_exporter_disable_offline_storage` | `bool` | `False` | Disable offline retry storage. |
+| `azure_monitor_exporter_storage_directory` | `str` | `None` | Custom offline storage directory. |
+| `azure_monitor_browser_sdk_loader_config` | `dict` | `None` | Browser SDK loader configuration. |
+| **Agent 365** | | | |
+| `enable_a365` | `bool` | `False` | Enable A365 telemetry export. |
+| `a365_token_resolver` | `Callable` | `None` | `(agent_id, tenant_id) -> token` callable. If omitted, defaults to FIC/DefaultAzureCredential. |
+| `a365_cluster_category` | `str` | `"prod"` | Cluster category (`prod`, `gov`, `dod`, `mooncake`). |
+| `a365_use_s2s_endpoint` | `bool` | `False` | Use the S2S endpoint. |
+| `a365_suppress_invoke_agent_input` | `bool` | `False` | Strip input messages from InvokeAgent spans. |
 
-A365 also reads additional environment variables for FIC (Federated Identity Credential) authentication. Kwargs take precedence when provided.
+> For A365 token resolver patterns, baggage, and scope classes, see the [A365 guide](docs/A365_DOCUMENTATION.md).
 
-#### FIC Authentication Environment Variables
+### Sampling
 
-These are used automatically when no `a365_token_resolver` kwarg is provided and the hosting environment supplies them:
-
-| Environment variable | Description |
-|---|---|
-| `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID` | Service principal client ID for the FIC flow. |
-| `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET` | Service principal client secret. |
-| `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID` | AAD tenant ID for the FIC authority. |
-| `A365_AGENT_APP_INSTANCE_ID` | Agent application instance ID for the FIC grant. |
-| `A365_AGENTIC_USER_ID` | Agentic user ID for the FIC user-assertion step. |
-
-When FIC variables are not available, `DefaultAzureCredential` from `azure-identity` is used as a fallback.
-
-### Sampling Configuration
-
-Sampling is configured via standard OpenTelemetry environment variables:
+Configured via standard OpenTelemetry environment variables:
 
 | Environment variable | Description |
 |---|---|
-| `OTEL_TRACES_SAMPLER` | Sampler type to use (see supported values below). |
-| `OTEL_TRACES_SAMPLER_ARG` | Argument for the sampler (e.g. sample ratio or traces per second). |
+| `OTEL_TRACES_SAMPLER` | Sampler type (see values below). |
+| `OTEL_TRACES_SAMPLER_ARG` | Sampler argument (e.g. ratio or traces per second). |
 
-**Supported sampler values for `OTEL_TRACES_SAMPLER`:**
+**Supported sampler values:**
 
 | Value | Description |
 |---|---|
 | `always_on` | Sample every trace. |
 | `always_off` | Drop every trace. |
-| `trace_id_ratio` | Sample a fixed percentage based on trace ID. Set ratio with `OTEL_TRACES_SAMPLER_ARG` (0–1). |
+| `trace_id_ratio` | Fixed percentage by trace ID. Set ratio with `OTEL_TRACES_SAMPLER_ARG` (0–1). |
 | `parentbased_always_on` | Parent-based, defaults to always on. |
 | `parentbased_always_off` | Parent-based, defaults to always off. |
 | `parentbased_trace_id_ratio` | Parent-based with trace ID ratio fallback. |
-| `microsoft.fixed_percentage` | Azure Monitor fixed-percentage sampler. Set ratio with `OTEL_TRACES_SAMPLER_ARG` (0–1). |
-| `microsoft.rate_limited` | Azure Monitor rate-limited sampler. Set target with `OTEL_TRACES_SAMPLER_ARG` (traces per second, default 5). |
-
-**Example:**
+| `microsoft.fixed_percentage` | Azure Monitor fixed-percentage sampler (0–1). |
+| `microsoft.rate_limited` | Azure Monitor rate-limited sampler (traces/sec, default 5). |
 
 ```bash
 export OTEL_TRACES_SAMPLER=trace_id_ratio
 export OTEL_TRACES_SAMPLER_ARG=0.1
 ```
 
-### Agent365 (A365) Configuration
+### A365 Exporter Environment Variables
 
 When `enable_a365=True`, the distro adds A365 span processors to the tracing pipeline. A365 exporter behavior is configured via environment variables:
 
@@ -130,23 +157,21 @@ export ENABLE_OBSERVABILITY=true
 export ENABLE_A365_OBSERVABILITY_EXPORTER=true
 ```
 
-### OTLP Export Configuration
+### OTLP Export
 
-OTLP export is automatically enabled when any of the standard `OTEL_EXPORTER_OTLP_*` endpoint environment variables are set. No kwargs are needed.
+Automatically enabled when any `OTEL_EXPORTER_OTLP_*` endpoint variable is set:
 
 | Environment variable | Description |
 |---|---|
-| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base endpoint URL for all signals (e.g. `http://localhost:4318`). |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Base endpoint URL (e.g. `http://localhost:4318`). |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Per-signal override for traces. |
 | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | Per-signal override for metrics. |
 | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | Per-signal override for logs. |
-| `OTEL_EXPORTER_OTLP_HEADERS` | Comma-separated `key=value` pairs sent as headers. |
-| `OTEL_EXPORTER_OTLP_TIMEOUT` | Max time in milliseconds per export request. |
+| `OTEL_EXPORTER_OTLP_HEADERS` | Comma-separated `key=value` headers. |
+| `OTEL_EXPORTER_OTLP_TIMEOUT` | Max time in milliseconds per request. |
 | `OTEL_EXPORTER_OTLP_COMPRESSION` | `gzip` or `none`. |
 
 Per-signal overrides follow the pattern `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_{ENDPOINT,HEADERS,TIMEOUT,COMPRESSION}`.
-
-**Example:**
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
@@ -155,21 +180,17 @@ python my_app.py
 
 ### Console Exporter (Development)
 
-The console exporter writes traces, metrics, and logs to stdout for local development and debugging. This mirrors the `ExportTarget.Console` behaviour from the [.NET distro](https://github.com/microsoft/opentelemetry-distro-dotnet).
-
-Console export **auto-enables when no other exporter is active** (Azure Monitor off, OTLP off, A365 off). You can also enable it explicitly alongside other exporters.
-
-**Example:**
+Writes traces, metrics, and logs to stdout. Auto-enables when no other exporter is active. Can also be enabled explicitly alongside other exporters:
 
 ```python
-use_microsoft_opentelemetry(
-    enable_console=True,
-)
+use_microsoft_opentelemetry(enable_console=True)
 ```
 
-### Auto-Instrumented Libraries
+---
 
-The distro automatically instruments the following libraries when they are installed:
+## Auto-Instrumented Libraries
+
+Microsoft OpenTelemetry automatically instruments the following libraries when installed:
 
 | Library | Category |
 |---|---|
@@ -187,13 +208,13 @@ The distro automatically instruments the following libraries when they are insta
 | `agent_framework` | GenAI |
 | `azure_sdk` | Azure (enabled when Azure Monitor is active) |
 
-Individual instrumentations can be toggled via the `instrumentation_options` kwarg:
+Toggle individual instrumentations:
 
 ```python
 use_microsoft_opentelemetry(
     instrumentation_options={
-        "flask": {"enabled": False},      # disable Flask instrumentation
-        "openai": {"enabled": True},      # explicitly enable (default)
+        "flask": {"enabled": False},
+        "openai": {"enabled": True},
     },
 )
 ```
@@ -238,6 +259,22 @@ use_microsoft_opentelemetry(
 When `enable_a365=False` (the default), all supported instrumentations
 remain enabled by default.
 
+---
+
+## Samples
+
+| Sample | Scenario | Description |
+|---|---|---|
+| [samples/a365/exporter.py](samples/a365/exporter.py) | A365 | LangChain with A365 auto-instrumentation |
+| [samples/a365/manual_telemetry.py](samples/a365/manual_telemetry.py) | A365 | Manual instrumentation using all scope classes |
+| [samples/distro/tracing.py](samples/distro/tracing.py) | Azure Monitor | Basic tracing |
+| [samples/distro/metrics.py](samples/distro/metrics.py) | Azure Monitor | Metrics collection |
+| [samples/distro/logging_sample.py](samples/distro/logging_sample.py) | Azure Monitor | Log export |
+| [samples/distro/custom_events.py](samples/distro/custom_events.py) | Azure Monitor | Custom event logging |
+| [samples/distro/fastapi_app.py](samples/distro/fastapi_app.py) | Azure Monitor | FastAPI web app |
+| [samples/openai/](samples/openai/) | GenAI | OpenAI chat + Agents SDK |
+| [samples/langchain/](samples/langchain/) | GenAI | LangChain auto-instrumentation |
+| [samples/otlp/](samples/otlp/) | OTLP | Export to a local collector |
 
 
 
@@ -251,12 +288,16 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 ```
 
+For A365-specific issues, see the [A365 guide](docs/A365_DOCUMENTATION.md) and the [official troubleshooting docs](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/troubleshooting).
+
 The Azure Monitor exporter raises exceptions defined in [Azure Core](https://github.com/Azure/azure-sdk-for-python/blob/main/sdk/core/azure-core/README.md#azure-core-library-exceptions).
 
 ## Next Steps
 
-- [Azure Monitor OpenTelemetry documentation](https://learn.microsoft.com/azure/azure-monitor/app/opentelemetry-enable?tabs=python)
-- [OpenTelemetry Python documentation](https://opentelemetry.io/docs/instrumentation/python/)
+- [Agent 365 Observability guide](docs/A365_DOCUMENTATION.md)
+- [Azure Monitor OpenTelemetry docs](https://learn.microsoft.com/azure/azure-monitor/app/opentelemetry-enable?tabs=python)
+- [A365 observability docs](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/observability?tabs=python)
+- [OpenTelemetry Python docs](https://opentelemetry.io/docs/instrumentation/python/)
 - [Samples](./samples/)
 
 ## Contributing

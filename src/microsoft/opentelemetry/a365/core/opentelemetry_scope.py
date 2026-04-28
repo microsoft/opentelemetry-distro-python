@@ -63,6 +63,7 @@ class OpenTelemetryScope:
 
     _tracer: Tracer | None = None
     _tracer_lock = Lock()
+    _enabled_by_distro: bool = False
 
     @classmethod
     def _get_tracer(cls) -> Tracer:
@@ -76,10 +77,15 @@ class OpenTelemetryScope:
     @classmethod
     def _is_telemetry_enabled(cls) -> bool:
         """Check if telemetry is enabled."""
-        # Check environment variable
+        # Env vars always win — explicit false disables even when distro enabled A365.
         env_value = os.getenv(ENABLE_OBSERVABILITY, "").lower()
         enable_observability = os.getenv(ENABLE_A365_OBSERVABILITY, "").lower()
-        return (env_value or enable_observability) in ("true", "1", "yes", "on")
+        if env_value in ("false", "0", "no", "off") or enable_observability in ("false", "0", "no", "off"):
+            return False
+        if (env_value or enable_observability) in ("true", "1", "yes", "on"):
+            return True
+        # No env var set — fall back to distro flag
+        return cls._enabled_by_distro
 
     @staticmethod
     def _datetime_to_ns(dt: datetime | None) -> int | None:
