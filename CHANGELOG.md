@@ -1,5 +1,11 @@
 # Release History
 
+## Unreleased
+
+### Bugs Fixed
+- Ensure baggage properties propagate to child spans for all exporters
+  of the `ENABLE_A365_OBSERVABILITY_EXPORTER` environment variable
+
 ## 0.1.0b1 (2026-04-27)
 
 ### Features Added
