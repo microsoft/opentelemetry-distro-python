@@ -5,11 +5,19 @@
 ## Bugs Fixed
 - Reverted [#81](https://github.com/microsoft/opentelemetry-distro-python/pull/81): baggage propagation now requires `enable_a365=True` and respects `ENABLE_A365_OBSERVABILITY_EXPORTER` as before.
 
+### Other Changes
+- Make `langchain-core` an optional dependency. The LangChain instrumentation
+  is now installable via `pip install microsoft-opentelemetry[langchain]` and
+  fails silently with a one-time warning when `langchain-core` is not
+  installed.
+
+
 ## 0.1.0b2 (2026-04-28)
 
 ### Bugs Fixed
 - Ensure baggage properties propagate to child spans for all exporters
   ([#81](https://github.com/microsoft/opentelemetry-distro-python/pull/81))
+
 
 ## 0.1.0b1 (2026-04-27)
 
@@ -18,8 +26,8 @@
 - Ensure baggage properties propagate to child spans when the console exporter is chosen and A365 exporter is disabled
   ([#74](https://github.com/microsoft/opentelemetry-distro-python/pull/74))
 - Disable web-framework / HTTP-client instrumentations
-  (`django`, `fastapi`, `flask`, `psycopg2`, `requests`, `urllib`, `urllib3`)
-  by default when A365 is enabled. GenAI instrumentations
+  (`django`, `fastapi`, `flask`, `psycopg2`, `requests`, `urllib`, `urllib3`,
+  `azure_sdk`) by default when A365 is enabled. GenAI instrumentations
   (`langchain`, `openai`, `openai_agents`, `semantic_kernel`,
   `agent_framework`) remain enabled. Users can override either default via
   `instrumentation_options`.
