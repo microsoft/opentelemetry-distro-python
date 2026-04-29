@@ -146,7 +146,7 @@ When `enable_a365=True`, the distro adds A365 span processors to the tracing pip
 
 | Environment variable | Default | Description |
 |---|---|---|
-| `ENABLE_A365_OBSERVABILITY_EXPORTER` | `false` | Enable the A365 HTTP exporter. Equivalent to the `a365_enable_observability_exporter` kwarg (kwarg takes precedence). Either source must be truthy (along with `enable_a365=True`) for telemetry to be exported to the A365 endpoint. When neither is set, the A365 span processors still register and propagate baggage attributes (e.g. `gen_ai.agent.id`, `microsoft.tenant.id`, `user.name`) to spans for any other configured exporter (Azure Monitor, OTLP, console), but no data is sent to A365. |
+| `ENABLE_A365_OBSERVABILITY_EXPORTER` | `false` | Enable the A365 HTTP exporter. Equivalent to the `a365_enable_observability_exporter` kwarg — either source being truthy (along with `enable_a365=True`) enables export to the A365 endpoint. When neither is set, the A365 span processors still register and propagate baggage attributes (e.g. `gen_ai.agent.id`, `microsoft.tenant.id`, `user.name`) to spans for any other configured exporter (Azure Monitor, OTLP, console), but no data is sent to A365. |
 | `A365_CLUSTER_CATEGORY` | `prod` | Cluster category for endpoint discovery (`prod`, `gov`, `dod`, `mooncake`). |
 | `A365_USE_S2S_ENDPOINT` | `false` | Use the S2S endpoint instead of the standard endpoint. |
 | `A365_SUPPRESS_INVOKE_AGENT_INPUT` | `false` | Strip input messages from InvokeAgent spans before export. |

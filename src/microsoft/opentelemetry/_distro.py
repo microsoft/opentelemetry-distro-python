@@ -344,10 +344,8 @@ def _append_a365_components(
             if suppress_invoke_agent_input is not None
             else _env_bool(A365_SUPPRESS_INVOKE_AGENT_INPUT_ENV)
         )
-        resolved_enable_exporter = (
-            enable_observability_exporter
-            if enable_observability_exporter is not None
-            else _env_bool(ENABLE_A365_OBSERVABILITY_EXPORTER, default=False)
+        resolved_enable_exporter = bool(enable_observability_exporter) or _env_bool(
+            ENABLE_A365_OBSERVABILITY_EXPORTER, default=False
         )
         resolved_scope_override = (
             observability_scope_override

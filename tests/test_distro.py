@@ -445,8 +445,10 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         """A365SpanProcessor is registered even when the exporter is disabled."""
         from microsoft.opentelemetry.a365.core.exporters.span_processor import A365SpanProcessor
 
-        otel_kwargs = {"span_processors": []}
-        _append_a365_components(True, otel_kwargs, enable_observability_exporter=False)
+        env = {k: v for k, v in os.environ.items() if k != "ENABLE_A365_OBSERVABILITY_EXPORTER"}
+        with patch.dict("os.environ", env, clear=True):
+            otel_kwargs = {"span_processors": []}
+            _append_a365_components(True, otel_kwargs, enable_observability_exporter=False)
 
         processors = otel_kwargs["span_processors"]
         self.assertEqual(len(processors), 1)
@@ -530,11 +532,15 @@ class TestA365KwargsConfiguration(unittest.TestCase):
 
     @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
     def test_enable_observability_exporter_kwarg_false_skips_exporter(self, default_resolver_mock):
-        """a365_enable_observability_exporter=False skips exporter even when token resolver is available."""
+        """a365_enable_observability_exporter=False with env unset skips the exporter."""
         default_resolver_mock.return_value = lambda aid, tid: "token"
         from microsoft.opentelemetry.a365.core.exporters.span_processor import A365SpanProcessor
 
-        with patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
+        env = {k: v for k, v in os.environ.items() if k != "ENABLE_A365_OBSERVABILITY_EXPORTER"}
+        with (
+            patch.dict("os.environ", env, clear=True),
+            patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock,
+        ):
             otel_kwargs = {"span_processors": []}
             _append_a365_components(True, otel_kwargs, enable_observability_exporter=False)
 
@@ -546,8 +552,8 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         self.assertIsInstance(processors[0], A365SpanProcessor)
 
     @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
-    def test_enable_observability_exporter_kwarg_overrides_env(self, default_resolver_mock):
-        """a365_enable_observability_exporter kwarg takes precedence over env var."""
+    def test_enable_observability_exporter_env_true_enables_when_kwarg_false(self, default_resolver_mock):
+        """With OR semantics, env var being true enables the exporter even if the kwarg is False."""
         default_resolver_mock.return_value = lambda aid, tid: "token"
 
         with (
@@ -557,7 +563,7 @@ class TestA365KwargsConfiguration(unittest.TestCase):
             otel_kwargs = {"span_processors": []}
             _append_a365_components(True, otel_kwargs, enable_observability_exporter=False)
 
-        exporter_mock.assert_not_called()
+        exporter_mock.assert_called_once()
 
     @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
     def test_enable_observability_exporter_falls_back_to_env_false(self, default_resolver_mock):
