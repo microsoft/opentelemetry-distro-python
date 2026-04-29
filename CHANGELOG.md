@@ -2,11 +2,11 @@
 
 ## 0.1.0b3 (2026-04-29)
 
-## Features Added
-- Add configuration options for the `ENABLE_A365_OBSERVABILITY_EXPORTER` and `A365_OBSERVABILITY_SCOPE_OVERRIDE` environment variables - 
+### Features Added
+- Add configuration options for the `ENABLE_A365_OBSERVABILITY_EXPORTER` and `A365_OBSERVABILITY_SCOPE_OVERRIDE` environment variables
   ([#87](https://github.com/microsoft/opentelemetry-distro-python/pull/87))
 
-## Bugs Fixed
+### Bugs Fixed
 - Reverted [#81](https://github.com/microsoft/opentelemetry-distro-python/pull/81): baggage propagation now requires `enable_a365=True` and respects `ENABLE_A365_OBSERVABILITY_EXPORTER` as before.
   ([#85](https://github.com/microsoft/opentelemetry-distro-python/pull/85))
 
