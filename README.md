@@ -109,7 +109,7 @@ See the [A365 guide](docs/A365_DOCUMENTATION.md) for A365-specific configuration
 | `a365_use_s2s_endpoint` | `bool` | `False` | Use the S2S endpoint. |
 | `a365_suppress_invoke_agent_input` | `bool` | `False` | Strip input messages from InvokeAgent spans. |
 | `a365_enable_observability_exporter` | `bool` | `None` | Enable the A365 HTTP exporter. Also read from `ENABLE_A365_OBSERVABILITY_EXPORTER` env var. Defaults to `false` when neither is set. |
-| `a365_observability_scope_override` | `str` | `None` | Override the default Entra scope used by the built-in token resolvers. Also read from `A365_OBSERVABILITY_SCOPE_OVERRIDE`. |
+| `a365_observability_scope_override` | `str` | `False` | Override the default Entra scope used by the built-in token resolvers. Also read from `A365_OBSERVABILITY_SCOPE_OVERRIDE`. |
 
 > For A365 token resolver patterns, baggage, and scope classes, see the [A365 guide](docs/A365_DOCUMENTATION.md).
 
