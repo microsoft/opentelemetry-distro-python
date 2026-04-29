@@ -26,7 +26,6 @@ from microsoft.opentelemetry._constants import (
 from microsoft.opentelemetry._distro import (
     use_microsoft_opentelemetry,
     _append_a365_components,
-    _append_baggage_span_processor,
     _append_spectra_components,
     _is_instrumentation_enabled,
     _setup_tracing,
@@ -412,8 +411,9 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         otel_kwargs = a365_mock.call_args[0][1]
         self.assertNotIn("enable_a365", otel_kwargs)
 
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=True)
     @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
-    def test_tenant_and_agent_ids_not_sourced_from_env(self, default_resolver_mock):
+    def test_tenant_and_agent_ids_not_sourced_from_env(self, default_resolver_mock, enabled_mock):
 
         default_resolver_mock.return_value = lambda aid, tid: "token"
 
@@ -423,7 +423,6 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         }
         with patch.dict("os.environ", env, clear=False):
             otel_kwargs = {"span_processors": []}
-            _append_baggage_span_processor(otel_kwargs)
             _append_a365_components(True, otel_kwargs)
 
         processors = otel_kwargs["span_processors"]
@@ -439,48 +438,29 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         _append_a365_components(False, otel_kwargs)
         self.assertEqual(otel_kwargs["span_processors"], [])
 
-    @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver", return_value=None)
-    def test_baggage_processor_registered_when_no_token_resolver(self, resolver_mock):
-        """A365SpanProcessor is registered even when no token resolver is available."""
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=False)
+    def test_baggage_processor_registered_when_exporter_disabled(self, enabled_mock):
+        """A365SpanProcessor is registered even when ENABLE_A365_OBSERVABILITY_EXPORTER=false."""
         from microsoft.opentelemetry.a365.core.exporters.span_processor import A365SpanProcessor
 
         otel_kwargs = {"span_processors": []}
-        _append_baggage_span_processor(otel_kwargs)
         _append_a365_components(True, otel_kwargs)
 
         processors = otel_kwargs["span_processors"]
         self.assertEqual(len(processors), 1)
         self.assertIsInstance(processors[0], A365SpanProcessor)
 
-    def test_baggage_processor_registered_when_a365_disabled(self):
-        """Baggage span processor is registered even when enable_a365=False so
-        baggage entries propagate to spans for the console / OTLP / Azure
-        Monitor exporters without requiring ENABLE_A365_OBSERVABILITY_EXPORTER."""
-        from microsoft.opentelemetry.a365.core.exporters.span_processor import A365SpanProcessor
-
-        otel_kwargs: dict = {"span_processors": []}
-        _append_baggage_span_processor(otel_kwargs)
-        _append_a365_components(False, otel_kwargs)
-
-        processors = otel_kwargs["span_processors"]
-        self.assertEqual(len(processors), 1)
-        self.assertIsInstance(processors[0], A365SpanProcessor)
-
-    def test_baggage_processor_skipped_when_tracing_disabled(self):
-        """Baggage processor is not added when tracing is disabled."""
-        otel_kwargs: dict = {"span_processors": [], "disable_tracing": True}
-        _append_baggage_span_processor(otel_kwargs)
-        self.assertEqual(otel_kwargs["span_processors"], [])
-
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=True)
     @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
-    def test_exporter_registered_when_a365_enabled_with_resolver(self, default_resolver_mock):
-        """When enable_a365=True and a token resolver is available, the
+    def test_exporter_registered_when_a365_enabled_and_env_true(
+        self, default_resolver_mock, enabled_mock
+    ):
+        """When enable_a365=True and ENABLE_A365_OBSERVABILITY_EXPORTER=true, the
         Agent365 exporter span processor is added alongside A365SpanProcessor."""
         default_resolver_mock.return_value = lambda aid, tid: "token"
         from microsoft.opentelemetry.a365.core.exporters.span_processor import A365SpanProcessor
 
         otel_kwargs = {"span_processors": []}
-        _append_baggage_span_processor(otel_kwargs)
         _append_a365_components(True, otel_kwargs)
 
         processors = otel_kwargs["span_processors"]
@@ -488,22 +468,23 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         self.assertEqual(len(processors), 2)
         self.assertIsInstance(processors[0], A365SpanProcessor)
 
-    @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver", return_value=None)
-    def test_baggage_processor_only_when_no_token_resolver(self, _resolver_mock):
-        """When enable_a365=True but no token resolver is available,
+    def test_baggage_processor_registered_when_exporter_env_unset(self):
+        """When enable_a365=True and ENABLE_A365_OBSERVABILITY_EXPORTER is unset,
         only the A365SpanProcessor is registered (no exporter processor)."""
         from microsoft.opentelemetry.a365.core.exporters.span_processor import A365SpanProcessor
 
-        otel_kwargs = {"span_processors": []}
-        _append_baggage_span_processor(otel_kwargs)
-        _append_a365_components(True, otel_kwargs)
+        env = {k: v for k, v in os.environ.items() if k != "ENABLE_A365_OBSERVABILITY_EXPORTER"}
+        with patch.dict("os.environ", env, clear=True):
+            otel_kwargs = {"span_processors": []}
+            _append_a365_components(True, otel_kwargs)
 
         processors = otel_kwargs["span_processors"]
         self.assertEqual(len(processors), 1)
         self.assertIsInstance(processors[0], A365SpanProcessor)
 
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=True)
     @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
-    def test_cluster_category_kwarg_overrides_env(self, default_resolver_mock):
+    def test_cluster_category_kwarg_overrides_env(self, default_resolver_mock, enabled_mock):
         """a365_cluster_category kwarg takes precedence over A365_CLUSTER_CATEGORY env var."""
         default_resolver_mock.return_value = lambda aid, tid: "token"
 
@@ -517,8 +498,9 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         _, exporter_kwargs = exporter_mock.call_args
         self.assertEqual(exporter_kwargs["cluster_category"], "gov")
 
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=True)
     @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
-    def test_cluster_category_falls_back_to_env(self, default_resolver_mock):
+    def test_cluster_category_falls_back_to_env(self, default_resolver_mock, enabled_mock):
         """A365_CLUSTER_CATEGORY env var is used when kwarg not provided."""
         default_resolver_mock.return_value = lambda aid, tid: "token"
 
@@ -532,8 +514,9 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         _, exporter_kwargs = exporter_mock.call_args
         self.assertEqual(exporter_kwargs["cluster_category"], "gov")
 
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=True)
     @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
-    def test_cluster_category_defaults_to_prod(self, default_resolver_mock):
+    def test_cluster_category_defaults_to_prod(self, default_resolver_mock, enabled_mock):
         """cluster_category defaults to 'prod' when neither kwarg nor env var is set."""
         default_resolver_mock.return_value = lambda aid, tid: "token"
 
@@ -605,56 +588,6 @@ class TestA365Components(unittest.TestCase):
 
         tp = get_tracer_provider()
         self.assertIsNotNone(tp)
-
-
-class TestEnabledByDistro(unittest.TestCase):
-    """Tests for _enabled_by_distro flag in OpenTelemetryScope."""
-
-    def setUp(self):
-        from microsoft.opentelemetry.a365.core.opentelemetry_scope import OpenTelemetryScope
-
-        self._scope_cls = OpenTelemetryScope
-        self._original = OpenTelemetryScope._enabled_by_distro
-
-    def tearDown(self):
-        self._scope_cls._enabled_by_distro = self._original
-
-    @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver", return_value=None)
-    def test_enabled_by_distro_set_when_a365_enabled(self, resolver_mock):
-        """_enabled_by_distro is True after _append_a365_components(True, ...)."""
-        self._scope_cls._enabled_by_distro = False
-        otel_kwargs = {"span_processors": []}
-        _append_a365_components(True, otel_kwargs)
-        self.assertTrue(self._scope_cls._enabled_by_distro)
-
-    def test_enabled_by_distro_not_set_when_tracing_disabled(self):
-        """_enabled_by_distro stays False when disable_tracing=True."""
-        self._scope_cls._enabled_by_distro = False
-        otel_kwargs = {"span_processors": [], "disable_tracing": True}
-        _append_a365_components(True, otel_kwargs)
-        self.assertFalse(self._scope_cls._enabled_by_distro)
-
-    def test_enabled_by_distro_not_set_when_a365_disabled(self):
-        """_enabled_by_distro stays False when enable_a365=False."""
-        self._scope_cls._enabled_by_distro = False
-        otel_kwargs = {"span_processors": []}
-        _append_a365_components(False, otel_kwargs)
-        self.assertFalse(self._scope_cls._enabled_by_distro)
-
-    @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver", return_value=None)
-    def test_telemetry_enabled_without_env_vars_when_distro_sets_flag(self, resolver_mock):
-        """_is_telemetry_enabled() returns True via distro flag without env vars."""
-        env = {k: v for k, v in os.environ.items() if k not in ("ENABLE_OBSERVABILITY", "ENABLE_A365_OBSERVABILITY")}
-        with patch.dict("os.environ", env, clear=True):
-            otel_kwargs = {"span_processors": []}
-            _append_a365_components(True, otel_kwargs)
-            self.assertTrue(self._scope_cls._is_telemetry_enabled())
-
-    def test_env_false_overrides_distro_flag(self):
-        """ENABLE_OBSERVABILITY=false overrides _enabled_by_distro."""
-        self._scope_cls._enabled_by_distro = True
-        with patch.dict("os.environ", {"ENABLE_OBSERVABILITY": "false"}, clear=False):
-            self.assertFalse(self._scope_cls._is_telemetry_enabled())
 
 
 class TestSpectraComponents(unittest.TestCase):
@@ -796,7 +729,9 @@ class TestA365DisablesWebInstrumentations(unittest.TestCase):
     """When enable_a365=True, web/DB instrumentations are off by default."""
 
     _WEB_DB_LIBS = _A365_DISABLED_INSTRUMENTATIONS
-    _GENAI_LIBS = tuple(lib for lib in _SUPPORTED_INSTRUMENTED_LIBRARIES if lib not in _A365_DISABLED_INSTRUMENTATIONS)
+    _GENAI_LIBS = tuple(
+        lib for lib in _SUPPORTED_INSTRUMENTED_LIBRARIES if lib not in _A365_DISABLED_INSTRUMENTATIONS
+    )
 
     @patch("microsoft.opentelemetry._distro._setup_instrumentations")
     @patch("microsoft.opentelemetry._distro._setup_logging")
@@ -866,7 +801,9 @@ class TestA365DisablesWebInstrumentations(unittest.TestCase):
     @patch("microsoft.opentelemetry._distro._setup_logging")
     @patch("microsoft.opentelemetry._distro._setup_metrics")
     @patch("microsoft.opentelemetry._distro._setup_tracing")
-    def test_a365_defaults_skipped_when_azure_monitor_also_enabled(self, _trc, _met, _log, setup_inst, _az):
+    def test_a365_defaults_skipped_when_azure_monitor_also_enabled(
+        self, _trc, _met, _log, setup_inst, _az
+    ):
         """When both enable_a365 and enable_azure_monitor are True, the
         non-A365 (original) defaults are preserved so web/HTTP libs stay on."""
         use_microsoft_opentelemetry(
