@@ -535,18 +535,20 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         _, exporter_kwargs = exporter_mock.call_args
         self.assertEqual(exporter_kwargs["cluster_category"], "prod")
 
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=True)
     @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
-    def test_enable_observability_exporter_kwarg_false_skips_exporter(self, default_resolver_mock):
+    def test_enable_observability_exporter_kwarg_false_skips_exporter(self, default_resolver_mock, _enabled_mock):
         """a365_enable_observability_exporter=False skips exporter even when token resolver is available."""
         default_resolver_mock.return_value = lambda aid, tid: "token"
         from microsoft.opentelemetry.a365.core.exporters.span_processor import A365SpanProcessor
 
         with patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
             otel_kwargs = {"span_processors": []}
-            _append_baggage_span_processor(otel_kwargs)
             _append_a365_components(True, otel_kwargs, enable_observability_exporter=False)
 
         exporter_mock.assert_not_called()
+        # _append_a365_components always registers the baggage A365SpanProcessor
+        # even when the exporter is disabled.
         processors = otel_kwargs["span_processors"]
         self.assertEqual(len(processors), 1)
         self.assertIsInstance(processors[0], A365SpanProcessor)
@@ -579,8 +581,9 @@ class TestA365KwargsConfiguration(unittest.TestCase):
 
         exporter_mock.assert_not_called()
 
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils.is_agent365_exporter_enabled", return_value=True)
     @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
-    def test_enable_observability_exporter_defaults_true(self, default_resolver_mock):
+    def test_enable_observability_exporter_defaults_true(self, default_resolver_mock, _enabled_mock):
         """Exporter is built by default when neither kwarg nor env var is set."""
         default_resolver_mock.return_value = lambda aid, tid: "token"
 
