@@ -1,10 +1,15 @@
 # Release History
 
+## Unreleased
+
+## Bugs Fixed
+- Reverted [#81](https://github.com/microsoft/opentelemetry-distro-python/pull/81): baggage propagation now requires `enable_a365=True` and respects `ENABLE_A365_OBSERVABILITY_EXPORTER` as before.
+
 ## 0.1.0b2 (2026-04-28)
 
 ### Bugs Fixed
-
-- Reverted [#81](https://github.com/microsoft/opentelemetry-distro-python/pull/81): baggage propagation now requires `enable_a365=True` and respects `ENABLE_A365_OBSERVABILITY_EXPORTER` as before.
+- Ensure baggage properties propagate to child spans for all exporters
+  ([#81](https://github.com/microsoft/opentelemetry-distro-python/pull/81))
 
 ## 0.1.0b1 (2026-04-27)
 
