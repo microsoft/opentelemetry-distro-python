@@ -17,9 +17,14 @@ class TestAgentFrameworkInstrumentor(unittest.TestCase):
 
     def setUp(self):
         unregister_span_enricher()
+        # Reset the BaseInstrumentor singleton so each test gets a fresh instance.
+        AgentFrameworkInstrumentor._instance = None
+        AgentFrameworkInstrumentor._is_instrumented_by_opentelemetry = False
 
     def tearDown(self):
         unregister_span_enricher()
+        AgentFrameworkInstrumentor._instance = None
+        AgentFrameworkInstrumentor._is_instrumented_by_opentelemetry = False
 
     def test_instrumentor_initialization(self):
         instrumentor = AgentFrameworkInstrumentor()
@@ -46,7 +51,7 @@ class TestAgentFrameworkInstrumentor(unittest.TestCase):
         args, _ = mock_provider.add_span_processor.call_args
         self.assertIsInstance(args[0], AgentFrameworkSpanProcessor)
 
-    @patch("microsoft.opentelemetry._agent_framework._trace_instrumentor.register_span_enricher")
+    @patch("microsoft.opentelemetry.a365.core.exporters.enriching_span_processor.register_span_enricher")
     @patch("microsoft.opentelemetry._agent_framework._trace_instrumentor.get_tracer_provider")
     def test_instrumentor_registers_enricher(self, mock_get_provider, mock_register):
         mock_get_provider.return_value = MagicMock()
@@ -56,8 +61,8 @@ class TestAgentFrameworkInstrumentor(unittest.TestCase):
 
         mock_register.assert_called_once()
 
-    @patch("microsoft.opentelemetry._agent_framework._trace_instrumentor.unregister_span_enricher")
-    @patch("microsoft.opentelemetry._agent_framework._trace_instrumentor.register_span_enricher")
+    @patch("microsoft.opentelemetry.a365.core.exporters.enriching_span_processor.unregister_span_enricher")
+    @patch("microsoft.opentelemetry.a365.core.exporters.enriching_span_processor.register_span_enricher")
     @patch("microsoft.opentelemetry._agent_framework._trace_instrumentor.get_tracer_provider")
     def test_uninstrument(self, mock_get_provider, mock_register, mock_unregister):
         mock_get_provider.return_value = MagicMock()
@@ -67,6 +72,50 @@ class TestAgentFrameworkInstrumentor(unittest.TestCase):
         instrumentor._uninstrument()
 
         mock_unregister.assert_called_once()
+
+    @patch("microsoft.opentelemetry._agent_framework._trace_instrumentor.get_tracer_provider")
+    def test_instrument_calls_enable_instrumentation_when_available(self, mock_get_provider):
+        mock_get_provider.return_value = MagicMock()
+        mock_enable = MagicMock()
+
+        with patch.dict(
+            "sys.modules",
+            {
+                "agent_framework": MagicMock(),
+                "agent_framework.observability": MagicMock(enable_instrumentation=mock_enable),
+            },
+        ):
+            instrumentor = AgentFrameworkInstrumentor()
+            instrumentor._instrument()
+
+        mock_enable.assert_called_once()
+        self.assertTrue(instrumentor._af_instrumentation_enabled)
+
+    @patch("microsoft.opentelemetry._agent_framework._trace_instrumentor.get_tracer_provider")
+    def test_instrument_skips_enable_when_af_not_installed(self, mock_get_provider):
+        mock_get_provider.return_value = MagicMock()
+
+        import sys
+
+        # Temporarily hide all agent_framework modules and block re-import
+        # by setting them to None in sys.modules.
+        saved = {}
+        keys_to_remove = [k for k in list(sys.modules) if k == "agent_framework" or k.startswith("agent_framework.")]
+        for k in keys_to_remove:
+            saved[k] = sys.modules.pop(k)
+
+        try:
+            sys.modules["agent_framework"] = None  # type: ignore[assignment]
+            sys.modules["agent_framework.observability"] = None  # type: ignore[assignment]
+
+            instrumentor = AgentFrameworkInstrumentor()
+            instrumentor._instrument()
+
+            self.assertFalse(instrumentor._af_instrumentation_enabled)
+        finally:
+            sys.modules.pop("agent_framework", None)
+            sys.modules.pop("agent_framework.observability", None)
+            sys.modules.update(saved)
 
 
 class TestAgentFrameworkSpanProcessor(unittest.TestCase):
