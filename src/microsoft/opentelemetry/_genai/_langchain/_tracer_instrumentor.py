@@ -16,21 +16,32 @@ from collections.abc import Callable, Collection
 from typing import Any
 from uuid import UUID
 
-import langchain_core
-import langchain_core.callbacks
-import langchain_core.runnables.config
 import opentelemetry.trace as trace_api
-from langchain_core.callbacks import BaseCallbackManager
 from opentelemetry._logs import get_logger as get_otel_logger
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor  # type: ignore[attr-defined]
 from opentelemetry.trace import Span
-from wrapt import wrap_function_wrapper
-
-from microsoft.opentelemetry._genai._langchain._tracer import LangChainTracer
 
 logger = logging.getLogger(__name__)
 
 _INSTRUMENTS: str = "langchain-core >= 0.2.0"
+
+try:
+    import langchain_core
+    import langchain_core.callbacks
+    import langchain_core.runnables.config
+    from langchain_core.callbacks import BaseCallbackManager
+    from wrapt import wrap_function_wrapper
+
+    from microsoft.opentelemetry._genai._langchain._tracer import LangChainTracer
+
+    langchain_available = True
+except ImportError:  # pragma: no cover - exercised only when langchain-core absent
+    langchain_available = False
+    logger.warning(
+        "LangChain instrumentation is disabled because 'langchain-core' is not "
+        "installed. Install the optional extra with "
+        "`pip install microsoft-opentelemetry[langchain]` to enable it."
+    )
 
 
 class LangChainInstrumentor(BaseInstrumentor):
@@ -47,6 +58,8 @@ class LangChainInstrumentor(BaseInstrumentor):
         return (_INSTRUMENTS,)
 
     def _instrument(self, **kwargs: Any) -> None:
+        if not langchain_available:
+            return
         tracer_provider = kwargs.get("tracer_provider")
         tracer = trace_api.get_tracer(
             __name__,
@@ -83,6 +96,8 @@ class LangChainInstrumentor(BaseInstrumentor):
         )
 
     def _uninstrument(self, **kwargs: Any) -> None:
+        if not langchain_available:
+            return
         if self._original_cb_init is not None:
             langchain_core.callbacks.BaseCallbackManager.__init__ = self._original_cb_init  # type: ignore[assignment]
         self._original_cb_init = None

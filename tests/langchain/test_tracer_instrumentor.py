@@ -10,6 +10,9 @@ from microsoft.opentelemetry._genai._langchain._tracer_instrumentor import (
     _BaseCallbackManagerInit,
 )
 
+import pytest
+
+pytest.importorskip("langchain_core")
 
 class TestLangChainInstrumentor(TestCase):
     def setUp(self):
@@ -94,6 +97,30 @@ class TestLangChainInstrumentor(TestCase):
     def test_get_ancestors_returns_empty_when_not_instrumented(self, mock_wrap, mock_get_tracer, mock_get_logger):
         inst = LangChainInstrumentor()
         self.assertEqual(inst.get_ancestors(uuid4()), [])
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer_instrumentor.langchain_available", False)
+    @patch("microsoft.opentelemetry._genai._langchain._tracer_instrumentor.wrap_function_wrapper")
+    @patch("microsoft.opentelemetry._genai._langchain._tracer_instrumentor.logger")
+    def test_instrument_skips_when_langchain_unavailable(self, mock_logger, mock_wrap):
+        """When langchain-core is not installed, _instrument logs a debug message and no-ops."""
+        inst = LangChainInstrumentor()
+        inst._instrument()
+        mock_wrap.assert_not_called()
+        self.assertIsNone(inst._tracer)
+        mock_logger.debug.assert_called_once()
+        debug_msg = mock_logger.debug.call_args[0][0]
+        self.assertIn("langchain-core", debug_msg)
+        # Should NOT log a warning here (the import-time warning already fired).
+        mock_logger.warning.assert_not_called()
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer_instrumentor.langchain_available", False)
+    def test_uninstrument_no_op_when_langchain_unavailable(self):
+        """_uninstrument is a safe no-op when langchain-core is not installed."""
+        inst = LangChainInstrumentor()
+        # Should not raise
+        inst._uninstrument()
+        self.assertIsNone(inst._tracer)
+        self.assertIsNone(inst._original_cb_init)
 
 
 class TestBaseCallbackManagerInit(TestCase):

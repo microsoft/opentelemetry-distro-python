@@ -7,15 +7,21 @@ from unittest import TestCase
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from microsoft.opentelemetry._genai._langchain._tracer import (
+import pytest
+
+pytest.importorskip("langchain_core")
+
+from microsoft.opentelemetry._genai._langchain._tracer import (  # noqa: E402  # pylint: disable=wrong-import-position
     LangChainTracer,
     _update_span,
     get_attributes_from_context,
 )
-from microsoft.opentelemetry._genai._langchain._utils import (
+from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # pylint: disable=wrong-import-position
     EXECUTE_TOOL_OPERATION_NAME,
     INVOKE_AGENT_OPERATION_NAME,
 )
+
+pytest.importorskip("langchain_core")
 
 _NOW = datetime.datetime(2024, 6, 1, 12, 0, 0, tzinfo=datetime.timezone.utc)
 _NOW_END = datetime.datetime(2024, 6, 1, 12, 0, 1, tzinfo=datetime.timezone.utc)
