@@ -128,10 +128,9 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
         Strip input messages from InvokeAgent spans before export. Also read from
         ``A365_SUPPRESS_INVOKE_AGENT_INPUT`` env var. Defaults to False.
     :keyword bool a365_enable_observability_exporter:
-        Enable the A365 HTTP observability exporter. Equivalent to setting the
-        ``ENABLE_A365_OBSERVABILITY_EXPORTER`` environment variable. When provided,
-        this kwarg overrides the env var; otherwise the env var (or its absence)
-        is used. Has no effect unless ``enable_a365=True``.
+        Enable the A365 HTTP observability exporter. Also read from
+        ``ENABLE_A365_OBSERVABILITY_EXPORTER`` env var. Defaults to False.
+        Has no effect unless ``enable_a365=True``.
     :keyword str a365_observability_scope_override:
         Override the authentication scope used when acquiring tokens for the
         A365 observability service. Equivalent to setting the
@@ -325,7 +324,6 @@ def _append_a365_components(
     from microsoft.opentelemetry.a365.core.exporters.span_processor import A365SpanProcessor
     from microsoft.opentelemetry.a365.core.exporters.utils import (
         _create_default_token_resolver,
-        is_agent365_exporter_enabled,
     )
 
     try:
@@ -349,7 +347,7 @@ def _append_a365_components(
         resolved_enable_exporter = (
             enable_observability_exporter
             if enable_observability_exporter is not None
-            else _env_bool(ENABLE_A365_OBSERVABILITY_EXPORTER, default=True)
+            else _env_bool(ENABLE_A365_OBSERVABILITY_EXPORTER, default=False)
         )
         resolved_scope_override = (
             observability_scope_override or os.environ.get(A365_OBSERVABILITY_SCOPE_OVERRIDE_ENV) or None
@@ -359,15 +357,14 @@ def _append_a365_components(
         )
 
         if not resolved_enable_exporter:
-            _logger.info("A365 observability exporter disabled by configuration; skipping.")
+            _logger.info(
+                "A365 observability exporter not enabled (set ``a365_enable_observability_exporter=True`` "
+                "or ``ENABLE_A365_OBSERVABILITY_EXPORTER=true``); skipping."
+            )
             return
 
-        # Build the exporter (A365 HTTP or skip if not enabled)
-        if not is_agent365_exporter_enabled() or resolved_token_resolver is None:
-            _logger.warning(
-                "%s not set or token_resolver not provided. A365 exporter will not be active.",
-                ENABLE_A365_OBSERVABILITY_EXPORTER,
-            )
+        if resolved_token_resolver is None:
+            _logger.warning("token_resolver not provided. A365 exporter will not be active.")
             return
 
         exporter = _Agent365Exporter(
