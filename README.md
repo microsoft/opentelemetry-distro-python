@@ -108,6 +108,8 @@ See the [A365 guide](docs/A365_DOCUMENTATION.md) for A365-specific configuration
 | `a365_cluster_category` | `str` | `"prod"` | Cluster category (`prod`, `gov`, `dod`, `mooncake`). |
 | `a365_use_s2s_endpoint` | `bool` | `False` | Use the S2S endpoint. |
 | `a365_suppress_invoke_agent_input` | `bool` | `False` | Strip input messages from InvokeAgent spans. |
+| `a365_enable_observability_exporter` | `bool` | `True` | Enable the A365 HTTP exporter. Set to `False` to register span processors without exporting. Also read from `ENABLE_A365_OBSERVABILITY_EXPORTER`. |
+| `a365_observability_scope_override` | `str` | `None` | Override the default Entra scope used by the built-in token resolvers. Also read from `A365_OBSERVABILITY_SCOPE_OVERRIDE`. |
 
 > For A365 token resolver patterns, baggage, and scope classes, see the [A365 guide](docs/A365_DOCUMENTATION.md).
 
@@ -148,6 +150,7 @@ When `enable_a365=True`, the distro adds A365 span processors to the tracing pip
 | `A365_CLUSTER_CATEGORY` | `prod` | Cluster category for endpoint discovery (`prod`, `gov`, `dod`, `mooncake`). |
 | `A365_USE_S2S_ENDPOINT` | `false` | Use the S2S endpoint instead of the standard endpoint. |
 | `A365_SUPPRESS_INVOKE_AGENT_INPUT` | `false` | Strip input messages from InvokeAgent spans before export. |
+| `A365_OBSERVABILITY_SCOPE_OVERRIDE` | _(unset)_ | Override the default Entra scope used by the built-in FIC / DefaultAzureCredential token resolvers. |
 | `ENABLE_OBSERVABILITY` | `false` | Master switch for A365 scope telemetry. Must be `true` for scope classes to emit spans. |
 
 **Example:**
