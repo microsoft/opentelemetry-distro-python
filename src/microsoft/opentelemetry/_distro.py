@@ -351,9 +351,9 @@ def _append_a365_components(
             if enable_observability_exporter is not None
             else _env_bool(ENABLE_A365_OBSERVABILITY_EXPORTER, default=True)
         )
-        resolved_scope_override = observability_scope_override or os.environ.get(
-            A365_OBSERVABILITY_SCOPE_OVERRIDE_ENV
-        ) or None
+        resolved_scope_override = (
+            observability_scope_override or os.environ.get(A365_OBSERVABILITY_SCOPE_OVERRIDE_ENV) or None
+        )
         resolved_token_resolver = token_resolver or _create_default_token_resolver(
             scope_override=resolved_scope_override
         )

@@ -541,9 +541,7 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         default_resolver_mock.return_value = lambda aid, tid: "token"
         from microsoft.opentelemetry.a365.core.exporters.span_processor import A365SpanProcessor
 
-        with patch(
-            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"
-        ) as exporter_mock:
+        with patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
             otel_kwargs = {"span_processors": []}
             _append_baggage_span_processor(otel_kwargs)
             _append_a365_components(True, otel_kwargs, enable_observability_exporter=False)
@@ -560,9 +558,7 @@ class TestA365KwargsConfiguration(unittest.TestCase):
 
         with (
             patch.dict("os.environ", {"ENABLE_A365_OBSERVABILITY_EXPORTER": "true"}, clear=False),
-            patch(
-                "microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"
-            ) as exporter_mock,
+            patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock,
         ):
             otel_kwargs = {"span_processors": []}
             _append_a365_components(True, otel_kwargs, enable_observability_exporter=False)
@@ -576,9 +572,7 @@ class TestA365KwargsConfiguration(unittest.TestCase):
 
         with (
             patch.dict("os.environ", {"ENABLE_A365_OBSERVABILITY_EXPORTER": "false"}, clear=False),
-            patch(
-                "microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"
-            ) as exporter_mock,
+            patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock,
         ):
             otel_kwargs = {"span_processors": []}
             _append_a365_components(True, otel_kwargs)
@@ -593,9 +587,7 @@ class TestA365KwargsConfiguration(unittest.TestCase):
         env = {k: v for k, v in os.environ.items() if k != "ENABLE_A365_OBSERVABILITY_EXPORTER"}
         with (
             patch.dict("os.environ", env, clear=True),
-            patch(
-                "microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"
-            ) as exporter_mock,
+            patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock,
         ):
             otel_kwargs = {"span_processors": []}
             _append_a365_components(True, otel_kwargs)
