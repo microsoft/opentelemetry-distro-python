@@ -108,7 +108,7 @@ class TestTruncateSpan(unittest.TestCase):
         self.assertEqual(result, span)
 
 
-class TestPartitionByIdentity(unittest.TestCase):
+class TestFilterAndPartitionByIdentity(unittest.TestCase):
     def _make_span(self, tenant_id, agent_id, operation_name="invoke_agent"):
         span = MagicMock()
         attrs = {
