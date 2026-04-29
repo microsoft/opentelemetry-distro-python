@@ -614,6 +614,7 @@ class TestA365KwargsConfiguration(unittest.TestCase):
                 True,
                 otel_kwargs,
                 observability_scope_override="api://custom-scope/.default",
+                enable_observability_exporter=True,
             )
 
         default_resolver_mock.assert_called_once_with(scope_override="api://custom-scope/.default")
@@ -636,6 +637,7 @@ class TestA365KwargsConfiguration(unittest.TestCase):
                 True,
                 otel_kwargs,
                 observability_scope_override="api://kwarg-scope/.default",
+                enable_observability_exporter=True,
             )
 
         default_resolver_mock.assert_called_once_with(scope_override="api://kwarg-scope/.default")
@@ -654,7 +656,7 @@ class TestA365KwargsConfiguration(unittest.TestCase):
             patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"),
         ):
             otel_kwargs = {"span_processors": []}
-            _append_a365_components(True, otel_kwargs)
+            _append_a365_components(True, otel_kwargs, enable_observability_exporter=True)
 
         default_resolver_mock.assert_called_once_with(scope_override="api://env-scope/.default")
 
@@ -669,7 +671,7 @@ class TestA365KwargsConfiguration(unittest.TestCase):
             patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"),
         ):
             otel_kwargs = {"span_processors": []}
-            _append_a365_components(True, otel_kwargs)
+            _append_a365_components(True, otel_kwargs, enable_observability_exporter=True)
 
         default_resolver_mock.assert_called_once_with(scope_override=None)
 
