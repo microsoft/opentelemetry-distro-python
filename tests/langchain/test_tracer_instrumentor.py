@@ -1,10 +1,6 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-import pytest
-
-pytest.importorskip("langchain_core")
-
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -14,6 +10,9 @@ from microsoft.opentelemetry._genai._langchain._tracer_instrumentor import (
     _BaseCallbackManagerInit,
 )
 
+import pytest
+
+pytest.importorskip("langchain_core")
 
 class TestLangChainInstrumentor(TestCase):
     def setUp(self):

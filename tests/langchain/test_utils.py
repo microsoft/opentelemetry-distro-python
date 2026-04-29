@@ -1,17 +1,17 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-import pytest
-
-pytest.importorskip("langchain_core")
-
 import datetime
 import json
 from enum import Enum
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
-from microsoft.opentelemetry._genai._langchain._utils import (
+import pytest
+
+pytest.importorskip("langchain_core")
+
+from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # pylint: disable=wrong-import-position
     DictWithLock,
     CHAT_OPERATION_NAME,
     EXECUTE_TOOL_OPERATION_NAME,
