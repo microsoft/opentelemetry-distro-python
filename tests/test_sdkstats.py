@@ -66,6 +66,10 @@ class TestSdkStatsEnabled(unittest.TestCase):
         os.environ[_SDKSTATS_DISABLED_ENV] = "1"
         self.assertFalse(is_sdkstats_enabled())
 
+    def test_disabled_by_on(self):
+        os.environ[_SDKSTATS_DISABLED_ENV] = "on"
+        self.assertFalse(is_sdkstats_enabled())
+
     def test_enabled_with_random_value(self):
         os.environ[_SDKSTATS_DISABLED_ENV] = "banana"
         self.assertTrue(is_sdkstats_enabled())

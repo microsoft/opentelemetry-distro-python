@@ -29,8 +29,7 @@ class _FeatureTypes:
     INSTRUMENTATION = 1
 
 
-_ATTACH_METRIC_NAME = "Attach"
-_FEATURE_METRIC_NAME = "Feature"
+_FEATURE_METRIC_NAME = "feature"
 
 
 class SdkStatsMetrics:

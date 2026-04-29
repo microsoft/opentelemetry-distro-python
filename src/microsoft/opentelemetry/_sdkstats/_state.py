@@ -115,7 +115,7 @@ def is_sdkstats_enabled() -> bool:
     """Return ``True`` unless SDKStats has been disabled via env var."""
     for env_var in (_SDKSTATS_DISABLED_ENV, _APPLICATIONINSIGHTS_STATSBEAT_DISABLED_ALL):
         val = os.environ.get(env_var, "").strip().lower()
-        if val in ("true", "1", "yes"):
+        if val in ("true", "1", "yes", "on"):
             return False
     return True
 

@@ -75,8 +75,10 @@ def _mark_browser_loader_feature(is_enabled: bool) -> None:
             and not get_statsbeat_browser_sdk_loader_feature_set()
         ):
             set_statsbeat_browser_sdk_loader_feature_set()
-    except (ImportError, Exception):  # pylint: disable=broad-exception-caught
+    except ImportError:
         pass
+    except Exception:  # pylint: disable=broad-exception-caught
+        _logger.debug("Failed to record browser loader statsbeat usage", exc_info=True)
 
 
 # Web SDK snippet template

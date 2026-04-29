@@ -38,9 +38,6 @@ from microsoft.opentelemetry._sdkstats._metrics import SdkStatsMetrics
 
 _logger = logging.getLogger(__name__)
 
-# Default export interval: 15 minutes (in seconds, converted to ms for reader)
-_DEFAULT_EXPORT_INTERVAL_SECS = 900
-
 
 class SdkStatsManager:
     """Singleton manager for SDK self-telemetry metrics.
