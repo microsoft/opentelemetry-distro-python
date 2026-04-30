@@ -378,8 +378,8 @@ class A365OnlyConsoleSpanProcessor(SpanProcessor):
 
     A365_OPS = {"invoke_agent", "chat", "execute_tool", "output_messages"}
 
-    def on_end(self, span: ReadableSpan):
-        op = span.attributes.get("gen_ai.operation.name")
+    def on_start(self, span, parent_context=None):
+        op = (span.attributes or {}).get("gen_ai.operation.name")
         if op not in self.A365_OPS:
             # Create new SpanContext with trace_flags = 0
             span._context = SpanContext(
@@ -390,11 +390,14 @@ class A365OnlyConsoleSpanProcessor(SpanProcessor):
                 span.context.trace_state,
             )
 
-    def force_flush(self, timeout_millis: int = 30000) -> bool:
-        return True
+    def on_end(self, span: ReadableSpan):
+        pass
 
     def shutdown(self):
         pass
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return True
 
 
 use_microsoft_opentelemetry(
