@@ -13,6 +13,7 @@ of supported auto-instrumented libraries.
 
 # --- Generic OTel Provider Constants ---
 
+MICROSOFT_OPENTELEMETRY_VERSION_ARG = "microsoft_opentelemetry_version"
 DISABLE_LOGGING_ARG = "disable_logging"
 DISABLE_METRICS_ARG = "disable_metrics"
 DISABLE_TRACING_ARG = "disable_tracing"
