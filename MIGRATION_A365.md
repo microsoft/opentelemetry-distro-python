@@ -381,7 +381,7 @@ class A365OnlyConsoleSpanProcessor(SpanProcessor):
     def on_end(self, span: ReadableSpan):
         op = span.attributes.get("gen_ai.operation.name")
         if op not in self.A365_OPS:
-            # Create new SpanContext with trace_flags = 0 (UNSAMPLED)
+            # Create new SpanContext with trace_flags = 0
             span._context = SpanContext(
                 span.context.trace_id,
                 span.context.span_id,
