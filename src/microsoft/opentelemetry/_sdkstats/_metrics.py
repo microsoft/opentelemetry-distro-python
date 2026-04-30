@@ -10,7 +10,7 @@ Mirrors the Azure Monitor Exporter ``_StatsbeatMetrics`` feature/
 instrumentation gauge pattern, but is backend-agnostic — the metrics are
 collected into a caller-supplied ``MeterProvider``.
 """
-
+from enum import Enum
 import platform
 from typing import Any, Dict, Iterable, List
 
@@ -23,8 +23,19 @@ from microsoft.opentelemetry._sdkstats._state import (
 )
 from microsoft.opentelemetry._version import VERSION
 
+class _RP_Names(Enum):
+    APP_SERVICE = "appsvc"
+    FUNCTIONS = "functions"
+    AKS = "aks"
+    VM = "vm"
+    UNKNOWN = "unknown"
 
-class _FeatureTypes:
+class _AttachTypes(Enum):
+    MANUAL = "Manual"
+    INTEGRATED = "IntegratedAuto"
+    STANDALONE = "StandaloneAuto"
+
+class _FeatureTypes(Enum):
     FEATURE = 0
     INSTRUMENTATION = 1
 
@@ -45,6 +56,9 @@ class SdkStatsMetrics:
         self._distro_version = distro_version or VERSION
 
         self._common_attributes: Dict[str, Any] = {
+            "rp": _RP_Names.UNKNOWN.value,
+            "attach": _AttachTypes.MANUAL.value,
+            "cikey": None,
             "runtimeVersion": platform.python_version(),
             "os": platform.system(),
             "language": "python",
@@ -61,7 +75,7 @@ class SdkStatsMetrics:
 
         # Instrumentation gauge
         self._meter.create_observable_gauge(
-            _FEATURE_METRIC_NAME + ".instrumentations",
+            _FEATURE_METRIC_NAME,
             callbacks=[self._observe_instrumentations],
             unit="",
             description="SDKStats metric tracking enabled instrumentations",
@@ -75,7 +89,7 @@ class SdkStatsMetrics:
         if feature_bits != 0:
             attrs = dict(self._common_attributes)
             attrs["feature"] = feature_bits
-            attrs["type"] = _FeatureTypes.FEATURE
+            attrs["type"] = _FeatureTypes.FEATURE.value
             observations.append(Observation(1, attrs))
         return observations
 
@@ -85,6 +99,6 @@ class SdkStatsMetrics:
         if instr_bits != 0:
             attrs = dict(self._common_attributes)
             attrs["feature"] = instr_bits
-            attrs["type"] = _FeatureTypes.INSTRUMENTATION
+            attrs["type"] = _FeatureTypes.INSTRUMENTATION.value
             observations.append(Observation(1, attrs))
         return observations

@@ -50,12 +50,12 @@ def _mark_browser_loader_feature(is_enabled: bool) -> None:
     try:
         from microsoft.opentelemetry._sdkstats._state import (
             SdkStatsFeature,
-            is_sdkstats_enabled as _is_enabled,
+            is_sdkstats_enabled,
             get_sdkstats_shutdown,
             set_sdkstats_feature,
         )
 
-        if _is_enabled() and not get_sdkstats_shutdown():
+        if is_sdkstats_enabled() and not get_sdkstats_shutdown():
             set_sdkstats_feature(SdkStatsFeature.AZURE_MONITOR_BROWSER_SDK_LOADER)
     except Exception:  # pylint: disable=broad-exception-caught
         _logger.debug("Failed to record browser loader sdkstats usage", exc_info=True)
