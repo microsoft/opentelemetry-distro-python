@@ -704,8 +704,7 @@ class TestA365BatchProcessorKwargs(unittest.TestCase):
             ),
             patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"),
             patch(
-                "microsoft.opentelemetry.a365.core.exporters.enriching_span_processor."
-                "_EnrichingBatchSpanProcessor"
+                "microsoft.opentelemetry.a365.core.exporters.enriching_span_processor._EnrichingBatchSpanProcessor"
             ) as proc_mock,
         ):
             otel_kwargs = {"span_processors": []}
