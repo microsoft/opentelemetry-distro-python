@@ -359,7 +359,7 @@ configured), **all** spans are exported — including framework-level spans
 only care about the 4 A365 observability scopes:
 
 - `invoke_agent`
-- `Chat` (InferenceScope)
+- `chat` (InferenceScope)
 - `execute_tool` (ExecuteToolScope)
 - `output_messages` (OutputScope)
 
@@ -379,17 +379,17 @@ class A365OnlyConsoleSpanProcessor(SpanProcessor):
 
     A365_OPS = {"invoke_agent", "chat", "execute_tool", "output_messages"}
 
-    def __init__(self):
-        self._console_processor = SimpleSpanProcessor(ConsoleSpanExporter())
-
-    def on_start(self, span, parent_context=None):
-        self._console_processor.on_start(span, parent_context=parent_context)
-
     def on_end(self, span: ReadableSpan):
         op = span.attributes.get("gen_ai.operation.name")
-
-        if op in self.A365_OPS:
-            self._console_processor.on_end(span)
+        if op not in self.A365_OPS:
+            # Create new SpanContext with trace_flags = 0 (UNSAMPLED)
+            span._context = SpanContext(
+                span.context.trace_id,
+                span.context.span_id,
+                span.context.is_remote,
+                TraceFlags(0),  # UNSAMPLED
+                span.context.trace_state,
+            )
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
         return self._console_processor.force_flush(timeout_millis)
