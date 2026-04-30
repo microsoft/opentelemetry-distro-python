@@ -363,50 +363,46 @@ only care about the 4 A365 observability scopes:
 - `execute_tool` (ExecuteToolScope)
 - `output_messages` (OutputScope)
 
-To filter output to only A365 scopes, pass a custom `SpanProcessor` via the
-`span_processors` parameter:
+To filter output to only A365 scopes, disable the built-in console exporter
+and supply your own `SpanProcessor` that filters in `on_end` (where span
+attributes such as `gen_ai.operation.name` are finalized):
 
 ```python
-from opentelemetry.trace import SpanContext, TraceFlags
 from opentelemetry.sdk.trace import SpanProcessor, ReadableSpan
+from opentelemetry.sdk.trace.export import ConsoleSpanExporter, SimpleSpanProcessor
 
 from microsoft.opentelemetry import use_microsoft_opentelemetry
 
 
-class A365OnlySpanProcessor(SpanProcessor):
-    """Filter console/exporter output to only A365 observability scopes."""
+class A365OnlyConsoleSpanProcessor(SpanProcessor):
+    """Send only A365 observability spans to the console exporter."""
 
     A365_OPS = {"invoke_agent", "chat", "execute_tool", "output_messages"}
 
-    def on_start(self, span, parent_context=None):
-        """Mark non-A365 spans as unsampled at start time."""
-        op = span.attributes.get("gen_ai.operation.name")
+    def __init__(self):
+        self._console_processor = SimpleSpanProcessor(ConsoleSpanExporter())
 
-        if op not in self.A365_OPS:
-            # Create new SpanContext with trace_flags = 0 (UNSAMPLED)
-            span._context = SpanContext(
-                span.context.trace_id,
-                span.context.span_id,
-                span.context.is_remote,
-                TraceFlags(0),  # UNSAMPLED
-                span.context.trace_state,
-            )
+    def on_start(self, span, parent_context=None):
+        self._console_processor.on_start(span, parent_context=parent_context)
 
     def on_end(self, span: ReadableSpan):
-        pass
+        op = span.attributes.get("gen_ai.operation.name")
+
+        if op in self.A365_OPS:
+            self._console_processor.on_end(span)
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
-        return True
+        return self._console_processor.force_flush(timeout_millis)
 
     def shutdown(self):
-        pass
+        self._console_processor.shutdown()
 
 
 use_microsoft_opentelemetry(
     enable_a365=True,
-    enable_console=True,
+    enable_console=False,
     a365_token_resolver=my_token_resolver,
-    span_processors=[A365OnlySpanProcessor()],
+    span_processors=[A365OnlyConsoleSpanProcessor()],
 )
 ```
 
