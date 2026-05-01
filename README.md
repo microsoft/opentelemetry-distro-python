@@ -282,9 +282,12 @@ remain enabled by default.
 | [samples/openai/](samples/openai/) | GenAI | OpenAI chat + Agents SDK |
 | [samples/langchain/](samples/langchain/) | GenAI | LangChain auto-instrumentation |
 | [samples/otlp/](samples/otlp/) | OTLP | Export to a local collector |
+| [samples/fabric/](samples/fabric/) | Fabric / ADX | Export to Fabric via OTel Collector |
 
+## Documentation
 
-
+- [Agent 365 Observability guide](docs/A365_DOCUMENTATION.md)
+- [Fabric Getting Started](docs/fabric-getting-started.md) — Send telemetry to Microsoft Fabric / Azure Data Explorer via OTLP + OTel Collector
 
 ## Troubleshooting
 
