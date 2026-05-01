@@ -17,7 +17,7 @@ jobs:
 
             // Issue forms render dropdown values as:
             //   ### Component\n\n<value>\n
-            const match = body.match(/### Component\s*\n\n(.+)/);
+            const match = body.match(/### Component\s*\r?\n\r?\n(.+)/);
             if (!match) {
               console.log('No Component field found in issue body — skipping.');
               return;
