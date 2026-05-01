@@ -5,6 +5,8 @@
 ### Other Changes
 - Drop support for Python 3.9.
   ([#110](https://github.com/microsoft/opentelemetry-distro-python/pull/110))
+- Add Fabric/ADX getting started guide and sample.
+  ([#104](https://github.com/microsoft/opentelemetry-distro-python/pull/104))
 - Update A365 documentation and links.
   ([#101](https://github.com/microsoft/opentelemetry-distro-python/pull/101))
 - Fix CODEOWNERS sub-owners.
