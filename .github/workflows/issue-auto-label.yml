@@ -1,0 +1,48 @@
+name: Auto-label issues by component
+
+on:
+  issues:
+    types: [opened]
+
+jobs:
+  auto-label:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+
+            // Issue forms render dropdown values as:
+            //   ### Component\n\n<value>\n
+            const match = body.match(/### Component\s*\n\n(.+)/);
+            if (!match) {
+              console.log('No Component field found in issue body — skipping.');
+              return;
+            }
+
+            const component = match[1].trim();
+
+            // Canonical labels matching directories in this repo:
+            //   A365              -> src/microsoft/opentelemetry/a365/
+            //   Langchain         -> src/microsoft/opentelemetry/_genai/_langchain/
+            //   Agent Framework   -> src/microsoft/opentelemetry/_agent_framework/
+            //   Semantic Kernel   -> src/microsoft/opentelemetry/_semantic_kernel/
+            //   Azure Monitor     -> src/microsoft/opentelemetry/_azure_monitor/
+            //   Distro            -> src/microsoft/opentelemetry/ (top-level distro modules)
+            const knownLabels = ['A365', 'Langchain', 'Azure Monitor', 'Distro', 'Agent Framework', 'Semantic Kernel'];
+            const label = knownLabels.find(l => l.toLowerCase() === component.toLowerCase());
+            if (!label) {
+              console.log(`Component "${component}" does not map to a label — skipping.`);
+              return;
+            }
+
+            console.log(`Adding label "${label}" to issue #${context.issue.number}`);
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: [label],
+            });

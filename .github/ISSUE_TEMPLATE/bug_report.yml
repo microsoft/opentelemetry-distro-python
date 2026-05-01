@@ -1,0 +1,73 @@
+name: Bug Report
+description: File a bug report to help us improve.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      description: Which component or area is this bug related to?
+      options:
+        - General
+        - A365
+        - Langchain
+        - Azure Monitor
+        - Distro
+        - Agent Framework
+        - Semantic Kernel
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: A clear and concise description of the bug.
+      placeholder: Describe the bug...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior
+      description: What did you expect to happen?
+      placeholder: Describe the expected behavior...
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps-to-reproduce
+    attributes:
+      label: Steps to Reproduce
+      description: Steps to reproduce the behavior.
+      placeholder: |
+        1. Install package '...'
+        2. Configure with '...'
+        3. Run '...'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Provide details about your environment.
+      placeholder: |
+        - OS: [e.g., Windows 11, Ubuntu 22.04]
+        - Python version: [e.g., 3.11.7]
+        - Package version: [e.g., 1.0.0]
+        - Runtime: [e.g., Azure Functions, FastAPI, standalone script]
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Add any other context, screenshots, or log output about the bug.
+      placeholder: Any additional information...
+    validations:
+      required: false
