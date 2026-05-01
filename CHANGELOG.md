@@ -1,5 +1,15 @@
 # Release History
 
+## 1.0.1 (2026-05-01)
+
+### Other Changes
+- Drop support for Python 3.9.
+  ([#110](https://github.com/microsoft/opentelemetry-distro-python/pull/110))
+- Update A365 documentation and links.
+  ([#101](https://github.com/microsoft/opentelemetry-distro-python/pull/101)),
+- Fix CODEOWNERS sub-owners.
+  ([#103](https://github.com/microsoft/opentelemetry-distro-python/pull/103))
+
 ## 1.0.0 (2026-04-30)
 
 ### Features Added
