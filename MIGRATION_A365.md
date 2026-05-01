@@ -25,14 +25,16 @@ The distro bundles:
 Remove the standalone A365 observability packages and install the distro:
 
 ```
-# ❌ OLD — multiple observability packages
-pip install microsoft-agents-a365-observability-core
-pip install microsoft-agents-a365-observability-extensions-langchain
-pip install microsoft-agents-a365-observability-extensions-openai
-pip install microsoft-agents-a365-observability-extensions-semantickernel
-pip install microsoft-agents-a365-observability-extensions-agentframework
+# ❌ Remove old packages
+pip uninstall -y microsoft-agents-a365-observability-core
+pip uninstall -y microsoft-agents-a365-observability-hosting
+pip uninstall -y microsoft-agents-a365-runtime
+pip uninstall -y microsoft-agents-a365-observability-extensions-langchain
+pip uninstall -y microsoft-agents-a365-observability-extensions-openai
+pip uninstall -y microsoft-agents-a365-observability-extensions-semantic-kernel
+pip uninstall -y microsoft-agents-a365-observability-extensions-agent-framework
 
-# ✅ NEW — single package
+# ✅ Install the new single package
 pip install microsoft-opentelemetry
 ```
 
@@ -124,16 +126,15 @@ from microsoft.opentelemetry.a365.core import (
 
 ```python
 # ❌ OLD
-from microsoft_agents_a365.hosting import (
+from microsoft_agents_a365.observability.hosting import (
     BaggageMiddleware,
     OutputLoggingMiddleware,
     A365_PARENT_TRACEPARENT_KEY,
     ObservabilityHostingManager,
     ObservabilityHostingOptions,
 )
-from microsoft_agents_a365.hosting.middleware.baggage_middleware import BaggageMiddleware
-from microsoft_agents_a365.hosting.scope_helpers.populate_baggage import populate_baggage
-from microsoft_agents_a365.hosting.scope_helpers.populate_invoke_agent_scope import populate_invoke_agent_scope
+from microsoft_agents_a365.observability.hosting.scope_helpers.populate_baggage import populate as populate_baggage
+from microsoft_agents_a365.observability.hosting.scope_helpers.populate_invoke_agent_scope import populate as populate_invoke_agent_scope
 
 # ✅ NEW — same symbols, different package path
 from microsoft.opentelemetry.a365.hosting import (
@@ -143,8 +144,8 @@ from microsoft.opentelemetry.a365.hosting import (
     ObservabilityHostingManager,
     ObservabilityHostingOptions,
 )
-from microsoft.opentelemetry.a365.hosting.scope_helpers.populate_baggage import populate_baggage
-from microsoft.opentelemetry.a365.hosting.scope_helpers.populate_invoke_agent_scope import populate_invoke_agent_scope
+from microsoft.opentelemetry.a365.hosting.scope_helpers.populate_baggage import populate as populate_baggage
+from microsoft.opentelemetry.a365.hosting.scope_helpers.populate_invoke_agent_scope import populate as populate_invoke_agent_scope
 ```
 
 ### Runtime (microsoft-agents-a365-runtime)
@@ -199,22 +200,22 @@ use_microsoft_opentelemetry(enable_a365=True)
 # OpenAI instrumentation is handled automatically
 ```
 
-### Extensions — Semantic Kernel (observability-extensions-semantickernel)
+### Extensions — Semantic Kernel (observability-extensions-semantic-kernel)
 
 ```python
 # ❌ OLD
-from microsoft_agents_a365.observability.extensions.semantickernel import ...
+from microsoft_agents_a365.observability.extensions.semantic_kernel import ...
 
 # ✅ NEW — auto-instrumented by distro
 # Set ENABLE_A365_OBSERVABILITY_EXPORTER=true in env
 use_microsoft_opentelemetry(enable_a365=True)
 ```
 
-### Extensions — Agent Framework (observability-extensions-agentframework)
+### Extensions — Agent Framework (observability-extensions-agent-framework)
 
 ```python
 # ❌ OLD — manual instrumentor setup
-from microsoft_agents_a365.observability.extensions.agentframework import AgentFrameworkTraceInstrumentor
+from microsoft_agents_a365.observability.extensions.agent_framework import AgentFrameworkTraceInstrumentor
 
 AgentFrameworkTraceInstrumentor().instrument()
 
