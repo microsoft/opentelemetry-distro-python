@@ -2,7 +2,7 @@
 * @hectorhdzg @JacksonWeber @lzchen @MSNev @rads-1996 @jeremydvoss
 
 # A365 co-owners
-/src/microsoft/opentelemetry/a365/ @nikhilNava @juliomenendez
+/src/microsoft/opentelemetry/a365/ @hectorhdzg @JacksonWeber @lzchen @MSNev @rads-1996 @jeremydvoss @fpfp100 @alexlu4250 @nikhilNava @juliomenendez
 
 # LangChain instrumentation co-owners
-/src/microsoft/opentelemetry/_genai/_langchain/ @nagkumar91
+/src/microsoft/opentelemetry/_genai/_langchain/ @hectorhdzg @JacksonWeber @lzchen @MSNev @rads-1996 @jeremydvoss @nagkumar91
