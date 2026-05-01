@@ -13,8 +13,7 @@ Users are migrating from the standalone A365 observability PyPI packages under
 This migration covers the **observability** packages, along with the related **hosting** and **runtime** packages.
 Other A365 packages, such as notifications and tooling, are not part of this distro.
 
-After migrating, see [A365_DOCUMENTATION.md](A365_DOCUMENTATION.md) for the full distro usage guide
-(configuration, auto-instrumentation, token resolver, baggage, scope classes, troubleshooting).
+After migrating, see [A365_DOCUMENTATION.md](A365_DOCUMENTATION.md) for the full distro usage guide (configuration, auto-instrumentation, token resolver, baggage, scope classes, troubleshooting).
 
 The distro bundles:
 - **`a365/core`** — Scope classes, span enrichment, A365 exporter, baggage middleware

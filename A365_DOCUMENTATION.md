@@ -38,6 +38,10 @@ use_microsoft_opentelemetry(
 | `a365_suppress_invoke_agent_input` | `bool` | `False` | `A365_SUPPRESS_INVOKE_AGENT_INPUT` | Strip input messages from InvokeAgent spans. |
 | `a365_enable_observability_exporter` | `bool` | `False` | `ENABLE_A365_OBSERVABILITY_EXPORTER` | Enable the A365 HTTP exporter. When `false`, spans are enriched but not exported to A365. |
 | `a365_observability_scope_override` | `str` | `None` | `A365_OBSERVABILITY_SCOPE_OVERRIDE` | Override the authentication scope for the A365 observability service. |
+| `a365_max_queue_size` | `int` | `2048` | — | Maximum queue size for the A365 batch span processor. |
+| `a365_scheduled_delay_ms` | `int` | `5000` | — | Delay between A365 export batches in milliseconds. |
+| `a365_exporter_timeout_ms` | `int` | `30000` | — | Timeout for a single A365 export operation in milliseconds. |
+| `a365_max_export_batch_size` | `int` | `512` | — | Maximum batch size for a single A365 export operation. |
 
 ### Resource / Service Name
 
@@ -66,14 +70,18 @@ export OTEL_RESOURCE_ATTRIBUTES="service.namespace=my-namespace"
 
 ### Exporter Batch Options
 
-The A365 exporter uses the following batch processor defaults. These are configured internally via `Agent365ExporterOptions`:
+The A365 exporter batch processor defaults can be overridden via the `a365_*` kwargs listed in the table above.
 
-| Option | Default | Description |
-|---|---|---|
-| `max_queue_size` | `2048` | Maximum queue size for the batch processor. |
-| `scheduled_delay_ms` | `5000` | Delay in milliseconds between export batches. |
-| `exporter_timeout_ms` | `30000` | Timeout in milliseconds for the export operation. |
-| `max_export_batch_size` | `512` | Maximum batch size for export operations. |
+```python
+use_microsoft_opentelemetry(
+    enable_a365=True,
+    a365_token_resolver=my_token_resolver,
+    a365_max_queue_size=4096,
+    a365_scheduled_delay_ms=2000,
+    a365_exporter_timeout_ms=15000,
+    a365_max_export_batch_size=256,
+)
+```
 
 ## Auto-Instrumented Libraries
 
@@ -238,7 +246,7 @@ async def on_message(context: TurnContext, _state: TurnState):
     )
 ```
 
-### AgenticTokenCache
+### Agentic Token Cache (Agent Framework Apps)
 
 ```python
 from microsoft.opentelemetry import use_microsoft_opentelemetry
@@ -249,7 +257,7 @@ token_cache = AgenticTokenCache()
 
 _cached_tokens: dict[tuple[str, str], str | None] = {}
 
-# Keep the sync resolver side-effect free; refresh the cache in async request handling.
+# Keep the sync resolver side-effect free; refresh the cache in the async request handler.
 def sync_token_resolver(agent_id: str, tenant_id: str) -> str | None:
     return _cached_tokens.get((agent_id, tenant_id))
 
@@ -257,8 +265,8 @@ use_microsoft_opentelemetry(enable_a365=True, a365_token_resolver=sync_token_res
 
 @AGENT_APP.activity("message", auth_handlers=["AGENTIC"])
 async def on_message(context: TurnContext, _state: TurnState):
-    agent_id = "agent-456"
-    tenant_id = "tenant-123"
+    agent_id = context.activity.recipient.id
+    tenant_id = context.activity.recipient.tenant_id
     token_cache.register_observability(
         agent_id=agent_id,
         tenant_id=tenant_id,
@@ -371,13 +379,6 @@ use_microsoft_opentelemetry(
 )
 ```
 
-Or via environment variables:
-
-```bash
-export ENABLE_A365_OBSERVABILITY_EXPORTER=false
-python my_agent.py
-```
-
 ### Console + A365 Export
 
 To see console output **and** export to A365 simultaneously:
@@ -420,30 +421,7 @@ INFO   No spans with tenant/agent identity found; nothing exported.
 
 ## Troubleshooting
 
-### Spans Not Appearing
-
-- **Missing baggage:** Without `tenant_id` and `agent_id` in baggage, the exporter silently drops spans. Ensure `BaggageBuilder` is set up or the baggage middleware is enabled (`enable_baggage=True`).
-- **Exporter not enabled:** Set `ENABLE_A365_OBSERVABILITY_EXPORTER=true` or pass `a365_enable_observability_exporter=True`.
-- **Token resolver returning `None`:** The exporter skips export when the token is `None`. Verify your resolver returns a valid token.
-
-### Token Resolution Failures
-
-- Ensure the token has the correct observability scope. Use `get_observability_authentication_scope()` to get the required scope.
-- For `AgenticTokenCache`, call `register_observability()` in the activity handler **before** spans are exported.
-- For FIC / `DefaultAzureCredential`, verify `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__*` env vars are set or the managed identity has the required API permissions.
-
-### Export Timeouts
-
-- Default HTTP timeout is 30 seconds (`exporter_timeout_ms=30000`).
-- Check network connectivity to the A365 observability endpoint.
-- HTTP 429 and 5xx errors are retried automatically up to three times with exponential backoff.
-
-### HTTP 403 Forbidden
-
-- Verify your tenant has the required license (Microsoft 365 E7, Microsoft Agent 365 Frontier, or Test - Microsoft 365 E7).
-- If upgrading from package version < 0.3.0, grant the `Agent365.Observability.OtelWrite` permission to your identity (managed identity or app registration).
-
-For additional troubleshooting, see the [official troubleshooting docs](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/troubleshooting).
+See the [official troubleshooting guide](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/microsoft-opentelemetry?tabs=python#troubleshooting) on Microsoft Learn.
 
 ## Samples
 
