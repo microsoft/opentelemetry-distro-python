@@ -535,6 +535,18 @@ use_microsoft_opentelemetry(
 )
 ```
 
+You can also explicitly enable the console exporter via `enable_console=True`
+to view spans in your terminal for debugging:
+
+```python
+use_microsoft_opentelemetry(
+    enable_a365=True,
+    a365_enable_observability_exporter=False,
+    enable_console=True,  # view spans in the console
+    a365_token_resolver=my_token_resolver,
+)
+```
+
 To see verbose distro and A365 diagnostic logs while validating, raise the log
 level for the relevant Python loggers:
 
