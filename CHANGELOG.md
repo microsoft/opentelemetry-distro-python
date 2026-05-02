@@ -3,6 +3,8 @@
 ## 1.0.1 (2026-05-01)
 
 ### Other Changes
+- Add troubleshooting sections and duplicate spans guide
+  ([#115](https://github.com/microsoft/opentelemetry-distro-python/pull/115))
 - Drop support for Python 3.9.
   ([#110](https://github.com/microsoft/opentelemetry-distro-python/pull/110))
 - Add Fabric/ADX getting started guide and sample.
