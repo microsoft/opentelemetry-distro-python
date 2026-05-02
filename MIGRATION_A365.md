@@ -488,6 +488,191 @@ with BaggageBuilder().tenant_id(agent.tenant_id).agent_id(agent.agent_id).build(
         scope.record_response("world")
 ```
 
+## Avoiding Duplicate Spans After Migration
+
+The distro auto-instruments supported GenAI frameworks (LangChain, Semantic
+Kernel, OpenAI, OpenAI Agents SDK, Microsoft Agent Framework) automatically via
+its OpenTelemetry instrumentor entry points. If your migrated code still calls
+the old standalone instrumentor's `instrument()` method (for example
+`CustomLangChainInstrumentor().instrument()` from
+`microsoft-agents-a365-observability-extensions-langchain`), **you will get
+duplicate spans** — one from the legacy instrumentor and one from the distro.
+
+After migrating, remove all explicit `instrument()` calls from your code:
+
+```python
+# ❌ Remove — the distro handles this automatically
+from microsoft_agents_a365.observability.extensions.langchain import (
+    CustomLangChainInstrumentor,
+)
+
+CustomLangChainInstrumentor().instrument()
+```
+
+If you genuinely need to disable a specific auto-instrumentation, use
+`instrumentation_options` on `use_microsoft_opentelemetry()` instead — see the
+[Default Instrumentations](#default-instrumentations-with-a365-exporter-enabled)
+section above.
+
+## Validating Locally
+
+Before pointing at the production A365 endpoint, you can validate the migration
+by exporting spans to the console.
+
+Set the exporter toggle to `False` (or set
+`ENABLE_A365_OBSERVABILITY_EXPORTER=false`) while keeping `enable_a365=True`.
+This keeps A365 baggage propagation and span enrichment active but skips the
+HTTP export. With no other exporter configured, the distro automatically enables
+the console exporter so you can see enriched spans in your terminal:
+
+```python
+from microsoft.opentelemetry import use_microsoft_opentelemetry
+
+use_microsoft_opentelemetry(
+    enable_a365=True,
+    a365_enable_observability_exporter=False,  # disable HTTP export for local runs
+    a365_token_resolver=my_token_resolver,
+)
+```
+
+You can also explicitly enable the console exporter via `enable_console=True`
+to view spans in your terminal for debugging:
+
+```python
+use_microsoft_opentelemetry(
+    enable_a365=True,
+    a365_enable_observability_exporter=False,
+    enable_console=True,  # view spans in the console
+    a365_token_resolver=my_token_resolver,
+)
+```
+
+To see verbose distro and A365 diagnostic logs while validating, raise the log
+level for the relevant Python loggers:
+
+```python
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logging.getLogger("microsoft.opentelemetry").setLevel(logging.DEBUG)
+logging.getLogger("microsoft.opentelemetry.a365").setLevel(logging.DEBUG)
+```
+
+You can also raise the OpenTelemetry SDK's own log level via the standard env
+var:
+
+```bash
+# Linux / macOS
+export OTEL_LOG_LEVEL=DEBUG
+
+# Windows PowerShell
+$env:OTEL_LOG_LEVEL = "DEBUG"
+```
+
+Once you've confirmed locally that A365 scope spans (`invoke_agent`, `chat`,
+`execute_tool`, `output_messages`) appear with the expected
+`gen_ai.operation.name`, `microsoft.tenant.id`, and `gen_ai.agent.id`
+attributes, switch the exporter back on for production.
+
+## Troubleshooting — Permissions and Setup
+
+### HTTP 403 after upgrading
+
+Your app registration or Managed Identity must have the
+`Agent365.Observability.OtelWrite` permission. Without it, the distro's
+exporter receives HTTP 403 from the A365 ingest endpoint and telemetry is not
+recorded.
+
+Grant the permission using one of the following options:
+
+**Option A — Agent 365 CLI** (requires `a365.config.json` and
+`a365.generated.config.json`, a Global Administrator account, and
+[Agent 365 CLI v1.1.139-preview](https://www.nuget.org/packages/Microsoft.Agents.A365.DevTools.Cli/1.1.139-preview)
+or later):
+
+```bash
+a365 setup admin --config-dir "<path-to-config-dir>"
+```
+
+**Option B — Entra Portal** (requires Global Administrator access):
+
+1. Go to **Entra portal** > **App registrations** > select your Blueprint app.
+2. Go to **API permissions** > **Add a permission** > **APIs my organization
+   uses** > search for `9b975845-388f-4429-889e-eab1ef63949c`.
+3. Select **Delegated permissions** > check `Agent365.Observability.OtelWrite`
+   > **Add permissions**.
+4. Repeat steps 2–3, this time select **Application permissions** > check
+   `Agent365.Observability.OtelWrite` > **Add permissions**.
+5. Click **Grant admin consent** and confirm.
+
+### License requirements
+
+Your tenant must have one of the following licenses assigned in the
+[Microsoft 365 admin center](https://admin.cloud.microsoft/?source=applauncher#/homepage):
+
+- Test - Microsoft 365 E7
+- Microsoft 365 E7
+- Microsoft Agent 365 Frontier
+
+For the full troubleshooting guide, see the
+[official troubleshooting documentation](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/troubleshooting).
+
+## Migration Checklist
+
+Use this checklist to track progress through the migration.
+
+**Packages & initialization**
+
+- [ ] Uninstall all `microsoft-agents-a365-observability-*` packages
+- [ ] Uninstall `microsoft-agents-a365-runtime` if present
+- [ ] `pip install microsoft-opentelemetry`
+- [ ] Replace `configure(...)` with `use_microsoft_opentelemetry(enable_a365=True, ...)`
+- [ ] Set `service.name` / `service.version` via `resource=Resource.create(...)` or `OTEL_RESOURCE_ATTRIBUTES`
+
+**Auto-instrumentation**
+
+- [ ] Remove explicit `CustomLangChainInstrumentor().instrument()` (and equivalents) calls — the distro handles this automatically
+- [ ] Review which instrumentations are active by default with A365 (GenAI only; HTTP/web frameworks disabled)
+- [ ] Re-enable any non-GenAI instrumentations you still need via `instrumentation_options`
+
+**Imports**
+
+- [ ] Rewrite `from microsoft_agents_a365.observability.core import ...` to `from microsoft.opentelemetry.a365.core import ...`
+- [ ] Rewrite hosting imports under `microsoft.opentelemetry.a365.hosting`
+- [ ] Rewrite runtime imports under `microsoft.opentelemetry.a365.runtime`
+- [ ] Replace `get_tracer(...)` with `from opentelemetry import trace; trace.get_tracer(...)`
+
+**Token management**
+
+- [ ] Pass any custom token resolver via `a365_token_resolver=...`
+- [ ] If no resolver is supplied, confirm `DefaultAzureCredential` works in your environment
+
+**Exporter customization**
+
+- [ ] Replace `Agent365ExporterOptions` fields with `a365_*` kwargs on `use_microsoft_opentelemetry()` (e.g. `a365_max_queue_size`, `a365_scheduled_delay_ms`, `a365_exporter_timeout_ms`, `a365_max_export_batch_size`, `a365_use_s2s_endpoint`)
+
+**Hosting middleware**
+
+- [ ] Replace standalone `ObservabilityHostingManager` with the version exported from `microsoft.opentelemetry.a365.hosting`
+
+**Permissions**
+
+- [ ] Ensure `Agent365.Observability.OtelWrite` permission is granted on your app registration or Managed Identity
+- [ ] Verify your tenant has one of the required licenses (Test - Microsoft 365 E7, Microsoft 365 E7, or Microsoft Agent 365 Frontier)
+
+**Logging & validation**
+
+- [ ] Optionally raise the `microsoft.opentelemetry` and `microsoft.opentelemetry.a365` Python logger levels for diagnostics
+- [ ] Set `OTEL_LOG_LEVEL=DEBUG` for OTel SDK diagnostics during local validation
+- [ ] Validate locally with `a365_enable_observability_exporter=False` to inspect enriched spans on the console
+
+**Verification**
+
+- [ ] Run unit tests to confirm A365 scope usage compiles and imports cleanly
+- [ ] Inspect emitted spans for `gen_ai.operation.name`, `microsoft.tenant.id`, and `gen_ai.agent.id` attributes
+- [ ] Validate end-to-end A365 export in the telemetry backend
+- [ ] Test token refresh on long-running agents
+
 ## Next Steps
 
 - [A365 Documentation](A365_DOCUMENTATION.md) — full distro usage guide (configuration, auto-instrumentation, baggage, scope classes, validate locally, troubleshooting)
