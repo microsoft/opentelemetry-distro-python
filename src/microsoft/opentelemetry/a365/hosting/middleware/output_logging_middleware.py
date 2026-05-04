@@ -19,20 +19,26 @@ from microsoft.opentelemetry.a365.core.span_details import SpanDetails
 from microsoft.opentelemetry.a365.core.spans_scopes.output_scope import OutputScope
 from microsoft.opentelemetry.a365.core.utils import extract_context_from_headers
 
+from microsoft.opentelemetry.a365.constants import HOSTING_INSTALL_HINT
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from microsoft_agents.activity import Activity
     from microsoft_agents.hosting.core.turn_context import TurnContext
+
+    _HOSTING_AVAILABLE = True
 else:  # pyright: ignore[reportUnreachable]
     try:
         from microsoft_agents.activity import Activity
         from microsoft_agents.hosting.core.turn_context import TurnContext
-    except ImportError:  # pragma: no cover - optional dependency
-        from microsoft.opentelemetry.a365.constants import HOSTING_INSTALL_HINT
 
-        logging.getLogger(__name__).warning(HOSTING_INSTALL_HINT)
+        _HOSTING_AVAILABLE = True
+    except ImportError:  # pragma: no cover - optional dependency
+        # Stub silently; the warning is emitted in __init__ when the user
+        # actually instantiates the middleware.
         Activity = TurnContext = None
+        _HOSTING_AVAILABLE = False
 
 
 # mypy: disable-error-code="call-arg"
@@ -108,6 +114,10 @@ class OutputLoggingMiddleware:
     **Privacy note:** Outgoing message content is captured verbatim as span
     attributes and exported to the configured telemetry backend.
     """
+
+    def __init__(self) -> None:
+        if not _HOSTING_AVAILABLE:
+            logger.warning(HOSTING_INSTALL_HINT)
 
     async def on_turn(
         self,

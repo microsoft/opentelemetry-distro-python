@@ -27,11 +27,8 @@ else:  # pyright: ignore[reportUnreachable]
     try:
         from microsoft_agents.activity import Activity
     except ImportError:  # pragma: no cover - optional dependency
-        import logging as _logging
-
-        from microsoft.opentelemetry.a365.constants import HOSTING_INSTALL_HINT
-
-        _logging.getLogger(__name__).warning(HOSTING_INSTALL_HINT)
+        # Stub silently; warning is emitted by the user-facing entry-point
+        # (middleware/cache constructors) via HOSTING_INSTALL_HINT.
         Activity = None
 
 

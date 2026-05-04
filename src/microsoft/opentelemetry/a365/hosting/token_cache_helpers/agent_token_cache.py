@@ -12,18 +12,24 @@ from dataclasses import dataclass
 from threading import Lock
 from typing import TYPE_CHECKING
 
+from microsoft.opentelemetry.a365.constants import HOSTING_INSTALL_HINT
+
 if TYPE_CHECKING:
     from microsoft_agents.hosting.core.app.oauth.authorization import Authorization
     from microsoft_agents.hosting.core.turn_context import TurnContext
+
+    _HOSTING_AVAILABLE = True
 else:  # pyright: ignore[reportUnreachable]
     try:
         from microsoft_agents.hosting.core.app.oauth.authorization import Authorization
         from microsoft_agents.hosting.core.turn_context import TurnContext
-    except ImportError:  # pragma: no cover - optional dependency
-        from microsoft.opentelemetry.a365.constants import HOSTING_INSTALL_HINT
 
-        logging.getLogger(__name__).warning(HOSTING_INSTALL_HINT)
+        _HOSTING_AVAILABLE = True
+    except ImportError:  # pragma: no cover - optional dependency
+        # Stub silently; the warning is emitted in __init__ when the user
+        # actually instantiates the cache.
         Authorization = TurnContext = None
+        _HOSTING_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +66,8 @@ class AgenticTokenCache:
 
     def __init__(self) -> None:
         """Initialize the token cache."""
+        if not _HOSTING_AVAILABLE:
+            logger.warning(HOSTING_INSTALL_HINT)
         self._map: dict[str, AgenticTokenCache._Entry] = {}
         self._lock = Lock()
 
