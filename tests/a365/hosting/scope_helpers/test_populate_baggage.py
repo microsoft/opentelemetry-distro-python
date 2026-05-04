@@ -3,12 +3,17 @@
 
 from unittest.mock import MagicMock
 
+import pytest
+
+pytest.importorskip("microsoft_agents.activity")
+pytest.importorskip("microsoft_agents.hosting.core")
+
+# pylint: disable=wrong-import-position
 from microsoft_agents.activity import Activity, ChannelAccount, ConversationAccount
 from microsoft_agents.hosting.core import TurnContext
 from microsoft.opentelemetry.a365.core.constants import USER_ID_KEY
 from microsoft.opentelemetry.a365.core.middleware.baggage_builder import BaggageBuilder
 from microsoft.opentelemetry.a365.hosting.scope_helpers.populate_baggage import populate
-
 
 def test_populate():
     """Test populate populates BaggageBuilder from turn context."""
