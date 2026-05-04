@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
+from microsoft.opentelemetry.a365.constants import HOSTING_INSTALL_HINT
 from microsoft.opentelemetry.a365.core.middleware.baggage_builder import BaggageBuilder
 
 from microsoft.opentelemetry.a365.hosting.scope_helpers.populate_baggage import populate
@@ -15,19 +17,23 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from microsoft_agents.activity import ActivityEventNames, ActivityTypes
     from microsoft_agents.hosting.core.turn_context import TurnContext
+
+    _HOSTING_AVAILABLE = True
 else:  # pyright: ignore[reportUnreachable]
     try:
         from microsoft_agents.activity import ActivityEventNames, ActivityTypes
         from microsoft_agents.hosting.core.turn_context import TurnContext
+
+        _HOSTING_AVAILABLE = True
     except ImportError:  # pragma: no cover - optional dependency
-        import logging as _logging
-
-        from microsoft.opentelemetry.a365.constants import HOSTING_INSTALL_HINT
-
-        _logging.getLogger(__name__).warning(HOSTING_INSTALL_HINT)
+        # Stub silently; the warning is emitted in __init__ when the user
+        # actually instantiates the middleware.
         ActivityEventNames = ActivityTypes = TurnContext = None
+        _HOSTING_AVAILABLE = False
 
 # mypy: disable-error-code="call-arg"
+
+_logger = logging.getLogger(__name__)
 
 
 class BaggageMiddleware:
@@ -35,6 +41,10 @@ class BaggageMiddleware:
 
     Async replies (ContinueConversation) are passed through without baggage setup.
     """
+
+    def __init__(self) -> None:
+        if not _HOSTING_AVAILABLE:
+            _logger.warning(HOSTING_INSTALL_HINT)
 
     async def on_turn(
         self,
