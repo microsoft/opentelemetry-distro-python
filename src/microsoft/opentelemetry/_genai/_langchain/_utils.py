@@ -413,6 +413,35 @@ def token_counts(outputs: Mapping[str, Any] | None) -> Iterator[tuple[str, int]]
                 yield attribute_name, token_count
 
 
+def _iter_generation_response_metadata(outputs: Mapping[str, Any] | None) -> Iterator[Mapping[str, Any]]:
+    """Yield ``response_metadata`` / ``generation_info`` mappings on each generation."""
+    if not isinstance(outputs, Mapping):
+        return
+    multiple_generations = outputs.get("generations")
+    if not isinstance(multiple_generations, Iterable):
+        return
+    for first_generations in multiple_generations:
+        if not isinstance(first_generations, Iterable):
+            continue
+        for generation in first_generations:
+            if not isinstance(generation, Mapping):
+                continue
+            gen_info = generation.get("generation_info")
+            if isinstance(gen_info, Mapping):
+                yield gen_info
+            message_data = generation.get("message")
+            if isinstance(message_data, BaseMessage):
+                meta = getattr(message_data, "response_metadata", None)
+            elif isinstance(message_data, Mapping):
+                meta = message_data.get("response_metadata")
+                if meta is None and isinstance(kwargs := message_data.get("kwargs"), Mapping):
+                    meta = kwargs.get("response_metadata")
+            else:
+                meta = None
+            if isinstance(meta, Mapping):
+                yield meta
+
+
 def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
     if (
         outputs
@@ -629,6 +658,22 @@ def build_llm_invocation(run: Run) -> LLMInvocation:  # pylint: disable=too-many
         if llm_output and hasattr(llm_output, "get"):
             if resp_id := llm_output.get("id"):
                 inv.response_id = resp_id
+
+    # ``llm_output`` is only populated for the OpenAI client path patched by
+    # ``opentelemetry-instrumentation-openai-v2``. ``AzureChatOpenAI`` and
+    # streaming responses use langchain-openai's own httpx pipeline and only
+    # surface ``response.model`` / ``response.id`` on each generation's
+    # ``response_metadata`` (or ``generation_info``). Fall back to those.
+    if not inv.response_model_name or not inv.response_id:
+        for meta in _iter_generation_response_metadata(run.outputs):
+            if not inv.response_model_name:
+                if resp_model := get_first_value(meta, ("model_name", "model")):
+                    inv.response_model_name = str(resp_model)
+            if not inv.response_id:
+                if resp_id := meta.get("id"):
+                    inv.response_id = str(resp_id)
+            if inv.response_model_name and inv.response_id:
+                break
 
     # --- Structured messages ---
     inv.system_instruction = _extract_system_instruction(run.inputs)  # type: ignore[assignment]

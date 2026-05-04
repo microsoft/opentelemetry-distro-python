@@ -641,3 +641,41 @@ class TestBuildLlmInvocation(TestCase):
         self.assertEqual(inv.server_address, "https://example.test")
         self.assertEqual(inv.response_model_name, "gpt-4o")
         self.assertEqual(inv.response_id, "resp-1")
+
+    def test_response_model_from_generation_metadata(self):
+        # Simulates LangChain AzureChatOpenAI streaming / httpx pipeline:
+        # ``llm_output`` is empty but ``response.model`` lives in each
+        # generation's ``response_metadata`` (and ``id`` likewise).
+        from langchain_core.messages import AIMessage
+
+        ai_msg = AIMessage(content="hi")
+        ai_msg.response_metadata = {"model_name": "gpt-4o-2024-08-06", "id": "chatcmpl-abc"}
+        run = _make_run(
+            run_type="llm",
+            outputs={
+                "llm_output": None,
+                "generations": [[{"message": ai_msg, "generation_info": {"finish_reason": "stop"}}]],
+            },
+            extra={"metadata": {"ls_model_name": "gpt-4o"}},
+            inputs=None,
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(inv.response_model_name, "gpt-4o-2024-08-06")
+        self.assertEqual(inv.response_id, "chatcmpl-abc")
+        # Request model still comes from the request-side metadata.
+        self.assertEqual(inv.request_model, "gpt-4o")
+
+    def test_response_model_from_generation_info(self):
+        run = _make_run(
+            run_type="llm",
+            outputs={
+                "llm_output": {},
+                "generations": [
+                    [{"message": {"content": "hi"}, "generation_info": {"model_name": "gpt-4o-mini-2024-07-18"}}]
+                ],
+            },
+            extra=None,
+            inputs=None,
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(inv.response_model_name, "gpt-4o-mini-2024-07-18")
