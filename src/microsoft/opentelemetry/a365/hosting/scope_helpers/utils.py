@@ -1,18 +1,9 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+from __future__ import annotations
+
 from collections.abc import Iterator
-from typing import Any
-
-try:
-    from microsoft_agents.activity import Activity
-except ImportError:  # pragma: no cover - optional dependency
-    import logging as _logging
-
-    from microsoft.opentelemetry.a365.constants import HOSTING_INSTALL_HINT
-
-    _logging.getLogger(__name__).warning(HOSTING_INSTALL_HINT)
-
 from microsoft.opentelemetry.a365.constants import (
     CHANNEL_LINK_KEY,
     CHANNEL_NAME_KEY,
@@ -28,6 +19,22 @@ from microsoft.opentelemetry.a365.constants import (
     USER_ID_KEY,
     USER_NAME_KEY,
 )
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from microsoft_agents.activity import Activity
+else:  # pyright: ignore[reportUnreachable]
+    try:
+        from microsoft_agents.activity import Activity
+    except ImportError:  # pragma: no cover - optional dependency
+        import logging as _logging
+
+        from microsoft.opentelemetry.a365.constants import HOSTING_INSTALL_HINT
+
+        _logging.getLogger(__name__).warning(HOSTING_INSTALL_HINT)
+        Activity = None
+
+
 
 AGENT_ROLE = "agenticUser"
 

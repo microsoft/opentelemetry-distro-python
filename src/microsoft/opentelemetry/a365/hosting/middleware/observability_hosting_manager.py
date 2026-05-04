@@ -7,16 +7,21 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-
-try:
-    from microsoft_agents.hosting.core.middleware_set import MiddlewareSet
-except ImportError:  # pragma: no cover - optional dependency
-    from microsoft.opentelemetry.a365.constants import HOSTING_INSTALL_HINT
-
-    logging.getLogger(__name__).warning(HOSTING_INSTALL_HINT)
-
 from microsoft.opentelemetry.a365.hosting.middleware.baggage_middleware import BaggageMiddleware
 from microsoft.opentelemetry.a365.hosting.middleware.output_logging_middleware import OutputLoggingMiddleware
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from microsoft_agents.hosting.core.middleware_set import MiddlewareSet
+else:  # pyright: ignore[reportUnreachable]
+    try:
+        from microsoft_agents.hosting.core.middleware_set import MiddlewareSet
+    except ImportError:  # pragma: no cover - optional dependency
+        from microsoft.opentelemetry.a365.constants import HOSTING_INSTALL_HINT
+
+        logging.getLogger(__name__).warning(HOSTING_INSTALL_HINT)
+        MiddlewareSet = None
 
 logger = logging.getLogger(__name__)
 
