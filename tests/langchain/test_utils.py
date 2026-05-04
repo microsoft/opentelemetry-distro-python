@@ -679,3 +679,33 @@ class TestBuildLlmInvocation(TestCase):
         )
         inv = build_llm_invocation(run)
         self.assertEqual(inv.response_model_name, "gpt-4o-mini-2024-07-18")
+
+    def test_response_model_from_message_kwargs_response_metadata(self):
+        # Some serialized LangChain payloads nest response_metadata under
+        # ``message.kwargs.response_metadata``. Ensure the fallback walks into it.
+        run = _make_run(
+            run_type="llm",
+            outputs={
+                "llm_output": None,
+                "generations": [
+                    [
+                        {
+                            "message": {
+                                "kwargs": {
+                                    "content": "hi",
+                                    "response_metadata": {
+                                        "model_name": "gpt-4o-2024-11-20",
+                                        "id": "chatcmpl-kwargs",
+                                    },
+                                }
+                            }
+                        }
+                    ]
+                ],
+            },
+            extra=None,
+            inputs=None,
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(inv.response_model_name, "gpt-4o-2024-11-20")
+        self.assertEqual(inv.response_id, "chatcmpl-kwargs")

@@ -657,7 +657,7 @@ def build_llm_invocation(run: Run) -> LLMInvocation:  # pylint: disable=too-many
         llm_output = run.outputs.get("llm_output")
         if llm_output and hasattr(llm_output, "get"):
             if resp_id := llm_output.get("id"):
-                inv.response_id = resp_id
+                inv.response_id = str(resp_id)
 
     # ``llm_output`` is only populated for the OpenAI client path patched by
     # ``opentelemetry-instrumentation-openai-v2``. ``AzureChatOpenAI`` and
