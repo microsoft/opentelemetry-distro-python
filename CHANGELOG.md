@@ -1,5 +1,19 @@
 # Release History
 
+## 1.0.1 (2026-05-01)
+
+### Other Changes
+- Add troubleshooting sections and duplicate spans guide
+  ([#115](https://github.com/microsoft/opentelemetry-distro-python/pull/115))
+- Drop support for Python 3.9.
+  ([#110](https://github.com/microsoft/opentelemetry-distro-python/pull/110))
+- Add Fabric/ADX getting started guide and sample.
+  ([#104](https://github.com/microsoft/opentelemetry-distro-python/pull/104))
+- Update A365 documentation and links.
+  ([#101](https://github.com/microsoft/opentelemetry-distro-python/pull/101))
+- Fix CODEOWNERS sub-owners.
+  ([#103](https://github.com/microsoft/opentelemetry-distro-python/pull/103))
+
 ## 1.0.0 (2026-04-30)
 
 ### Features Added
