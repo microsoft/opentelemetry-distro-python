@@ -6,7 +6,15 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import Any
 
-from microsoft_agents.hosting.core.turn_context import TurnContext
+try:
+    from microsoft_agents.hosting.core.turn_context import TurnContext
+except ImportError:  # pragma: no cover - optional dependency
+    import logging as _logging
+
+    from microsoft.opentelemetry.a365.constants import HOSTING_INSTALL_HINT
+
+    _logging.getLogger(__name__).warning(HOSTING_INSTALL_HINT)
+
 from microsoft.opentelemetry.a365.core.middleware.baggage_builder import BaggageBuilder
 
 from microsoft.opentelemetry.a365.hosting.scope_helpers.utils import (

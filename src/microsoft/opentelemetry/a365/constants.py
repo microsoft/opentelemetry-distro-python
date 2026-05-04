@@ -132,3 +132,10 @@ A365_AGENTIC_USER_ID_ENV = "A365_AGENTIC_USER_ID"
 A365_SERVICE_CLIENT_ID_ENV = "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID"
 A365_SERVICE_CLIENT_SECRET_ENV = "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET"
 A365_SERVICE_TENANT_ID_ENV = "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID"
+
+# --- Optional dependency install hints ---
+HOSTING_INSTALL_HINT = (
+    "microsoft.opentelemetry.a365.hosting requires 'microsoft-agents-activity>=0.9.0' "
+    "and 'microsoft-agents-hosting-core>=0.9.0'. Install them with: "
+    'pip install "microsoft-opentelemetry[hosting]"'
+)

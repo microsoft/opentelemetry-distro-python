@@ -36,7 +36,17 @@ pip uninstall -y microsoft-agents-a365-observability-extensions-agent-framework
 
 # ✅ Install the new single package
 pip install microsoft-opentelemetry
+
+# If you use the hosting middleware (BaggageMiddleware,
+# ObservabilityHostingManager, etc.), also install the hosting extra:
+pip install "microsoft-opentelemetry[hosting]"
 ```
+
+> The `microsoft-agents-activity` and `microsoft-agents-hosting-core`
+> packages are now **optional** dependencies pulled in by the `[hosting]`
+> extra. Without them, importing `microsoft.opentelemetry.a365.hosting`
+> succeeds silently but accessing any symbol from it raises `ImportError`
+> with an install hint.
 
 ## Step 2 — Rewrite Import Paths
 
