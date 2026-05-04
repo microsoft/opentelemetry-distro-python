@@ -8,7 +8,12 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from microsoft_agents.hosting.core.middleware_set import MiddlewareSet
+try:
+    from microsoft_agents.hosting.core.middleware_set import MiddlewareSet
+except ImportError:  # pragma: no cover - optional dependency
+    from microsoft.opentelemetry.a365.constants import HOSTING_INSTALL_HINT
+
+    logging.getLogger(__name__).warning(HOSTING_INSTALL_HINT)
 
 from microsoft.opentelemetry.a365.hosting.middleware.baggage_middleware import BaggageMiddleware
 from microsoft.opentelemetry.a365.hosting.middleware.output_logging_middleware import OutputLoggingMiddleware

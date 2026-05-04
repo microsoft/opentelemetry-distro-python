@@ -11,8 +11,13 @@ import logging
 from dataclasses import dataclass
 from threading import Lock
 
-from microsoft_agents.hosting.core.app.oauth.authorization import Authorization
-from microsoft_agents.hosting.core.turn_context import TurnContext
+try:
+    from microsoft_agents.hosting.core.app.oauth.authorization import Authorization
+    from microsoft_agents.hosting.core.turn_context import TurnContext
+except ImportError:  # pragma: no cover - optional dependency
+    from microsoft.opentelemetry.a365.constants import HOSTING_INSTALL_HINT
+
+    logging.getLogger(__name__).warning(HOSTING_INSTALL_HINT)
 
 logger = logging.getLogger(__name__)
 
