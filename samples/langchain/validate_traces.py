@@ -89,6 +89,34 @@ def main():  # pylint: disable=too-many-statements
 
     get_weather.invoke({"location": "San Francisco"})
 
+    # ── Sample 4: Chat model that surfaces response.model / response.id only on
+    #     ``message.response_metadata`` — simulates ``AzureChatOpenAI`` and the
+    #     OpenAI Responses API path that ``opentelemetry-instrumentation-openai-v2``
+    #     does not patch. The distro's LangChain tracer should still populate
+    #     ``gen_ai.response.model`` and ``gen_ai.response.id``.
+    from langchain_core.language_models.chat_models import BaseChatModel
+    from langchain_core.messages import AIMessage
+    from langchain_core.outputs import ChatGeneration, ChatResult
+
+    class ResponsesApiFakeChat(BaseChatModel):
+        @property
+        def _llm_type(self) -> str:  # pragma: no cover - trivial
+            return "responses-api-fake"
+
+        def _generate(self, messages, stop=None, run_manager=None, **kwargs):
+            ai = AIMessage(content="Paris.")
+            ai.response_metadata = {
+                "model_name": "gpt-4o-2024-08-06",
+                "id": "resp_abc123",
+                "finish_reason": "stop",
+            }
+            return ChatResult(
+                generations=[ChatGeneration(message=ai, generation_info={"finish_reason": "stop"})],
+                llm_output={},  # empty — mimics the bypassed-OpenAI-client case
+            )
+
+    ResponsesApiFakeChat().invoke("What is the capital of France?")
+
     # ── Flush and analyse ───────────────────────────────────────────────
     provider.force_flush()
     spans = mem.get_finished_spans()
@@ -119,6 +147,28 @@ def main():  # pylint: disable=too-many-statements
         check("SpanKind is CLIENT", span.kind == SpanKind.CLIENT, f"actual: {span.kind.name}")
         check("Span name is not 'chat None'", "None" not in span.name, f"actual: '{span.name}'")
         check("gen_ai.response.finish_reasons present", "gen_ai.response.finish_reasons" in attrs)
+
+    # ── Responses-API fake span: response.model / response.id from
+    #     message.response_metadata (the bug this fix addresses) ─────────
+    print(f"\n{'='*60}")
+    print("RESPONSES-API FAKE SPAN CHECKS")
+    print(f"{'='*60}")
+    responses_spans = [
+        s for s in llm_spans if s.attributes.get("gen_ai.response.id") == "resp_abc123"
+    ]
+    check("Responses-API fake LLM span found", len(responses_spans) == 1, f"found {len(responses_spans)}")
+    if responses_spans:
+        attrs = responses_spans[0].attributes
+        check(
+            "gen_ai.response.model populated from response_metadata",
+            attrs.get("gen_ai.response.model") == "gpt-4o-2024-08-06",
+            f"actual: {attrs.get('gen_ai.response.model')!r}",
+        )
+        check(
+            "gen_ai.response.id populated from response_metadata",
+            attrs.get("gen_ai.response.id") == "resp_abc123",
+            f"actual: {attrs.get('gen_ai.response.id')!r}",
+        )
 
     # ── Tool span checks ───────────────────────────────────────────────
     print(f"\n{'='*60}")
