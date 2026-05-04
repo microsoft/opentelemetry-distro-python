@@ -6,20 +6,26 @@
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
-
-try:
-    from microsoft_agents.activity import ActivityEventNames, ActivityTypes
-    from microsoft_agents.hosting.core.turn_context import TurnContext
-except ImportError:  # pragma: no cover - optional dependency
-    import logging as _logging
-
-    from microsoft.opentelemetry.a365.constants import HOSTING_INSTALL_HINT
-
-    _logging.getLogger(__name__).warning(HOSTING_INSTALL_HINT)
-
 from microsoft.opentelemetry.a365.core.middleware.baggage_builder import BaggageBuilder
 
 from microsoft.opentelemetry.a365.hosting.scope_helpers.populate_baggage import populate
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from microsoft_agents.activity import ActivityEventNames, ActivityTypes
+    from microsoft_agents.hosting.core.turn_context import TurnContext
+else:  # pyright: ignore[reportUnreachable]
+    try:
+        from microsoft_agents.activity import ActivityEventNames, ActivityTypes
+        from microsoft_agents.hosting.core.turn_context import TurnContext
+    except ImportError:  # pragma: no cover - optional dependency
+        import logging as _logging
+
+        from microsoft.opentelemetry.a365.constants import HOSTING_INSTALL_HINT
+
+        _logging.getLogger(__name__).warning(HOSTING_INSTALL_HINT)
+        ActivityEventNames = ActivityTypes = TurnContext = None
 
 # mypy: disable-error-code="call-arg"
 
