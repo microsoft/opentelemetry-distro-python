@@ -45,12 +45,18 @@ pip install "microsoft-opentelemetry[hosting]"
 > The `microsoft-agents-activity` and `microsoft-agents-hosting-core`
 > packages are now **optional** dependencies pulled in by the `[hosting]`
 > extra. Without them, importing `microsoft.opentelemetry.a365.hosting`
-> logs a warning with an install hint and continues — the optional
-> classes/types are stubbed to ``None`` so the module import does not
-> crash. Actually instantiating or calling the hosting middleware
-> (`BaggageMiddleware`, `ObservabilityHostingManager`,
-> `OutputLoggingMiddleware`, `AgenticTokenCache`, etc.) will then fail
-> at runtime, so install the `[hosting]` extra before relying on it.
+> succeeds silently — the optional classes/types are stubbed to ``None``
+> so the module import does not crash. The install-hint warning is
+> emitted only when you actually instantiate the hosting middleware
+> (`BaggageMiddleware()`, `OutputLoggingMiddleware()`,
+> `AgenticTokenCache()`) or call `ObservabilityHostingManager.configure(...)`,
+> after which the call will fail at runtime because the underlying
+> classes are unavailable. Install the hosting extra before relying on
+> this layer:
+>
+> ```
+> pip install "microsoft-opentelemetry[hosting]"
+> ```
 
 ## Step 2 — Rewrite Import Paths
 
