@@ -15,10 +15,10 @@ from microsoft.opentelemetry.a365.hosting.scope_helpers.utils import (
     get_tenant_id_pair,
 )
 
-# mypy: disable-error-code="arg-type"
-
 if TYPE_CHECKING:
     from microsoft_agents.hosting.core.turn_context import TurnContext
+
+# mypy: disable-error-code="arg-type"
 
 def populate(scope: InvokeAgentScope, turn_context: TurnContext) -> InvokeAgentScope:
     """
