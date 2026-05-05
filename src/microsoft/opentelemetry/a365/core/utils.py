@@ -28,7 +28,6 @@ from microsoft.opentelemetry.a365.core.constants import ERROR_TYPE_KEY
 
 # mypy: disable-error-code="no-untyped-def"
 
-
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 

@@ -6,8 +6,8 @@ from __future__ import annotations
 from collections.abc import Iterator
 from typing import Any
 
-from microsoft.opentelemetry.a365.core.middleware.baggage_builder import BaggageBuilder
 from microsoft_agents.hosting.core.turn_context import TurnContext
+from microsoft.opentelemetry.a365.core.middleware.baggage_builder import BaggageBuilder
 
 from microsoft.opentelemetry.a365.hosting.scope_helpers.utils import (
     get_caller_pairs,
