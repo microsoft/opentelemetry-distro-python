@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 
 # mypy: disable-error-code="arg-type"
 
+
 def populate(scope: InvokeAgentScope, turn_context: TurnContext) -> InvokeAgentScope:
     """
     Populate all supported InvokeAgentScope tags from the provided TurnContext.
