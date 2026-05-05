@@ -10,9 +10,21 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from threading import Lock
+from typing import TYPE_CHECKING
 
-from microsoft_agents.hosting.core.app.oauth.authorization import Authorization
-from microsoft_agents.hosting.core.turn_context import TurnContext
+from microsoft.opentelemetry.a365.core.utils import warn_if_hosting_missing
+
+if TYPE_CHECKING:
+    from microsoft_agents.hosting.core.app.oauth.authorization import Authorization
+    from microsoft_agents.hosting.core.turn_context import TurnContext
+else:  # pyright: ignore[reportUnreachable]
+    try:
+        from microsoft_agents.hosting.core.app.oauth.authorization import Authorization
+        from microsoft_agents.hosting.core.turn_context import TurnContext
+    except ImportError:  # pragma: no cover - optional dependency
+        # Stub silently; the warning is emitted in __init__ when the user
+        # actually instantiates the cache.
+        Authorization = TurnContext = None
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +61,7 @@ class AgenticTokenCache:
 
     def __init__(self) -> None:
         """Initialize the token cache."""
+        warn_if_hosting_missing(logger, "microsoft_agents.hosting.core")
         self._map: dict[str, AgenticTokenCache._Entry] = {}
         self._lock = Lock()
 

@@ -4,9 +4,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
-from typing import Any
 
-from microsoft_agents.hosting.core.turn_context import TurnContext
 from microsoft.opentelemetry.a365.core.middleware.baggage_builder import BaggageBuilder
 
 from microsoft.opentelemetry.a365.hosting.scope_helpers.utils import (
@@ -16,6 +14,19 @@ from microsoft.opentelemetry.a365.hosting.scope_helpers.utils import (
     get_target_agent_pairs,
     get_tenant_id_pair,
 )
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from microsoft_agents.hosting.core.turn_context import TurnContext
+else:  # pyright: ignore[reportUnreachable]
+    try:
+        from microsoft_agents.hosting.core.turn_context import TurnContext
+    except ImportError:  # pragma: no cover - optional dependency
+        # Stub silently; warning is emitted by the user-facing entry-point
+        # (middleware/cache constructors) via HOSTING_INSTALL_HINT.
+        TurnContext = None
+
+
 
 
 def _iter_all_pairs(turn_context: TurnContext) -> Iterator[tuple[str, Any]]:

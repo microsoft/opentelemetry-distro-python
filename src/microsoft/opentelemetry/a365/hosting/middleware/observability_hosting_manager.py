@@ -7,11 +7,22 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-
-from microsoft_agents.hosting.core.middleware_set import MiddlewareSet
-
 from microsoft.opentelemetry.a365.hosting.middleware.baggage_middleware import BaggageMiddleware
 from microsoft.opentelemetry.a365.hosting.middleware.output_logging_middleware import OutputLoggingMiddleware
+
+from microsoft.opentelemetry.a365.core.utils import warn_if_hosting_missing
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from microsoft_agents.hosting.core.middleware_set import MiddlewareSet
+else:  # pyright: ignore[reportUnreachable]
+    try:
+        from microsoft_agents.hosting.core.middleware_set import MiddlewareSet
+    except ImportError:  # pragma: no cover - optional dependency
+        # Stub silently; the warning is emitted in configure() when the user
+        # actually attempts to wire up hosting middleware.
+        MiddlewareSet = None
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +75,7 @@ class ObservabilityHostingManager:
         Raises:
             TypeError: If *middleware_set* or *options* is ``None``.
         """
+        warn_if_hosting_missing(logger, "microsoft_agents.hosting.core")
         if middleware_set is None:
             raise TypeError("middleware_set must not be None")
         if options is None:
