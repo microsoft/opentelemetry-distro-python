@@ -74,6 +74,7 @@ class TestEnrichingBatchSpanProcessor(unittest.TestCase):
 
         processor = _EnrichingBatchSpanProcessor.__new__(_EnrichingBatchSpanProcessor)
         processor._suppress_invoke_agent_input = False
+        processor._foundry_agent_id = None
 
         original_span = MagicMock(spec=ReadableSpan)
         original_span.name = "original"
@@ -92,6 +93,7 @@ class TestEnrichingBatchSpanProcessor(unittest.TestCase):
 
         processor = _EnrichingBatchSpanProcessor.__new__(_EnrichingBatchSpanProcessor)
         processor._suppress_invoke_agent_input = False
+        processor._foundry_agent_id = None
 
         original_span = MagicMock(spec=ReadableSpan)
         original_span.name = "original"
@@ -105,6 +107,7 @@ class TestEnrichingBatchSpanProcessor(unittest.TestCase):
     def test_suppress_invoke_agent_input(self):
         processor = _EnrichingBatchSpanProcessor.__new__(_EnrichingBatchSpanProcessor)
         processor._suppress_invoke_agent_input = True
+        processor._foundry_agent_id = None
 
         span = MagicMock(spec=ReadableSpan)
         span.name = "invoke_agent Travel_Assistant"
@@ -122,6 +125,7 @@ class TestEnrichingBatchSpanProcessor(unittest.TestCase):
     def test_no_suppress_for_non_invoke_agent(self):
         processor = _EnrichingBatchSpanProcessor.__new__(_EnrichingBatchSpanProcessor)
         processor._suppress_invoke_agent_input = True
+        processor._foundry_agent_id = None
 
         span = MagicMock(spec=ReadableSpan)
         span.name = "chat gpt-4"
@@ -133,6 +137,92 @@ class TestEnrichingBatchSpanProcessor(unittest.TestCase):
         with patch.object(_EnrichingBatchSpanProcessor.__bases__[0], "on_end") as mock_super_on_end:
             processor.on_end(span)
             mock_super_on_end.assert_called_once_with(span)
+
+
+class TestFoundryAgentIdOverride(unittest.TestCase):
+    """Tests for Foundry-hosted agent ID override in _EnrichingBatchSpanProcessor."""
+
+    def setUp(self):
+        unregister_span_enricher()
+
+    def tearDown(self):
+        unregister_span_enricher()
+
+    @patch.object(_EnrichingBatchSpanProcessor, "__init__", lambda self, *a, **kw: None)
+    def test_override_applied_when_foundry_agent_id_set(self):
+        processor = _EnrichingBatchSpanProcessor.__new__(_EnrichingBatchSpanProcessor)
+        processor._suppress_invoke_agent_input = False
+        processor._foundry_agent_id = "foundry-agent-123"
+
+        span = MagicMock(spec=ReadableSpan)
+        span.name = "chat gpt-4"
+        span.attributes = {"gen_ai.agent.id": "original-id"}
+
+        with patch.object(_EnrichingBatchSpanProcessor.__bases__[0], "on_end") as mock_super_on_end:
+            processor.on_end(span)
+            passed_span = mock_super_on_end.call_args[0][0]
+            self.assertEqual(passed_span.attributes["gen_ai.agent.id"], "foundry-agent-123")
+
+    @patch.object(_EnrichingBatchSpanProcessor, "__init__", lambda self, *a, **kw: None)
+    def test_override_not_applied_when_foundry_agent_id_none(self):
+        processor = _EnrichingBatchSpanProcessor.__new__(_EnrichingBatchSpanProcessor)
+        processor._suppress_invoke_agent_input = False
+        processor._foundry_agent_id = None
+
+        span = MagicMock(spec=ReadableSpan)
+        span.name = "chat gpt-4"
+        span.attributes = {"gen_ai.agent.id": "original-id"}
+
+        with patch.object(_EnrichingBatchSpanProcessor.__bases__[0], "on_end") as mock_super_on_end:
+            processor.on_end(span)
+            mock_super_on_end.assert_called_once_with(span)
+
+    @patch.dict("os.environ", {"FOUNDRY_HOSTING_ENVIRONMENT": "1", "FOUNDRY_AGENT_IDENTITY": "env-agent-456"})
+    def test_init_reads_env_vars_when_foundry_hosted(self):
+        with patch.object(_EnrichingBatchSpanProcessor.__bases__[0], "__init__", return_value=None):
+            processor = _EnrichingBatchSpanProcessor(MagicMock())
+            self.assertEqual(processor._foundry_agent_id, "env-agent-456")
+
+    @patch.dict("os.environ", {"FOUNDRY_HOSTING_ENVIRONMENT": "0", "FOUNDRY_AGENT_IDENTITY": "env-agent-456"})
+    def test_init_no_override_when_not_foundry_hosted(self):
+        with patch.object(_EnrichingBatchSpanProcessor.__bases__[0], "__init__", return_value=None):
+            processor = _EnrichingBatchSpanProcessor(MagicMock())
+            self.assertIsNone(processor._foundry_agent_id)
+
+    @patch.dict("os.environ", {"FOUNDRY_HOSTING_ENVIRONMENT": "1"}, clear=False)
+    def test_init_no_override_when_agent_identity_missing(self):
+        # Ensure FOUNDRY_AGENT_IDENTITY is not set
+        import os
+
+        os.environ.pop("FOUNDRY_AGENT_IDENTITY", None)
+        with patch.object(_EnrichingBatchSpanProcessor.__bases__[0], "__init__", return_value=None):
+            processor = _EnrichingBatchSpanProcessor(MagicMock())
+            self.assertIsNone(processor._foundry_agent_id)
+
+    @patch.dict("os.environ", {}, clear=False)
+    def test_init_no_override_when_both_env_vars_missing(self):
+        import os
+
+        os.environ.pop("FOUNDRY_HOSTING_ENVIRONMENT", None)
+        os.environ.pop("FOUNDRY_AGENT_IDENTITY", None)
+        with patch.object(_EnrichingBatchSpanProcessor.__bases__[0], "__init__", return_value=None):
+            processor = _EnrichingBatchSpanProcessor(MagicMock())
+            self.assertIsNone(processor._foundry_agent_id)
+
+    @patch.object(_EnrichingBatchSpanProcessor, "__init__", lambda self, *a, **kw: None)
+    def test_override_sets_agent_id_when_span_has_no_existing_id(self):
+        processor = _EnrichingBatchSpanProcessor.__new__(_EnrichingBatchSpanProcessor)
+        processor._suppress_invoke_agent_input = False
+        processor._foundry_agent_id = "foundry-agent-789"
+
+        span = MagicMock(spec=ReadableSpan)
+        span.name = "chat gpt-4"
+        span.attributes = {"gen_ai.operation.name": "chat"}
+
+        with patch.object(_EnrichingBatchSpanProcessor.__bases__[0], "on_end") as mock_super_on_end:
+            processor.on_end(span)
+            passed_span = mock_super_on_end.call_args[0][0]
+            self.assertEqual(passed_span.attributes["gen_ai.agent.id"], "foundry-agent-789")
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ Vendored from microsoft-agents-a365-observability-core exporters/enriching_span_
 from __future__ import annotations
 
 import logging
+import os
 import threading
 from collections.abc import Callable
 from typing import Optional
@@ -20,6 +21,9 @@ from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 from microsoft.opentelemetry.a365.constants import (
+    FOUNDRY_AGENT_IDENTITY_ENV,
+    FOUNDRY_HOSTING_ENVIRONMENT_ENV,
+    GEN_AI_AGENT_ID_KEY,
     GEN_AI_INPUT_MESSAGES_KEY,
     GEN_AI_OPERATION_NAME_KEY,
     INVOKE_AGENT_OPERATION_NAME,
@@ -79,6 +83,15 @@ class _EnrichingBatchSpanProcessor(BatchSpanProcessor):
         super().__init__(*args, **kwargs)  # type: ignore[arg-type]
         self._suppress_invoke_agent_input = suppress_invoke_agent_input
 
+        # Foundry-hosted agent ID override: only active when running in
+        # Foundry hosting environment and identity env var is set.
+        foundry_env = os.environ.get(FOUNDRY_HOSTING_ENVIRONMENT_ENV, "").strip()
+        agent_identity = os.environ.get(FOUNDRY_AGENT_IDENTITY_ENV, "").strip()
+        if foundry_env == "1" and agent_identity:
+            self._foundry_agent_id: Optional[str] = agent_identity
+        else:
+            self._foundry_agent_id = None
+
     def on_end(self, span: ReadableSpan) -> None:
         """Apply the span enricher and pass to parent for batching."""
         enriched_span = span
@@ -106,5 +119,12 @@ class _EnrichingBatchSpanProcessor(BatchSpanProcessor):
                     extra_attributes={},
                     excluded_attribute_keys={GEN_AI_INPUT_MESSAGES_KEY},
                 )
+
+        # Override gen_ai.agent.id when running in Foundry-hosted environment
+        if self._foundry_agent_id is not None:
+            enriched_span = EnrichedReadableSpan(
+                enriched_span,
+                extra_attributes={GEN_AI_AGENT_ID_KEY: self._foundry_agent_id},
+            )
 
         super().on_end(enriched_span)
