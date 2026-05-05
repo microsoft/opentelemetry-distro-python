@@ -3,10 +3,9 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from microsoft_agents.hosting.core.turn_context import TurnContext
 
 from microsoft.opentelemetry.a365.core.invoke_agent_scope import InvokeAgentScope
-
 from microsoft.opentelemetry.a365.hosting.scope_helpers.utils import (
     get_caller_pairs,
     get_channel_pairs,
@@ -14,9 +13,6 @@ from microsoft.opentelemetry.a365.hosting.scope_helpers.utils import (
     get_target_agent_pairs,
     get_tenant_id_pair,
 )
-
-if TYPE_CHECKING:
-    from microsoft_agents.hosting.core.turn_context import TurnContext
 
 # mypy: disable-error-code="arg-type"
 

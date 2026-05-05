@@ -8,6 +8,9 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 from microsoft.opentelemetry.a365.core.agent_details import AgentDetails
+from microsoft_agents.activity import Activity, ActivityTypes
+from microsoft_agents.hosting.core.turn_context import TurnContext
+
 from microsoft.opentelemetry.a365.constants import (
     CHANNEL_LINK_KEY,
     CHANNEL_NAME_KEY,
@@ -19,25 +22,6 @@ from microsoft.opentelemetry.a365.core.request import Request
 from microsoft.opentelemetry.a365.core.span_details import SpanDetails
 from microsoft.opentelemetry.a365.core.spans_scopes.output_scope import OutputScope
 from microsoft.opentelemetry.a365.core.utils import extract_context_from_headers
-
-from microsoft.opentelemetry.a365.core.utils import warn_if_hosting_missing
-
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from microsoft_agents.activity import Activity
-    from microsoft_agents.hosting.core.turn_context import TurnContext
-else:  # pyright: ignore[reportUnreachable]
-    try:
-        from microsoft_agents.activity import Activity
-        from microsoft_agents.hosting.core.turn_context import TurnContext
-    except ImportError:  # pragma: no cover - optional dependency
-        # Stub silently; the warning is emitted in __init__ when the user
-        # actually instantiates the middleware.
-        Activity = TurnContext = None
-
-
-# mypy: disable-error-code="call-arg"
 
 logger = logging.getLogger(__name__)
 
@@ -111,9 +95,6 @@ class OutputLoggingMiddleware:
     attributes and exported to the configured telemetry backend.
     """
 
-    def __init__(self) -> None:
-        warn_if_hosting_missing(logger, "microsoft_agents.activity", "microsoft_agents.hosting.core")
-
     async def on_turn(
         self,
         context: TurnContext,
@@ -159,7 +140,7 @@ class OutputLoggingMiddleware:
             activities: list[Activity],
             send_next: Callable,
         ) -> None:
-            messages = [a.text for a in activities if getattr(a, "type", None) == "message" and a.text]
+            messages = [a.text for a in activities if getattr(a, "type", None) == ActivityTypes.message and a.text]
 
             if not messages:
                 await send_next()

@@ -5,6 +5,10 @@ from __future__ import annotations
 
 import json
 from collections.abc import Iterator
+from typing import Any
+
+from microsoft_agents.activity import Activity
+
 from microsoft.opentelemetry.a365.constants import (
     CHANNEL_LINK_KEY,
     CHANNEL_NAME_KEY,
@@ -20,18 +24,6 @@ from microsoft.opentelemetry.a365.constants import (
     USER_ID_KEY,
     USER_NAME_KEY,
 )
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from microsoft_agents.activity import Activity
-else:  # pyright: ignore[reportUnreachable]
-    try:
-        from microsoft_agents.activity import Activity
-    except ImportError:  # pragma: no cover - optional dependency
-        # Stub silently; warning is emitted by the user-facing entry-point
-        # (middleware/cache constructors) via HOSTING_INSTALL_HINT.
-        Activity = None
-
 
 
 AGENT_ROLE = "agenticUser"
