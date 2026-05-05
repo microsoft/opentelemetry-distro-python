@@ -13,6 +13,9 @@ from microsoft.opentelemetry.a365.core.middleware.baggage_builder import Baggage
 
 from microsoft.opentelemetry.a365.hosting.scope_helpers.populate_baggage import populate
 
+# mypy: disable-error-code="call-arg"
+
+
 class BaggageMiddleware:
     """Middleware that propagates OpenTelemetry baggage context derived from TurnContext.
 

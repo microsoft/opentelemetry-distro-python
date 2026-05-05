@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging
 from collections.abc import Awaitable, Callable
 
-from microsoft_agents.activity import Activity, ActivityTypes
+from microsoft_agents.activity import Activity
 from microsoft_agents.hosting.core.turn_context import TurnContext
 from microsoft.opentelemetry.a365.core.agent_details import AgentDetails
 from microsoft.opentelemetry.a365.constants import (
@@ -22,6 +22,8 @@ from microsoft.opentelemetry.a365.core.request import Request
 from microsoft.opentelemetry.a365.core.span_details import SpanDetails
 from microsoft.opentelemetry.a365.core.spans_scopes.output_scope import OutputScope
 from microsoft.opentelemetry.a365.core.utils import extract_context_from_headers
+
+# mypy: disable-error-code="call-arg"
 
 logger = logging.getLogger(__name__)
 

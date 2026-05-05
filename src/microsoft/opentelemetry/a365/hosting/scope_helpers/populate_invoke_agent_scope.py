@@ -3,7 +3,8 @@
 
 from __future__ import annotations
 
-from microsoft_agents.hosting.core.turn_context import TurnContext
+from typing import TYPE_CHECKING
+
 from microsoft.opentelemetry.a365.core.invoke_agent_scope import InvokeAgentScope
 
 from microsoft.opentelemetry.a365.hosting.scope_helpers.utils import (
@@ -16,6 +17,8 @@ from microsoft.opentelemetry.a365.hosting.scope_helpers.utils import (
 
 # mypy: disable-error-code="arg-type"
 
+if TYPE_CHECKING:
+    from microsoft_agents.hosting.core.turn_context import TurnContext
 
 def populate(scope: InvokeAgentScope, turn_context: TurnContext) -> InvokeAgentScope:
     """
