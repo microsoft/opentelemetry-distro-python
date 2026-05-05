@@ -24,8 +24,7 @@ from microsoft.opentelemetry.a365.core.constants import (
 )
 from opentelemetry import context as context_api
 from opentelemetry import trace
-from opentelemetry.sdk._logs import LogRecordProcessor
-from opentelemetry.sdk._logs._internal import ReadWriteLogRecord
+from opentelemetry.sdk._logs import LogRecordProcessor, ReadWriteLogRecord
 from opentelemetry.sdk.trace import ReadableSpan, Span
 from opentelemetry.sdk.trace.export import SpanProcessor
 
@@ -64,9 +63,6 @@ class GenAIMainAgentSpanProcessor(SpanProcessor):
     so the top-level agent identifies itself as the main agent.
     """
 
-    def __init__(self, service_name: str | None = None):
-        self.service_name = service_name
-
     def on_start(self, span: Span, parent_context: context_api.Context | None = None) -> None:
         parent = trace.get_current_span(parent_context)
         if not parent.get_span_context().is_valid:
@@ -89,14 +85,12 @@ class GenAIMainAgentSpanProcessor(SpanProcessor):
             if key.startswith(GEN_AI_MAIN_AGENT_ATTRIBUTE_PREFIX):
                 return
 
-        # The SDK invokes ``on_end`` with the underlying writable ``Span`` even
-        # though the type hint exposes ``ReadableSpan``; existing distro
-        # processors rely on this same behaviour.
-        writable_span: Span = span  # type: ignore[assignment]
+        if not hasattr(span, "set_attribute"):
+            return
         for target, source in _SELF_COPY_TABLE:
             value = attributes.get(source)
             if value is not None:
-                writable_span.set_attribute(target, value)
+                span.set_attribute(target, value)  # type: ignore[attr-defined]
 
     def shutdown(self) -> None:
         pass

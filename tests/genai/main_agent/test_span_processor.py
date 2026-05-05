@@ -170,6 +170,18 @@ class TestGenAIMainAgentSpanProcessorOnEnd(unittest.TestCase):
 
         span.set_attribute.assert_called_once_with(GEN_AI_MAIN_AGENT_NAME_KEY, "only-name")
 
+    def test_noop_when_span_has_no_set_attribute(self):
+        # ReadableSpan-only objects (no ``set_attribute``) must not raise.
+        span = MagicMock(spec=["attributes"])
+        span.attributes = {
+            GEN_AI_OPERATION_NAME_KEY: INVOKE_AGENT_OPERATION_NAME,
+            GEN_AI_AGENT_NAME_KEY: "self-name",
+        }
+
+        self.processor.on_end(span)  # must not raise
+
+        self.assertFalse(hasattr(span, "set_attribute"))
+
 
 class TestGenAIMainAgentSpanProcessorLifecycle(unittest.TestCase):
     def test_shutdown_and_force_flush_are_noops(self):
