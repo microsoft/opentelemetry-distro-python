@@ -1,6 +1,5 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
-
 from __future__ import annotations
 
 import json
@@ -8,7 +7,6 @@ from collections.abc import Iterator
 from typing import Any
 
 from microsoft_agents.activity import Activity
-
 from microsoft.opentelemetry.a365.constants import (
     CHANNEL_LINK_KEY,
     CHANNEL_NAME_KEY,
@@ -24,7 +22,6 @@ from microsoft.opentelemetry.a365.constants import (
     USER_ID_KEY,
     USER_NAME_KEY,
 )
-
 
 AGENT_ROLE = "agenticUser"
 

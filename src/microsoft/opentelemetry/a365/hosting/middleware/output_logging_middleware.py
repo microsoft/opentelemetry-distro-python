@@ -7,9 +7,9 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
-from microsoft.opentelemetry.a365.core.agent_details import AgentDetails
 from microsoft_agents.activity import Activity, ActivityTypes
 from microsoft_agents.hosting.core.turn_context import TurnContext
+from microsoft.opentelemetry.a365.core.agent_details import AgentDetails
 
 from microsoft.opentelemetry.a365.constants import (
     CHANNEL_LINK_KEY,
@@ -140,7 +140,7 @@ class OutputLoggingMiddleware:
             activities: list[Activity],
             send_next: Callable,
         ) -> None:
-            messages = [a.text for a in activities if getattr(a, "type", None) == ActivityTypes.message and a.text]
+            messages = [a.text for a in activities if getattr(a, "type", None) == "message" and a.text]
 
             if not messages:
                 await send_next()

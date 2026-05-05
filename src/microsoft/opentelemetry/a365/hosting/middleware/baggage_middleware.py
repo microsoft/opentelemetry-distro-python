@@ -5,16 +5,14 @@
 
 from __future__ import annotations
 
-import logging
 from collections.abc import Awaitable, Callable
 
 from microsoft_agents.activity import ActivityEventNames, ActivityTypes
 from microsoft_agents.hosting.core.turn_context import TurnContext
-
 from microsoft.opentelemetry.a365.core.middleware.baggage_builder import BaggageBuilder
-from microsoft.opentelemetry.a365.hosting.scope_helpers.populate_baggage import populate
 
-_logger = logging.getLogger(__name__)
+
+from microsoft.opentelemetry.a365.hosting.scope_helpers.populate_baggage import populate
 
 
 class BaggageMiddleware:
