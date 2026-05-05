@@ -119,7 +119,7 @@ class GenAIMainAgentLogRecordProcessor(LogRecordProcessor):
         if log_record.log_record.attributes is None:
             log_record.log_record.attributes = {}
         for key, value in main_agent_attributes.items():
-            log_record.log_record.attributes[key] = value
+            log_record.log_record.attributes[key] = value  # type: ignore[index]
 
     def shutdown(self) -> None:
         pass
