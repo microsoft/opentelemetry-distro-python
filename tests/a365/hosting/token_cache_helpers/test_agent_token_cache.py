@@ -7,7 +7,6 @@ import threading
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-
 from microsoft_agents.hosting.core.app.oauth.authorization import Authorization
 from microsoft_agents.hosting.core.turn_context import TurnContext
 from microsoft.opentelemetry.a365.hosting.token_cache_helpers import (

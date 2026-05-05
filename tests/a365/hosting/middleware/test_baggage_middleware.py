@@ -6,7 +6,6 @@ from typing import Any
 from unittest.mock import MagicMock
 
 import pytest
-
 from microsoft_agents.activity import (
     Activity,
     ActivityEventNames,

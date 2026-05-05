@@ -9,6 +9,7 @@ from microsoft.opentelemetry.a365.core.constants import USER_ID_KEY
 from microsoft.opentelemetry.a365.core.middleware.baggage_builder import BaggageBuilder
 from microsoft.opentelemetry.a365.hosting.scope_helpers.populate_baggage import populate
 
+
 def test_populate():
     """Test populate populates BaggageBuilder from turn context."""
     # Create a real activity and turn context
