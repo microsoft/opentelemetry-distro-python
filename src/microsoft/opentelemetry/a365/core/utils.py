@@ -30,15 +30,15 @@ from microsoft.opentelemetry.a365.constants import HOSTING_INSTALL_HINT
 # mypy: disable-error-code="no-untyped-def"
 
 
-def warn_if_hosting_missing(logger: logging.Logger, *modules: str) -> None:
-    """Log :data:`HOSTING_INSTALL_HINT` on *logger* if any *modules* can't be imported."""
+def warn_if_hosting_missing(target_logger: logging.Logger, *modules: str) -> None:
+    """Log :data:`HOSTING_INSTALL_HINT` on *target_logger* if any *modules* can't be imported."""
     import importlib  # noqa: PLC0415  pylint: disable=import-outside-toplevel
 
     for name in modules:
         try:
             importlib.import_module(name)
         except ImportError:
-            logger.warning(HOSTING_INSTALL_HINT)
+            target_logger.warning(HOSTING_INSTALL_HINT)
             return
 
 
