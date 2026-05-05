@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Collection
 from typing import Any
 
@@ -14,14 +15,18 @@ from microsoft.opentelemetry._agent_framework._span_processor import AgentFramew
 
 _logger = logging.getLogger(__name__)
 _instruments = ("agent-framework >= 1.0.0",)
+_TRACE_CONTENTS_ENV = "AZURE_TRACING_GEN_AI_CONTENT_RECORDING_ENABLED"
 
 
 class AgentFrameworkInstrumentor(BaseInstrumentor):
     """Instruments Agent Framework with OpenTelemetry observability.
 
-    Automatically calls ``agent_framework.observability.enable_instrumentation(enable_sensitive_data=True)``
-    so the Agent Framework SDK emits OpenTelemetry spans. When the A365 span
-    enricher pipeline is available, also registers a span enricher for
+    Automatically calls ``agent_framework.observability.enable_instrumentation()``
+    so the Agent Framework SDK emits OpenTelemetry spans. Sensitive data
+    (prompts, tool arguments, results) is included when the
+    ``AZURE_TRACING_GEN_AI_CONTENT_RECORDING_ENABLED`` environment variable is
+    set to a truthy value (``true``, ``1``, ``yes``, or ``on``). When the A365
+    span enricher pipeline is available, also registers a span enricher for
     attribute normalization.
     """
 
@@ -35,10 +40,15 @@ class AgentFrameworkInstrumentor(BaseInstrumentor):
     def _instrument(self, **kwargs: Any) -> None:
         # Enable the Agent Framework SDK's built-in span generation so users
         # don't need to call enable_instrumentation() manually.
+        # Sensitive data recording mirrors the AZURE_TRACING_GEN_AI_CONTENT_RECORDING_ENABLED
+        # environment variable, defaulting to False when unset.
         try:
             from agent_framework.observability import enable_instrumentation
 
-            enable_instrumentation(enable_sensitive_data=True)
+            enable_sensitive_data = os.environ.get(_TRACE_CONTENTS_ENV, "").strip().lower() in (
+                "true", "1", "yes", "on"
+            )
+            enable_instrumentation(enable_sensitive_data=enable_sensitive_data)
             self._af_instrumentation_enabled = True
         except ImportError as exc:
             _logger.debug(
