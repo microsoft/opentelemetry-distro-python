@@ -414,7 +414,7 @@ def chunk_by_size(
     return chunks
 
 
-_A365_DEFAULT_SCOPE = "api://9b975845-388f-4429-889e-eab1ef63949c/Agent365.Observability.OtelWrite"
+_A365_DEFAULT_SCOPE = "api://9b975845-388f-4429-889e-eab1ef63949c/.default"
 
 
 def _create_fic_token_resolver(scope_override: Optional[str] = None) -> Callable[[str, str], Optional[str]]:
