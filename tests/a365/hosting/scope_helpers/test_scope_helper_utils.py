@@ -83,6 +83,51 @@ def test_get_channel_pairs():
     assert (CHANNEL_LINK_KEY, None) in result
 
 
+def test_get_caller_pairs_fallback_to_frm_id():
+    """Test get_caller_pairs falls back to frm.id when aad_object_id is None (non-Teams channel)."""
+    from_account = ChannelAccount(
+        id="slack-user-123",
+        name="Slack User",
+        agentic_user_id=None,
+        aad_object_id=None,
+    )
+    activity = Activity(type="message", from_property=from_account)
+
+    result = list(get_caller_pairs(activity))
+
+    assert (USER_ID_KEY, "slack-user-123") in result
+
+
+def test_get_caller_pairs_fallback_to_agentic_user_id():
+    """Test get_caller_pairs falls back to agentic_user_id for A2A when aad_object_id is None."""
+    from_account = ChannelAccount(
+        id="raw-id",
+        name="Agent Caller",
+        agentic_user_id="agent-auid-456",
+        aad_object_id=None,
+    )
+    activity = Activity(type="message", from_property=from_account)
+
+    result = list(get_caller_pairs(activity))
+
+    assert (USER_ID_KEY, "agent-auid-456") in result
+
+
+def test_get_caller_pairs_aad_object_id_takes_precedence():
+    """Test get_caller_pairs uses aad_object_id when all identifiers are set."""
+    from_account = ChannelAccount(
+        id="raw-id",
+        name="Teams User",
+        agentic_user_id="agent-auid",
+        aad_object_id="aad-wins",
+    )
+    activity = Activity(type="message", from_property=from_account)
+
+    result = list(get_caller_pairs(activity))
+
+    assert (USER_ID_KEY, "aad-wins") in result
+
+
 def test_get_conversation_pairs():
     """Test get_conversation_pairs extracts conversation information."""
     conversation = ConversationAccount(id="conversation-123")
