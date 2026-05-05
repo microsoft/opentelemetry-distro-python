@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Awaitable, Callable
+
 from microsoft_agents.activity import Activity, ActivityTypes
 from microsoft_agents.hosting.core.turn_context import TurnContext
 from microsoft.opentelemetry.a365.core.agent_details import AgentDetails
-
 from microsoft.opentelemetry.a365.constants import (
     CHANNEL_LINK_KEY,
     CHANNEL_NAME_KEY,

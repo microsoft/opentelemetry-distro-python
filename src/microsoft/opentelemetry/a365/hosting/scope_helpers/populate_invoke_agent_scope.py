@@ -5,6 +5,7 @@ from __future__ import annotations
 
 from microsoft_agents.hosting.core.turn_context import TurnContext
 from microsoft.opentelemetry.a365.core.invoke_agent_scope import InvokeAgentScope
+
 from microsoft.opentelemetry.a365.hosting.scope_helpers.utils import (
     get_caller_pairs,
     get_channel_pairs,

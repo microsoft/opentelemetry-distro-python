@@ -8,7 +8,6 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 
 from microsoft_agents.activity import ActivityEventNames, ActivityTypes
-
 from microsoft_agents.hosting.core.turn_context import TurnContext
 from microsoft.opentelemetry.a365.core.middleware.baggage_builder import BaggageBuilder
 

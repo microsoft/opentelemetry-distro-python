@@ -4,7 +4,6 @@
 from unittest.mock import MagicMock
 
 import pytest
-
 from microsoft.opentelemetry.a365.hosting.middleware.baggage_middleware import (
     BaggageMiddleware,
 )
