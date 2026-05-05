@@ -19,7 +19,7 @@ _instruments = ("agent-framework >= 1.0.0",)
 class AgentFrameworkInstrumentor(BaseInstrumentor):
     """Instruments Agent Framework with OpenTelemetry observability.
 
-    Automatically calls ``agent_framework.observability.enable_instrumentation()``
+    Automatically calls ``agent_framework.observability.enable_instrumentation(enable_sensitive_data=True)``
     so the Agent Framework SDK emits OpenTelemetry spans. When the A365 span
     enricher pipeline is available, also registers a span enricher for
     attribute normalization.
@@ -38,7 +38,7 @@ class AgentFrameworkInstrumentor(BaseInstrumentor):
         try:
             from agent_framework.observability import enable_instrumentation
 
-            enable_instrumentation()
+            enable_instrumentation(enable_sensitive_data=True)
             self._af_instrumentation_enabled = True
         except ImportError as exc:
             _logger.debug(
