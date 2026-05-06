@@ -52,7 +52,7 @@ Create an Application Insights resource in the Azure portal and copy the connect
 
 ## OTel Exporter
 
-You can also configure the OTLP exporter endpoint to send traces to a local OpenTelemetry Collector. The default endpoint is `http://localhost:4317`, but you can change it in the `.env` file.
+You can also configure the OTLP exporter endpoint to send traces to a local OpenTelemetry Collector by setting the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable in your `.env` file.
 
 ## Run the sample
 
