@@ -92,47 +92,23 @@ class TestAgentFrameworkInstrumentor(unittest.TestCase):
         self.assertTrue(instrumentor._af_instrumentation_enabled)
 
     @patch("microsoft.opentelemetry._agent_framework._trace_instrumentor.get_tracer_provider")
-    def test_instrument_enables_sensitive_data_when_env_var_set(self, mock_get_provider):
-        """When AZURE_TRACING_GEN_AI_CONTENT_RECORDING_ENABLED is truthy,
+    def test_instrument_enables_sensitive_data_when_kwarg_set(self, mock_get_provider):
+        """When enable_sensitive_data=True is passed as kwarg,
         enable_instrumentation must be called with enable_sensitive_data=True."""
         mock_get_provider.return_value = MagicMock()
         mock_enable = MagicMock()
 
-        import os
-
-        with patch.dict("os.environ", {"AZURE_TRACING_GEN_AI_CONTENT_RECORDING_ENABLED": "true"}):
-            with patch.dict(
-                "sys.modules",
-                {
-                    "agent_framework": MagicMock(),
-                    "agent_framework.observability": MagicMock(enable_instrumentation=mock_enable),
-                },
-            ):
-                instrumentor = AgentFrameworkInstrumentor()
-                instrumentor._instrument()
+        with patch.dict(
+            "sys.modules",
+            {
+                "agent_framework": MagicMock(),
+                "agent_framework.observability": MagicMock(enable_instrumentation=mock_enable),
+            },
+        ):
+            instrumentor = AgentFrameworkInstrumentor()
+            instrumentor._instrument(enable_sensitive_data=True)
 
         mock_enable.assert_called_once_with(enable_sensitive_data=True)
-        self.assertTrue(instrumentor._af_instrumentation_enabled)
-
-    @patch("microsoft.opentelemetry._agent_framework._trace_instrumentor.get_tracer_provider")
-    def test_instrument_disables_sensitive_data_when_env_var_false(self, mock_get_provider):
-        """When AZURE_TRACING_GEN_AI_CONTENT_RECORDING_ENABLED is falsy,
-        enable_instrumentation must be called with enable_sensitive_data=False."""
-        mock_get_provider.return_value = MagicMock()
-        mock_enable = MagicMock()
-
-        with patch.dict("os.environ", {"AZURE_TRACING_GEN_AI_CONTENT_RECORDING_ENABLED": "false"}):
-            with patch.dict(
-                "sys.modules",
-                {
-                    "agent_framework": MagicMock(),
-                    "agent_framework.observability": MagicMock(enable_instrumentation=mock_enable),
-                },
-            ):
-                instrumentor = AgentFrameworkInstrumentor()
-                instrumentor._instrument()
-
-        mock_enable.assert_called_once_with(enable_sensitive_data=False)
         self.assertTrue(instrumentor._af_instrumentation_enabled)
 
     @patch("microsoft.opentelemetry._agent_framework._trace_instrumentor.get_tracer_provider")
