@@ -2,6 +2,8 @@
 
 This sample demonstrates how to use [Agent Framework](https://aka.ms/agent-framework) to create a simple agent using Foundry model services and export OpenTelemetry traces using the Microsoft OpenTelemetry SDK to Azure Monitor (Application Insights) or a local OpenTelemetry Collector.
 
+Learn more about the Microsoft Agent Framework in our [GitHub repository](https://github.com/microsoft/agent-framework).
+
 ## Prerequisites
 
 - Python 3.10+
