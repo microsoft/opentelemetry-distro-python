@@ -1,5 +1,8 @@
 # Default owners for all files
-* @hectorhdzg @JacksonWeber @lzchen @MSNev @rads-1996 @jeremydvoss @fpfp100 @juliomenendez @alexlu4250 @nikhilNava @ajmfehr @gwharris7 @sellakumaran @biswapm
+* @hectorhdzg @JacksonWeber @lzchen @MSNev @rads-1996 @jeremydvoss
+
+# A365 co-owners
+/src/microsoft/opentelemetry/a365/ @hectorhdzg @JacksonWeber @lzchen @MSNev @rads-1996 @jeremydvoss @fpfp100 @alexlu4250 @nikhilNava @juliomenendez @ajmfehr @gwharris7 @sellakumaran @biswapm
 
 # LangChain instrumentation co-owners
 /src/microsoft/opentelemetry/_genai/_langchain/ @hectorhdzg @JacksonWeber @lzchen @MSNev @rads-1996 @jeremydvoss @nagkumar91
