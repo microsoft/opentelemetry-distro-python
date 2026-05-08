@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "a365-otel-exporter"
+version = "0.1.0"
+description = "OpenTelemetry SpanExporter for Agent 365 Observability"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+authors = [
+    { name = "Agent 365 Observability Team" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: System :: Monitoring",
+]
+dependencies = [
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-api>=1.20.0",
+    "requests>=2.28.0",
+]
+
+[project.optional-dependencies]
+azure = [
+    "azure-identity>=1.14.0",
+]
+msal = [
+    "msal>=1.24.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/microsoft/agent365-observability"
+
+[tool.setuptools.packages.find]
+where = ["src"]
