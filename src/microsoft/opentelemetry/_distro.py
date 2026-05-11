@@ -245,20 +245,21 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
     # ---- SDKStats: record distro feature flag ----
     set_sdkstats_feature(SdkStatsFeature.DISTRO)
 
-    # ---- GenAI main-agent attribute propagation (always on) ----
+    # ---- GenAI main-agent attribute propagation ----
     # Prepended to the processor lists so on_start/on_emit run BEFORE any
     # Batch* export processor appended below; this enriches once per
-    # span/log and is then visible to every downstream exporter.
-    if not otel_kwargs.get(DISABLE_TRACING_ARG, False):
-        otel_kwargs[SPAN_PROCESSORS_ARG] = [
-            GenAIMainAgentSpanProcessor(),
-            *list(otel_kwargs.get(SPAN_PROCESSORS_ARG) or []),
-        ]
-    if not otel_kwargs.get(DISABLE_LOGGING_ARG, False):
-        otel_kwargs[LOG_RECORD_PROCESSORS_ARG] = [
-            GenAIMainAgentLogRecordProcessor(),
-            *list(otel_kwargs.get(LOG_RECORD_PROCESSORS_ARG) or []),
-        ]
+    # span/log and is then visible to the Azure Monitor exporter. 
+    if enable_azure_monitor:
+        if not otel_kwargs.get(DISABLE_TRACING_ARG, False):
+            otel_kwargs[SPAN_PROCESSORS_ARG] = [
+                GenAIMainAgentSpanProcessor(),
+                *list(otel_kwargs.get(SPAN_PROCESSORS_ARG) or []),
+            ]
+        if not otel_kwargs.get(DISABLE_LOGGING_ARG, False):
+            otel_kwargs[LOG_RECORD_PROCESSORS_ARG] = [
+                GenAIMainAgentLogRecordProcessor(),
+                *list(otel_kwargs.get(LOG_RECORD_PROCESSORS_ARG) or []),
+            ]
 
     # ---- OTLP exporters (append to user-supplied processors/readers) ----
     _append_otlp_components(otel_kwargs)
