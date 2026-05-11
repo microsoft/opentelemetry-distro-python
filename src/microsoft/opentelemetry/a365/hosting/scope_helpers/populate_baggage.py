@@ -3,10 +3,20 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterator
 from typing import Any
 
-from microsoft_agents.hosting.core.turn_context import TurnContext
+try:
+    from microsoft_agents.hosting.core.turn_context import TurnContext
+except ImportError as exc:
+    logging.getLogger(__name__).error(
+        "microsoft.opentelemetry.a365.hosting requires the agents SDK "
+        "(missing module: %s). Install it with: "
+        "pip install microsoft-agents-hosting-core",
+        exc.name,
+    )
+
 from microsoft.opentelemetry.a365.core.middleware.baggage_builder import BaggageBuilder
 
 from microsoft.opentelemetry.a365.hosting.scope_helpers.utils import (

@@ -1,11 +1,16 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+import pytest
+
+pytest.importorskip("microsoft_agents.activity")
+pytest.importorskip("microsoft_agents.hosting.core")
+
+# pylint: disable=wrong-import-position
 import json
 from typing import Any
 from unittest.mock import MagicMock
 
-import pytest
 from microsoft_agents.activity import (
     Activity,
     ActivityEventNames,

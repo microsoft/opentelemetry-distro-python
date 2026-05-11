@@ -1,6 +1,11 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+import pytest
+
+pytest.importorskip("microsoft_agents.activity")
+
+# pylint: disable=wrong-import-position
 from microsoft_agents.activity import Activity, ChannelAccount, ConversationAccount
 from microsoft.opentelemetry.a365.core.constants import (
     CHANNEL_LINK_KEY,

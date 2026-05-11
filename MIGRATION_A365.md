@@ -42,7 +42,9 @@ pip install microsoft-opentelemetry
 > `ObservabilityHostingManager`, etc.), also install
 > `microsoft-agents-activity` and `microsoft-agents-hosting-core`. If
 > they are not installed, importing from
-> `microsoft.opentelemetry.a365.hosting` raises an `ImportError`.
+> `microsoft.opentelemetry.a365.hosting` logs an error with the install
+> command but does not crash; the middleware will fail at runtime when
+> invoked.
 
 ## Step 2 — Rewrite Import Paths
 

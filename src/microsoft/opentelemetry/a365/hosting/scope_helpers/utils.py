@@ -2,11 +2,23 @@
 # Licensed under the MIT License.
 from __future__ import annotations
 
+from __future__ import annotations
+
+import logging
 import json
 from collections.abc import Iterator
 from typing import Any
 
-from microsoft_agents.activity import Activity
+try:
+    from microsoft_agents.activity import Activity
+except ImportError as exc:
+    logging.getLogger(__name__).error(
+        "microsoft.opentelemetry.a365.hosting requires the agents SDK "
+        "(missing module: %s). Install it with: "
+        "pip install microsoft-agents-activity",
+        exc.name,
+    )
+
 from microsoft.opentelemetry.a365.constants import (
     CHANNEL_LINK_KEY,
     CHANNEL_NAME_KEY,

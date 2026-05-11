@@ -8,7 +8,15 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 
-from microsoft_agents.hosting.core.middleware_set import MiddlewareSet
+try:
+    from microsoft_agents.hosting.core.middleware_set import MiddlewareSet
+except ImportError as exc:
+    logging.getLogger(__name__).error(
+        "microsoft.opentelemetry.a365.hosting requires the agents SDK "
+        "(missing module: %s). Install it with: "
+        "pip install microsoft-agents-hosting-core",
+        exc.name,
+    )
 
 from microsoft.opentelemetry.a365.hosting.middleware.baggage_middleware import BaggageMiddleware
 from microsoft.opentelemetry.a365.hosting.middleware.output_logging_middleware import OutputLoggingMiddleware
