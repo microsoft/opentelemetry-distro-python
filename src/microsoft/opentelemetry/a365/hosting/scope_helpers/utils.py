@@ -25,6 +25,31 @@ from microsoft.opentelemetry.a365.constants import (
 AGENT_ROLE = "agenticUser"
 
 
+def resolve_sub_channel(activity: Activity) -> str | None:
+    """Resolve sub_channel from ChannelId, falling back to productContext in channel_data."""
+    channel_id = activity.channel_id
+    sub_channel = None
+
+    if channel_id is not None and hasattr(channel_id, "channel"):
+        sub_channel = channel_id.sub_channel
+
+    if not sub_channel and activity.channel_data:
+        try:
+            channel_data = activity.channel_data
+            if isinstance(channel_data, str):
+                channel_data = json.loads(channel_data)
+            elif hasattr(channel_data, "__dict__"):
+                channel_data = channel_data.__dict__
+
+            product_context = channel_data.get("productContext") if isinstance(channel_data, dict) else None
+            if product_context:
+                sub_channel = product_context
+        except (json.JSONDecodeError, AttributeError, TypeError):
+            pass
+
+    return sub_channel
+
+
 def _is_agentic(entity: Any) -> bool:
     if not entity:
         return False
@@ -73,31 +98,16 @@ def get_channel_pairs(activity: Activity) -> Iterator[tuple[str, Any]]:
 
     # Extract channel name from either string or ChannelId object
     channel_name = None
-    sub_channel = None
 
     if channel_id is not None:
         if hasattr(channel_id, "channel"):
             # ChannelId object
             channel_name = channel_id.channel
-            sub_channel = channel_id.sub_channel
         elif isinstance(channel_id, str):
             # Direct string value
             channel_name = channel_id
 
-    # Fallback: extract sub_channel from productContext in channel_data
-    if not sub_channel and activity.channel_data:
-        try:
-            channel_data = activity.channel_data
-            if isinstance(channel_data, str):
-                channel_data = json.loads(channel_data)
-            elif hasattr(channel_data, "__dict__"):
-                channel_data = channel_data.__dict__
-
-            product_context = channel_data.get("productContext") if isinstance(channel_data, dict) else None
-            if product_context:
-                sub_channel = product_context
-        except (json.JSONDecodeError, AttributeError, TypeError):
-            pass
+    sub_channel = resolve_sub_channel(activity)
 
     # Yield channel name as source name
     yield CHANNEL_NAME_KEY, channel_name
