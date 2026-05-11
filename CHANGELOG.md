@@ -1,8 +1,30 @@
 # Release History
 
-## 1.0.1 (2026-05-01)
+## 1.1.0 (2026-05-11)
+
+### Features Added
+- Add GenAI main-agent attribution processors
+  ([#120](https://github.com/microsoft/opentelemetry-distro-python/pull/120))
+- Add `enable_sensitive_data` parameter to configure sensitive data in Agent Framework
+  ([#121](https://github.com/microsoft/opentelemetry-distro-python/pull/121))
+
+### Bugs Fixed
+- Fix `get_caller_pairs` to resolve `userId` across all channels
+  ([#118](https://github.com/microsoft/opentelemetry-distro-python/pull/118))
+- Fix response model not being set when using LangChain
+  ([#116](https://github.com/microsoft/opentelemetry-distro-python/pull/116))
 
 ### Other Changes
+- Add Agent Framework sample
+  ([#122](https://github.com/microsoft/opentelemetry-distro-python/pull/122))
+- Add auth scopes breaking change to A365 migration guide
+  ([#123](https://github.com/microsoft/opentelemetry-distro-python/pull/123))
+- Fix MIGRATION_A365.md documentation errors
+  ([#109](https://github.com/microsoft/opentelemetry-distro-python/pull/109))
+- Add issues template and notification actions
+  ([#112](https://github.com/microsoft/opentelemetry-distro-python/pull/112))
+- Promote new A365 owners
+  ([#125](https://github.com/microsoft/opentelemetry-distro-python/pull/125))
 - Add troubleshooting sections and duplicate spans guide
   ([#115](https://github.com/microsoft/opentelemetry-distro-python/pull/115))
 - Drop support for Python 3.9.
