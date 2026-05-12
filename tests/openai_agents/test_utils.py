@@ -133,8 +133,8 @@ class TestCaptureToolCallIds(TestCase):
             }
         ]
         pending = OrderedDict()
-        capture_tool_call_ids(output, pending)
-        self.assertEqual(pending['add:{"a":1}'], "call_123")
+        capture_tool_call_ids(output, pending, trace_id="trace-1")
+        self.assertEqual(pending['trace-1:add:{"a":1}'], "call_123")
 
     def test_caps_size(self):
         pending = OrderedDict()
@@ -150,7 +150,7 @@ class TestCaptureToolCallIds(TestCase):
                     ],
                 }
             ]
-            capture_tool_call_ids(output, pending, max_size=10)
+            capture_tool_call_ids(output, pending, max_size=10, trace_id="trace-1")
         self.assertLessEqual(len(pending), 10)
 
     def test_empty_output(self):
@@ -163,10 +163,10 @@ class TestCaptureToolCallIds(TestCase):
 class TestGetToolCallId(TestCase):
     def test_pops_matching_entry(self):
         pending = OrderedDict()
-        pending['add:{"a":1}'] = "call_abc"
-        result = get_tool_call_id("add", '{"a":1}', pending)
+        pending['trace-1:add:{"a":1}'] = "call_abc"
+        result = get_tool_call_id("add", '{"a":1}', pending, trace_id="trace-1")
         self.assertEqual(result, "call_abc")
-        self.assertNotIn('add:{"a":1}', pending)
+        self.assertNotIn('trace-1:add:{"a":1}', pending)
 
     def test_returns_none_for_missing(self):
         result = get_tool_call_id("unknown", "", OrderedDict())

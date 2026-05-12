@@ -41,18 +41,7 @@ class TestA365OpenAIAgentsInstrumentor(unittest.TestCase):
         mock_tracer = MagicMock()
         mock_trace_api.get_tracer.return_value = mock_tracer
 
-        # Mock the agents.tracing module
-        mock_provider = MagicMock()
-        mock_multi = MagicMock()
-        mock_multi._processors = []
-        mock_provider._multi_processor = mock_multi
-
         instrumentor = A365OpenAIAgentsInstrumentor()
-        with patch(
-            "microsoft.opentelemetry._genai._openai_agents._trace_instrumentor.A365OpenAIAgentsInstrumentor._instrument"
-        ):
-            # Call directly
-            pass
 
         # Test the actual _instrument logic
         with patch.dict("sys.modules", {"agents.tracing": MagicMock()}):

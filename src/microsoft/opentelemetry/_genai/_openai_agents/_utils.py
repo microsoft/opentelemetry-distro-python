@@ -311,7 +311,7 @@ def _get_attributes_from_chat_completions_message_content_item(
     prefix: str = "",
 ) -> Iterator[tuple[str, AttributeValue]]:
     if obj.get("type") == "text" and (text := obj.get("text")):
-        yield f"{prefix}{GEN_AI_OUTPUT_MESSAGES_KEY}", text
+        yield f"{prefix}{GEN_AI_MESSAGE_CONTENT}", text
 
 
 def _get_attributes_from_chat_completions_tool_call_dict(
@@ -365,15 +365,15 @@ def get_attributes_from_message_content_list(
 ) -> Iterator[tuple[str, AttributeValue]]:
     for i, item in enumerate(obj):
         if item["type"] == "input_text" or item["type"] == "output_text":
-            yield f"{prefix}{GEN_AI_INPUT_MESSAGES_KEY}.{i}.{GEN_AI_MESSAGE_CONTENT_TYPE}", "text"
+            yield f"{prefix}{GEN_AI_MESSAGE_CONTENTS}.{i}.{GEN_AI_MESSAGE_CONTENT_TYPE}", "text"
             yield (
-                f"{prefix}{GEN_AI_INPUT_MESSAGES_KEY}.{i}.{GEN_AI_OUTPUT_MESSAGES_KEY}",
+                f"{prefix}{GEN_AI_MESSAGE_CONTENTS}.{i}.{GEN_AI_MESSAGE_CONTENT}",
                 item["text"],
             )
         elif item["type"] == "refusal":
-            yield f"{prefix}{GEN_AI_INPUT_MESSAGES_KEY}.{i}.{GEN_AI_MESSAGE_CONTENT_TYPE}", "text"
+            yield f"{prefix}{GEN_AI_MESSAGE_CONTENTS}.{i}.{GEN_AI_MESSAGE_CONTENT_TYPE}", "text"
             yield (
-                f"{prefix}{GEN_AI_INPUT_MESSAGES_KEY}.{i}.{GEN_AI_OUTPUT_MESSAGES_KEY}",
+                f"{prefix}{GEN_AI_MESSAGE_CONTENTS}.{i}.{GEN_AI_MESSAGE_CONTENT}",
                 item["refusal"],
             )
         elif TYPE_CHECKING:
@@ -432,16 +432,20 @@ def get_attributes_from_response_output(
             yield from _get_attributes_from_message(item, prefix)
             msg_idx += 1
         elif item.type == "function_call":
-            yield f"{GEN_AI_OUTPUT_MESSAGES_KEY}.{msg_idx}.{GEN_AI_MESSAGE_ROLE}", "assistant"
-            prefix = f"{GEN_AI_OUTPUT_MESSAGES_KEY}.{msg_idx}.{GEN_AI_MESSAGE_TOOL_CALLS}.{tool_call_idx}."
-            yield from _get_attributes_from_function_tool_call(item, prefix)
+            prefix = f"{GEN_AI_OUTPUT_MESSAGES_KEY}.{msg_idx}."
+            yield f"{prefix}{GEN_AI_MESSAGE_ROLE}", "assistant"
+            tc_prefix = f"{prefix}{GEN_AI_MESSAGE_TOOL_CALLS}.{tool_call_idx}."
+            yield from _get_attributes_from_function_tool_call(item, tc_prefix)
             tool_call_idx += 1
+            msg_idx += 1
         elif item.type == "custom_tool_call":
+            prefix = f"{GEN_AI_OUTPUT_MESSAGES_KEY}.{msg_idx}."
             yield f"{prefix}{GEN_AI_MESSAGE_ROLE}", "assistant"
             yield from _get_attributes_from_response_custom_tool_call(
                 item,
                 f"{prefix}{GEN_AI_MESSAGE_TOOL_CALLS}.0.",
             )
+            msg_idx += 1
         elif TYPE_CHECKING:
             assert_never(item)  # type: ignore[arg-type]
 
@@ -452,7 +456,7 @@ def _get_attributes_from_response_instruction(
     if not instructions:
         return
     yield f"{GEN_AI_INPUT_MESSAGES_KEY}.0.{GEN_AI_MESSAGE_ROLE}", "system"
-    yield f"{GEN_AI_INPUT_MESSAGES_KEY}.0.{GEN_AI_OUTPUT_MESSAGES_KEY}", instructions
+    yield f"{GEN_AI_INPUT_MESSAGES_KEY}.0.{GEN_AI_MESSAGE_CONTENT}", instructions
 
 
 def _get_attributes_from_function_tool_call(
@@ -523,13 +527,19 @@ def get_span_status(obj: Span[Any]) -> Status:
     return Status(StatusCode.OK)
 
 
-def capture_tool_call_ids(output_list: Any, pending_tool_calls: dict[str, str], max_size: int = 1000) -> None:
+def capture_tool_call_ids(
+    output_list: Any,
+    pending_tool_calls: dict[str, str],
+    max_size: int = 1000,
+    trace_id: str = "",
+) -> None:
     """Extract and store tool_call_ids from generation output for later use by FunctionSpan.
 
     Args:
         output_list: The generation output containing tool calls
         pending_tool_calls: OrderedDict to store pending tool calls
         max_size: Maximum number of pending tool calls to keep in memory
+        trace_id: Trace ID to scope tool calls and avoid cross-trace collisions
     """
     if not output_list:
         return
@@ -545,8 +555,8 @@ def capture_tool_call_ids(output_list: Any, pending_tool_calls: dict[str, str], 
                             func_name = func.get("name") if isinstance(func, dict) else None
                             func_args = func.get("arguments", "") if isinstance(func, dict) else ""
                             if call_id and func_name:
-                                # Key by (function_name, arguments) to uniquely identify each call
-                                key = f"{func_name}:{func_args}"
+                                # Key by (trace_id, function_name, arguments) to avoid cross-trace collisions
+                                key = f"{trace_id}:{func_name}:{func_args}"
                                 pending_tool_calls[key] = call_id
                                 # Cap the size of the dict to prevent unbounded growth
                                 while len(pending_tool_calls) > max_size:
@@ -555,9 +565,14 @@ def capture_tool_call_ids(output_list: Any, pending_tool_calls: dict[str, str], 
         pass
 
 
-def get_tool_call_id(function_name: str, function_args: str, pending_tool_calls: dict[str, str]) -> str | None:
+def get_tool_call_id(
+    function_name: str,
+    function_args: str,
+    pending_tool_calls: dict[str, str],
+    trace_id: str = "",
+) -> str | None:
     """Get and remove the tool_call_id for a function with specific arguments."""
-    key = f"{function_name}:{function_args}"
+    key = f"{trace_id}:{function_name}:{function_args}"
     return pending_tool_calls.pop(key, None)
 
 

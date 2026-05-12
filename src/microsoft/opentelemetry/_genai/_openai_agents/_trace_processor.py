@@ -99,7 +99,7 @@ class OpenAIAgentsTraceProcessor(TracingProcessor):
         self._agent_span_ids: OrderedDict[str, None] = OrderedDict()
         # Track parent-child relationships: child_span_id -> parent_span_id
         self._span_parents: OrderedDict[str, str] = OrderedDict()
-        # Track tool_call_ids from GenerationSpan: (function_name, trace_id) -> call_id
+        # Track tool_call_ids from GenerationSpan: "{trace_id}:{function_name}:{args}" -> call_id
         # Use an OrderedDict and _MAX_PENDING_TOOL_CALLS to cap the size of the dict
         # in case tool calls are captured but never consumed
         self._pending_tool_calls: OrderedDict[str, str] = OrderedDict()
@@ -125,6 +125,11 @@ class OpenAIAgentsTraceProcessor(TracingProcessor):
         Args:
             trace: The trace that started.
         """
+        root_span = self._tracer.start_span(name="Agent workflow")
+        self._root_spans[trace.trace_id] = root_span
+        self._cap_ordered_dict(self._root_spans, self._MAX_TRACKED_SPANS)
+        self._tokens[trace.trace_id] = attach(set_span_in_context(root_span))
+        self._cap_ordered_dict(self._tokens, self._MAX_TRACKED_SPANS)
 
     def on_trace_end(self, trace: Trace) -> None:
         """Called when a trace is finished.
@@ -132,6 +137,8 @@ class OpenAIAgentsTraceProcessor(TracingProcessor):
         Args:
             trace: The trace that started.
         """
+        if token := self._tokens.pop(trace.trace_id, None):
+            detach(token)  # type: ignore[arg-type]
         if root_span := self._root_spans.pop(trace.trace_id, None):
             root_span.set_status(Status(StatusCode.OK))
             root_span.end()
@@ -215,7 +222,9 @@ class OpenAIAgentsTraceProcessor(TracingProcessor):
                     self._cap_ordered_dict(self._agent_outputs, self._MAX_TRACKED_SPANS)
             # Capture tool_call_ids for later use by FunctionSpan
             if data.output:
-                capture_tool_call_ids(data.output, self._pending_tool_calls, self._MAX_PENDING_TOOL_CALLS)
+                capture_tool_call_ids(
+                    data.output, self._pending_tool_calls, self._MAX_PENDING_TOOL_CALLS, span.trace_id
+                )
             attrs = otel_span.attributes or {}  # type: ignore[attr-defined]
             otel_span.update_name(f"{attrs[GEN_AI_OPERATION_NAME_KEY]} {attrs[GEN_AI_REQUEST_MODEL_KEY]}")
         elif isinstance(data, FunctionSpanData):
@@ -225,7 +234,7 @@ class OpenAIAgentsTraceProcessor(TracingProcessor):
             otel_span.set_attribute(GEN_AI_TOOL_TYPE_KEY, data.type)
             # Set tool_call_id if available from preceding GenerationSpan
             func_args = data.input if data.input else ""
-            if tool_call_id := get_tool_call_id(data.name, func_args, self._pending_tool_calls):
+            if tool_call_id := get_tool_call_id(data.name, func_args, self._pending_tool_calls, span.trace_id):
                 otel_span.set_attribute(GEN_AI_TOOL_CALL_ID_KEY, tool_call_id)
             otel_span.update_name(f"{EXECUTE_TOOL_OPERATION_NAME} {data.name}")
         elif isinstance(data, MCPListToolsSpanData):

@@ -183,8 +183,8 @@ class TestOpenAIAgentsTraceProcessor(TestCase):
         otel_span = _make_otel_span()
         self.processor._otel_spans["func-1"] = otel_span
         self.processor._tokens["func-1"] = MagicMock()
-        # Pre-populate pending tool calls
-        self.processor._pending_tool_calls['add:{"a":1}'] = "call_abc"
+        # Pre-populate pending tool calls (keyed with trace_id)
+        self.processor._pending_tool_calls['trace-1:add:{"a":1}'] = "call_abc"
 
         self.processor.on_span_end(span)
 
