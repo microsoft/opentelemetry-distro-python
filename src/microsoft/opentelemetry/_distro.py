@@ -55,6 +55,7 @@ from microsoft.opentelemetry._constants import (
     SPAN_PROCESSORS_ARG,
     VIEWS_ARG,
     _A365_DISABLED_INSTRUMENTATIONS,
+    _AGENT_FRAMEWORK_DISABLED_INSTRUMENTATIONS,
     _AZURE_MONITOR_KWARG_MAP,
     _SUPPORTED_INSTRUMENTED_LIBRARIES,
     _SPECTRA_DEFAULT_GRPC_ENDPOINT,
@@ -703,10 +704,20 @@ def _setup_instrumentations(otel_kwargs: Dict[str, Any], **kwargs: Any) -> None:
     """Discover and activate OTel instrumentations for supported libraries."""
     enable_a365: bool = kwargs.pop("enable_a365", False)
     entry_point_finder = _EntryPointDistFinder()
-    for entry_point in entry_points(group="opentelemetry_instrumentor"):
+    discovered = [
+        ep for ep in entry_points(group="opentelemetry_instrumentor")
+        if ep.name in _SUPPORTED_INSTRUMENTED_LIBRARIES
+    ]
+
+    if any(
+        ep.name == "agent_framework" and _is_instrumentation_enabled(otel_kwargs, ep.name)
+        for ep in discovered
+    ):
+        inst_opts = otel_kwargs.setdefault(INSTRUMENTATION_OPTIONS_ARG, {})
+        for lib in _AGENT_FRAMEWORK_DISABLED_INSTRUMENTATIONS:
+            inst_opts.setdefault(lib, {}).setdefault("enabled", False)
+    for entry_point in discovered:
         lib_name = entry_point.name
-        if lib_name not in _SUPPORTED_INSTRUMENTED_LIBRARIES:
-            continue
         if not _is_instrumentation_enabled(otel_kwargs, lib_name):
             _logger.debug("Instrumentation skipped for library %s", lib_name)
             continue

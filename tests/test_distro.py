@@ -21,6 +21,7 @@ from opentelemetry.sdk.metrics import MeterProvider
 
 from microsoft.opentelemetry._constants import (
     _A365_DISABLED_INSTRUMENTATIONS,
+    _AGENT_FRAMEWORK_DISABLED_INSTRUMENTATIONS,
     _SUPPORTED_INSTRUMENTED_LIBRARIES,
 )
 from microsoft.opentelemetry._distro import (
@@ -28,6 +29,7 @@ from microsoft.opentelemetry._distro import (
     _append_a365_components,
     _append_spectra_components,
     _is_instrumentation_enabled,
+    _setup_instrumentations,
     _setup_tracing,
     _setup_metrics,
     _setup_logging,
@@ -323,7 +325,12 @@ class TestAllConfigOptions(unittest.TestCase):
         self.assertEqual(otel_kwargs["views"], ["v1"])
         self.assertEqual(otel_kwargs["logger_name"], "mylogger")
         self.assertEqual(otel_kwargs["logging_formatter"], formatter)
-        self.assertEqual(otel_kwargs["instrumentation_options"], {"flask": {"enabled": False}})
+        # The user-supplied flask option must be preserved. Other entries (e.g.
+        # the auto-disable of openai when agent_framework is installed) may also
+        # be present depending on the test environment.
+        self.assertEqual(
+            otel_kwargs["instrumentation_options"]["flask"], {"enabled": False}
+        )
         self.assertEqual(otel_kwargs["enable_trace_based_sampling_for_logs"], True)
         self.assertEqual(otel_kwargs["sampling_ratio"], 0.25)
 
@@ -1161,6 +1168,131 @@ class TestGenAIMainAgentProcessorRegistration(unittest.TestCase):
         log_processors = otel_kwargs.get("log_record_processors") or []
         self.assertFalse(any(isinstance(p, GenAIMainAgentSpanProcessor) for p in span_processors))
         self.assertFalse(any(isinstance(p, GenAIMainAgentLogRecordProcessor) for p in log_processors))
+
+
+def _make_instrumentor_entry_point(name: str):
+    """Build a fake entry point that mimics opentelemetry_instrumentor entries."""
+    instrumentor_cls = MagicMock()
+    instrumentor_instance = MagicMock()
+    instrumentor_cls.return_value = instrumentor_instance
+    ep = MagicMock()
+    ep.name = name
+    ep.group = "opentelemetry_instrumentor"
+    ep.value = f"fake.module:{name}Instrumentor"
+    ep.load.return_value = instrumentor_cls
+    ep.dist = None
+    return ep, instrumentor_cls, instrumentor_instance
+
+
+class TestAgentFrameworkDisablesOpenAIV2(unittest.TestCase):
+    """When agent_framework is going to be instrumented, openai-v2 must be disabled.
+
+    Rationale: agent_framework already emits chat/responses spans for openai SDK
+    calls it makes. Leaving openai-v2 active produces duplicate spans and can
+    crash on Azure deployments where `model` is omitted from kwargs (openai-v2
+    raises KeyError: 'gen_ai.request.model').
+    """
+
+    def test_constant_lists_openai(self):
+        self.assertIn("openai", _AGENT_FRAMEWORK_DISABLED_INSTRUMENTATIONS)
+
+    @patch("microsoft.opentelemetry._distro.set_sdkstats_instrumentation_by_name")
+    @patch("microsoft.opentelemetry._distro.get_dist_dependency_conflicts", return_value=None)
+    @patch("microsoft.opentelemetry._distro.entry_points")
+    def test_openai_disabled_when_agent_framework_present(
+        self, entry_points_mock, _conflicts_mock, _stats_mock
+    ):
+        af_ep, af_cls, af_instance = _make_instrumentor_entry_point("agent_framework")
+        oa_ep, oa_cls, oa_instance = _make_instrumentor_entry_point("openai")
+        entry_points_mock.return_value = [af_ep, oa_ep]
+
+        otel_kwargs: dict = {}
+        _setup_instrumentations(otel_kwargs)
+
+        # agent_framework should be activated; openai should NOT.
+        af_cls.assert_called_once()
+        af_instance.instrument.assert_called_once()
+        oa_cls.assert_not_called()
+        oa_instance.instrument.assert_not_called()
+
+        # The instrumentation_options dict should be mutated to mark openai disabled.
+        inst_opts = otel_kwargs.get("instrumentation_options") or {}
+        self.assertEqual(inst_opts.get("openai", {}).get("enabled"), False)
+
+    @patch("microsoft.opentelemetry._distro.set_sdkstats_instrumentation_by_name")
+    @patch("microsoft.opentelemetry._distro.get_dist_dependency_conflicts", return_value=None)
+    @patch("microsoft.opentelemetry._distro.entry_points")
+    def test_openai_enabled_when_agent_framework_absent(
+        self, entry_points_mock, _conflicts_mock, _stats_mock
+    ):
+        oa_ep, oa_cls, oa_instance = _make_instrumentor_entry_point("openai")
+        entry_points_mock.return_value = [oa_ep]
+
+        otel_kwargs: dict = {}
+        _setup_instrumentations(otel_kwargs)
+
+        # Without agent_framework, openai must remain enabled.
+        oa_cls.assert_called_once()
+        oa_instance.instrument.assert_called_once()
+        inst_opts = otel_kwargs.get("instrumentation_options") or {}
+        self.assertNotIn("openai", inst_opts)
+
+    @patch("microsoft.opentelemetry._distro.set_sdkstats_instrumentation_by_name")
+    @patch("microsoft.opentelemetry._distro.get_dist_dependency_conflicts", return_value=None)
+    @patch("microsoft.opentelemetry._distro.entry_points")
+    def test_openai_disabled_even_if_agent_framework_explicitly_enabled(
+        self, entry_points_mock, _conflicts_mock, _stats_mock
+    ):
+        af_ep, af_cls, _af_instance = _make_instrumentor_entry_point("agent_framework")
+        oa_ep, oa_cls, _oa_instance = _make_instrumentor_entry_point("openai")
+        entry_points_mock.return_value = [af_ep, oa_ep]
+
+        otel_kwargs: dict = {
+            "instrumentation_options": {"agent_framework": {"enabled": True}}
+        }
+        _setup_instrumentations(otel_kwargs)
+
+        af_cls.assert_called_once()
+        oa_cls.assert_not_called()
+
+    @patch("microsoft.opentelemetry._distro.set_sdkstats_instrumentation_by_name")
+    @patch("microsoft.opentelemetry._distro.get_dist_dependency_conflicts", return_value=None)
+    @patch("microsoft.opentelemetry._distro.entry_points")
+    def test_openai_not_disabled_when_agent_framework_explicitly_disabled(
+        self, entry_points_mock, _conflicts_mock, _stats_mock
+    ):
+        af_ep, af_cls, _af_instance = _make_instrumentor_entry_point("agent_framework")
+        oa_ep, oa_cls, oa_instance = _make_instrumentor_entry_point("openai")
+        entry_points_mock.return_value = [af_ep, oa_ep]
+
+        otel_kwargs: dict = {
+            "instrumentation_options": {"agent_framework": {"enabled": False}}
+        }
+        _setup_instrumentations(otel_kwargs)
+
+        # agent_framework is opted out, so openai must remain enabled.
+        af_cls.assert_not_called()
+        oa_cls.assert_called_once()
+        oa_instance.instrument.assert_called_once()
+
+    @patch("microsoft.opentelemetry._distro.set_sdkstats_instrumentation_by_name")
+    @patch("microsoft.opentelemetry._distro.get_dist_dependency_conflicts", return_value=None)
+    @patch("microsoft.opentelemetry._distro.entry_points")
+    def test_user_can_force_openai_back_on(
+        self, entry_points_mock, _conflicts_mock, _stats_mock
+    ):
+        af_ep, _af_cls, _af_instance = _make_instrumentor_entry_point("agent_framework")
+        oa_ep, oa_cls, oa_instance = _make_instrumentor_entry_point("openai")
+        entry_points_mock.return_value = [af_ep, oa_ep]
+
+        # User explicitly opts openai back in even though agent_framework is active.
+        otel_kwargs: dict = {
+            "instrumentation_options": {"openai": {"enabled": True}}
+        }
+        _setup_instrumentations(otel_kwargs)
+
+        oa_cls.assert_called_once()
+        oa_instance.instrument.assert_called_once()
 
 
 if __name__ == "__main__":

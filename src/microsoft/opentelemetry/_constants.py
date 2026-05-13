@@ -59,6 +59,8 @@ _A365_DISABLED_INSTRUMENTATIONS = (
     "azure_sdk",
 )
 
+_AGENT_FRAMEWORK_DISABLED_INSTRUMENTATIONS = ("openai",)
+
 # --- Console Exporter Constants ---
 
 ENABLE_CONSOLE_ARG = "enable_console"
