@@ -15,7 +15,7 @@ import json
 import logging
 import threading
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, MutableMapping, Sequence
 from typing import Any, final
 
 import requests
@@ -227,7 +227,7 @@ class _Agent365Exporter(SpanExporter):
             return text[:max_length] + "..."
         return text
 
-    def _post_with_retries(self, url: str, body: str, headers: dict[str, str]) -> bool:
+    def _post_with_retries(self, url: str, body: str, headers: MutableMapping[str, str | bytes]) -> bool:
         for attempt in range(DEFAULT_MAX_RETRIES + 1):
             try:
                 resp = self._session.post(
