@@ -1,8 +1,12 @@
 name: Deploy Docs
 
 on:
+  # Rebuild docs only when the package version changes on main, so the
+  # published docs always match the latest released package version
   push:
     branches: [main]
+    paths:
+      - "src/microsoft/opentelemetry/_version.py"
   workflow_dispatch:
 
 permissions:
