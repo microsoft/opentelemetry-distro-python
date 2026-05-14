@@ -130,7 +130,7 @@ class _Agent365Exporter(SpanExporter):
                     agent_id,
                 )
 
-                headers: dict[str, str] = {"content-type": "application/json"}
+                headers: dict[str, str | bytes] = {"content-type": "application/json"}
                 try:
                     token = self._token_resolver(agent_id, tenant_id)
                     if token:
@@ -227,7 +227,7 @@ class _Agent365Exporter(SpanExporter):
             return text[:max_length] + "..."
         return text
 
-    def _post_with_retries(self, url: str, body: str, headers: dict[str, str]) -> bool:
+    def _post_with_retries(self, url: str, body: str, headers: dict[str, str | bytes]) -> bool:
         for attempt in range(DEFAULT_MAX_RETRIES + 1):
             try:
                 resp = self._session.post(
