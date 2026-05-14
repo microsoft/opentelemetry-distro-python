@@ -709,13 +709,22 @@ def _setup_instrumentations(otel_kwargs: Dict[str, Any], **kwargs: Any) -> None:
         if ep.name in _SUPPORTED_INSTRUMENTED_LIBRARIES
     ]
 
-    if any(
-        ep.name == "agent_framework" and _is_instrumentation_enabled(otel_kwargs, ep.name)
-        for ep in discovered
+    agent_framework_entry_point = next(
+        (ep for ep in discovered if ep.name == "agent_framework"),
+        None,
+    )
+    if (
+        agent_framework_entry_point
+        and _is_instrumentation_enabled(otel_kwargs, agent_framework_entry_point.name)
     ):
-        inst_opts = otel_kwargs.setdefault(INSTRUMENTATION_OPTIONS_ARG, {})
-        for lib in _AGENT_FRAMEWORK_DISABLED_INSTRUMENTATIONS:
-            inst_opts.setdefault(lib, {}).setdefault("enabled", False)
+        agent_framework_dist = entry_point_finder.dist_for(agent_framework_entry_point)  # type: ignore
+        agent_framework_conflict = get_dist_dependency_conflicts(  # type: ignore
+            agent_framework_dist
+        )
+        if not agent_framework_conflict:
+            inst_opts = otel_kwargs.setdefault(INSTRUMENTATION_OPTIONS_ARG, {})
+            for lib in _AGENT_FRAMEWORK_DISABLED_INSTRUMENTATIONS:
+                inst_opts.setdefault(lib, {}).setdefault("enabled", False)
     for entry_point in discovered:
         lib_name = entry_point.name
         if not _is_instrumentation_enabled(otel_kwargs, lib_name):
