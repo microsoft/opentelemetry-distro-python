@@ -14,12 +14,10 @@ from threading import Lock
 try:
     from microsoft_agents.hosting.core.app.oauth.authorization import Authorization
     from microsoft_agents.hosting.core.turn_context import TurnContext
-except ImportError as exc:
+except ImportError:
     logging.getLogger(__name__).error(
-        "microsoft.opentelemetry.a365.hosting requires the agents SDK "
-        "(missing module: %s). Install it with: "
-        "pip install microsoft-agents-activity microsoft-agents-hosting-core",
-        exc.name,
+        "microsoft.opentelemetry.a365.hosting requires the agents SDK. Install the "
+        "packages with `pip install microsoft-opentelemetry[hosting]`.",
     )
 
 logger = logging.getLogger(__name__)

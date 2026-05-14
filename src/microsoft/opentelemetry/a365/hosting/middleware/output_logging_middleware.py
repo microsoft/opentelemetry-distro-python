@@ -11,12 +11,10 @@ from collections.abc import Awaitable, Callable
 try:
     from microsoft_agents.activity import Activity
     from microsoft_agents.hosting.core.turn_context import TurnContext
-except ImportError as exc:
+except ImportError:
     logging.getLogger(__name__).error(
-        "microsoft.opentelemetry.a365.hosting requires the agents SDK "
-        "(missing module: %s). Install it with: "
-        "pip install microsoft-agents-activity microsoft-agents-hosting-core",
-        exc.name,
+        "microsoft.opentelemetry.a365.hosting requires the agents SDK. Install the "
+        "packages with `pip install microsoft-opentelemetry[hosting]`.",
     )
 
 from microsoft.opentelemetry.a365.core.agent_details import AgentDetails
