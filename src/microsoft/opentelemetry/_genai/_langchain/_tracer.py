@@ -9,6 +9,7 @@ from collections import OrderedDict
 from collections.abc import Iterator, Mapping
 from itertools import chain
 from threading import RLock
+from contextvars import Token
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -128,7 +129,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         self._agent_wrapper_spans: dict[UUID, Span] = {}
         self._spans_by_run: OrderedDict[UUID, Span] = OrderedDict()
         self._event_logger = event_logger
-        self._context_tokens: dict[UUID, list[object]] = {}
+        self._context_tokens: dict[UUID, list[Token[context_api.Context]]] = {}
         self._lock = RLock()  # type: ignore[misc]
 
     def get_span(self, run_id: UUID) -> Span | None:
