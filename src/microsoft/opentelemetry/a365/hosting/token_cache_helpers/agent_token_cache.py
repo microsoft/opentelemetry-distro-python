@@ -11,8 +11,14 @@ import logging
 from dataclasses import dataclass
 from threading import Lock
 
-from microsoft_agents.hosting.core.app.oauth.authorization import Authorization
-from microsoft_agents.hosting.core.turn_context import TurnContext
+try:
+    from microsoft_agents.hosting.core.app.oauth.authorization import Authorization
+    from microsoft_agents.hosting.core.turn_context import TurnContext
+except ImportError:
+    logging.getLogger(__name__).error(
+        "microsoft.opentelemetry.a365.hosting requires the agents SDK. Install the "
+        "packages with `pip install microsoft-opentelemetry[hosting]`.",
+    )
 
 logger = logging.getLogger(__name__)
 

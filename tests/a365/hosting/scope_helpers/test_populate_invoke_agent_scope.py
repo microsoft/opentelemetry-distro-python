@@ -1,10 +1,15 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+import pytest
+
+pytest.importorskip("microsoft_agents.activity")
+pytest.importorskip("microsoft_agents.hosting.core")
+
+# pylint: disable=wrong-import-position
 import os
 from unittest.mock import MagicMock
 
-import pytest
 from microsoft_agents.activity import Activity, ChannelAccount, ConversationAccount
 from microsoft_agents.hosting.core import TurnContext
 from microsoft.opentelemetry.a365.core.agent_details import AgentDetails

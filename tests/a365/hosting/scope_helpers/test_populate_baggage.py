@@ -1,6 +1,12 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+import pytest
+
+pytest.importorskip("microsoft_agents.activity")
+pytest.importorskip("microsoft_agents.hosting.core")
+
+# pylint: disable=wrong-import-position
 from unittest.mock import MagicMock
 
 from microsoft_agents.activity import Activity, ChannelAccount, ConversationAccount
