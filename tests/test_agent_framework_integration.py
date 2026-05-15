@@ -89,10 +89,11 @@ class TestAgentFrameworkInstrumentorLifecycle(unittest.TestCase):
         mock_provider = MagicMock()
         mock_get_provider.return_value = mock_provider
 
-        with patch("agent_framework.observability.enable_instrumentation") as mock_enable:
+        mock_af_obs = MagicMock()
+        with patch.dict("sys.modules", {"agent_framework.observability": mock_af_obs}):
             inst = AgentFrameworkInstrumentor()
             inst._instrument(enable_sensitive_data=True)
-            mock_enable.assert_called_once_with(enable_sensitive_data=True)
+            mock_af_obs.enable_instrumentation.assert_called_once_with(enable_sensitive_data=True)
 
 
 class TestAgentFrameworkSpanProcessor(unittest.TestCase):

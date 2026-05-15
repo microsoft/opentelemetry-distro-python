@@ -78,9 +78,10 @@ class TestSemanticKernelInstrumentorLifecycle(unittest.TestCase):
 
         inst = SemanticKernelInstrumentor()
         inst._instrument()
+        self.assertIsNotNone(inst._processor)
         inst._uninstrument()
-        # Instrumented flag should be reset
-        self.assertFalse(inst.is_instrumented_by_opentelemetry)
+        # Enricher ownership should be released after uninstrument
+        self.assertFalse(inst._owns_enricher)
 
 
 class TestSemanticKernelSpanProcessor(unittest.TestCase):
