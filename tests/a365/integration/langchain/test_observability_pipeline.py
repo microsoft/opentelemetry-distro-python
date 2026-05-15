@@ -73,7 +73,8 @@ def add_numbers(a: float, b: float) -> str:
 def _get_span_attr(span: ReadableSpan, key: str) -> str | None:
     """Safely get an attribute from a span."""
     attrs = span.attributes or {}
-    return attrs.get(key)
+    val = attrs.get(key)
+    return str(val) if val is not None else None
 
 
 def _find_spans_by_name_prefix(spans: list[ReadableSpan], prefix: str) -> list[ReadableSpan]:
@@ -367,7 +368,8 @@ def _assert_ancestor(
         if parent_id in visited:
             break
         visited.add(parent_id)
-        current = span_map.get(parent_id)
-        if current is None:
+        next_span = span_map.get(parent_id)
+        if next_span is None:
             break
+        current = next_span
     raise AssertionError(message)

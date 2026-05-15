@@ -63,7 +63,8 @@ def add_numbers(a: float, b: float) -> float:
 def _get_span_attr(span: ReadableSpan, key: str) -> str | None:
     """Safely get an attribute from a span."""
     attrs = span.attributes or {}
-    return attrs.get(key)
+    val = attrs.get(key)
+    return str(val) if val is not None else None
 
 
 def _find_spans_by_operation(spans: list[ReadableSpan], operation_name: str) -> list[ReadableSpan]:
@@ -248,7 +249,7 @@ class TestAgentFrameworkObservabilityPipeline:
                         assert "parts" in msg
 
             if GEN_AI_OUTPUT_MESSAGES_KEY in attrs:
-                output_data = json.loads(attrs[GEN_AI_OUTPUT_MESSAGES_KEY])
+                output_data = json.loads(str(attrs[GEN_AI_OUTPUT_MESSAGES_KEY]))
                 if isinstance(output_data, dict) and "version" in output_data:
                     assert output_data["version"] == "0.1.0"
                     for msg in output_data["messages"]:
@@ -258,7 +259,7 @@ class TestAgentFrameworkObservabilityPipeline:
         # --- 8. Tool spans have tool-specific attributes ---
         for tool_span in tool_spans:
             attrs = dict(tool_span.attributes or {})
-            op = attrs.get(GEN_AI_OPERATION_NAME_KEY, "")
+            op = str(attrs.get(GEN_AI_OPERATION_NAME_KEY, ""))
             if op == EXECUTE_TOOL_OPERATION_NAME or tool_span.name.startswith("execute_tool"):
                 assert GEN_AI_TOOL_NAME_KEY in attrs or "add_numbers" in tool_span.name, (
                     f"Tool span missing tool name attribute: {list(attrs.keys())}"
@@ -357,7 +358,8 @@ class TestAgentFrameworkObservabilityPipeline:
             if parent_id in visited:
                 break
             visited.add(parent_id)
-            current = span_map.get(parent_id)
-            if current is None:
+            next_span = span_map.get(parent_id)
+            if next_span is None:
                 break
+            current = next_span
         raise AssertionError(message)

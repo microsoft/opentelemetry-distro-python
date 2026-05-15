@@ -11,6 +11,7 @@ span enrichment — exactly as production code would.
 """
 
 import os
+import typing
 from pathlib import Path
 from typing import Any
 
@@ -46,7 +47,7 @@ class SpanCapturingExporter(SpanExporter):
     def __init__(self) -> None:
         self.spans: list[ReadableSpan] = []
 
-    def export(self, spans: list[ReadableSpan]) -> SpanExportResult:
+    def export(self, spans: typing.Sequence[ReadableSpan]) -> SpanExportResult:
         self.spans.extend(spans)
         return SpanExportResult.SUCCESS
 
