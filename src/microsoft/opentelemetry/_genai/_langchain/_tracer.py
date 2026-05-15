@@ -25,7 +25,7 @@ from opentelemetry.context import (
     get_value,
 )
 from opentelemetry.trace import Span, SpanKind
-from opentelemetry.util.genai.span_utils import (
+from microsoft.opentelemetry._genai._langchain._span_utils import (
     _apply_error_attributes,
     _apply_llm_finish_attributes,
     _maybe_emit_llm_event,
