@@ -51,6 +51,7 @@ class LangChainInstrumentor(BaseInstrumentor):
         super().__init__()
         self._tracer: LangChainTracer | None = None
         self._original_cb_init: Callable[..., None] | None = None
+        self._owns_enricher: bool = False
 
     # ---- BaseInstrumentor API -------------------------------------------------
 
@@ -59,9 +60,7 @@ class LangChainInstrumentor(BaseInstrumentor):
 
     def _instrument(self, **kwargs: Any) -> None:
         if not langchain_available:
-            logger.debug(
-                "Skipping LangChain instrumentation: langchain-core is not available."
-            )
+            logger.debug("Skipping LangChain instrumentation: langchain-core is not available.")
             return
         tracer_provider = kwargs.get("tracer_provider")
         tracer = trace_api.get_tracer(
@@ -98,9 +97,31 @@ class LangChainInstrumentor(BaseInstrumentor):
             wrapper=_BaseCallbackManagerInit(self._tracer),
         )
 
+        # Register the A365 span enricher when the A365 pipeline is available.
+        try:
+            from microsoft.opentelemetry.a365.core.exporters.enriching_span_processor import register_span_enricher
+            from microsoft.opentelemetry._genai._langchain._span_enricher import enrich_langchain_span
+
+            register_span_enricher(enrich_langchain_span)
+            self._owns_enricher = True
+        except ImportError:
+            logger.debug("A365 enricher modules not available. Skipping enricher registration.")
+        except RuntimeError:
+            logger.debug("A span enricher is already registered. Skipping LangChain enricher registration.")
+
     def _uninstrument(self, **kwargs: Any) -> None:
         if not langchain_available:
             return
+        if self._owns_enricher:
+            try:
+                from microsoft.opentelemetry.a365.core.exporters.enriching_span_processor import (
+                    unregister_span_enricher,
+                )
+
+                unregister_span_enricher()
+            except ImportError:
+                pass
+            self._owns_enricher = False
         if self._original_cb_init is not None:
             langchain_core.callbacks.BaseCallbackManager.__init__ = self._original_cb_init  # type: ignore[assignment]
         self._original_cb_init = None
