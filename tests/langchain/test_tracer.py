@@ -486,3 +486,125 @@ class TestGetAttributesFromContext(TestCase):
     def test_yields_nothing_when_empty(self, mock_get_value):
         result = list(get_attributes_from_context())
         self.assertEqual(result, [])
+
+
+# ---- Runtime-context attach/detach (HTTP child-span parenting) ---------------
+
+
+class TestRunInlineFlag(TestCase):
+    """LangChain's async callback manager honors ``run_inline = True`` to
+    invoke sync handlers on the asyncio task instead of dispatching to a
+    thread-pool worker. This is required for our ``context_api.attach`` call
+    in ``_start_trace`` to mutate the contextvars of the awaiting LLM call so
+    that openai/httpx child spans correctly parent under our LLM span."""
+
+    def test_run_inline_is_true(self):
+        self.assertTrue(LangChainTracer.run_inline)
+
+
+class TestContextAttachDetach(TestCase):
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_attaches_inner_span_to_runtime_context(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        mock_ctx.attach.return_value = "token-1"
+        tracer, otel_tracer, mock_span = _make_tracer()
+        run = _make_run(run_type="chain", name="RunnableSequence")
+        tracer._start_trace(run)
+        mock_ctx.attach.assert_called_once()
+        self.assertEqual(tracer._context_tokens[run.id], ["token-1"])
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_detaches_on_end(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        mock_ctx.attach.return_value = "token-1"
+        # Fake _RUNTIME_CONTEXT exposed on the patched module
+        runtime = MagicMock()
+        mock_ctx._RUNTIME_CONTEXT = runtime
+        tracer, otel_tracer, mock_span = _make_tracer()
+        run = _make_run(run_type="chain", name="RunnableSequence")
+        tracer._start_trace(run)
+        tracer._end_trace(run)
+        runtime.detach.assert_called_once_with("token-1")
+        self.assertNotIn(run.id, tracer._context_tokens)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_skips_attach_when_separate_trace(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer(separate_trace=True)
+        run = _make_run(run_type="chain", name="RunnableSequence")
+        tracer._start_trace(run)
+        mock_ctx.attach.assert_not_called()
+        self.assertNotIn(run.id, tracer._context_tokens)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_detach_swallows_cross_context_error(self, mock_ctx):
+        """Token created in a different Context raises ValueError on detach.
+        The handler must swallow it (asyncio task contextvars are discarded
+        when the task ends) without propagating or logging at error level."""
+        mock_ctx.get_value.return_value = None
+        mock_ctx.attach.return_value = "token-1"
+        runtime = MagicMock()
+        runtime.detach.side_effect = ValueError("Token created in different Context")
+        mock_ctx._RUNTIME_CONTEXT = runtime
+        tracer, otel_tracer, _ = _make_tracer()
+        run = _make_run(run_type="chain", name="RunnableSequence")
+        tracer._start_trace(run)
+        # Must not raise.
+        tracer._end_trace(run)
+        runtime.detach.assert_called_once_with("token-1")
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_detach_falls_back_to_context_api_when_runtime_missing(self, mock_ctx):
+        """If ``_RUNTIME_CONTEXT`` private attribute is unavailable, fall back
+        to the public ``context_api.detach`` wrapper."""
+        mock_ctx.get_value.return_value = None
+        mock_ctx.attach.return_value = "token-1"
+        # Simulate missing private attribute.
+        if hasattr(mock_ctx, "_RUNTIME_CONTEXT"):
+            del mock_ctx._RUNTIME_CONTEXT
+        # ``getattr`` in tracer with default ``None`` triggers fallback.
+        type(mock_ctx)._RUNTIME_CONTEXT = property(lambda self: None)  # type: ignore[attr-defined]
+        try:
+            tracer, otel_tracer, _ = _make_tracer()
+            run = _make_run(run_type="chain", name="RunnableSequence")
+            tracer._start_trace(run)
+            tracer._end_trace(run)
+            mock_ctx.detach.assert_called_once_with("token-1")
+        finally:
+            del type(mock_ctx)._RUNTIME_CONTEXT  # type: ignore[attr-defined]
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_no_token_stored_when_suppressed(self, mock_ctx):
+        # SUPPRESS_INSTRUMENTATION skips the entire _start_trace body.
+        mock_ctx.get_value.return_value = True
+        tracer, otel_tracer, _ = _make_tracer()
+        run = _make_run(run_type="chain", name="RunnableSequence")
+        tracer._start_trace(run)
+        mock_ctx.attach.assert_not_called()
+        self.assertEqual(tracer._context_tokens, {})
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_attach_uses_inner_span_for_agent(self, mock_ctx):
+        """For a two-span agent, the attached span must be the INNER span
+        (so child LLM/tool runs parent under the framework span, and HTTP
+        spans parent under the LLM span when its own _start_trace runs)."""
+        mock_ctx.get_value.return_value = None
+        mock_ctx.attach.return_value = "token-1"
+        tracer, otel_tracer, _ = _make_tracer()
+        wrapper_span = MagicMock(name="wrapper")
+        inner_span = MagicMock(name="inner")
+        otel_tracer.start_span.side_effect = [wrapper_span, inner_span]
+        run = _make_run(
+            run_type="chain",
+            name="Travel_Assistant",
+            extra={"metadata": {"lc_agent_name": "Travel_Assistant"}},
+        )
+        # Patch set_span_in_context to record the span passed in.
+        with patch("microsoft.opentelemetry._genai._langchain._tracer.trace_api.set_span_in_context") as mock_sic:
+            tracer._start_trace(run)
+            # set_span_in_context is called twice during agent _start_trace:
+            # 1. To re-parent the inner span under the wrapper (parent_context).
+            # 2. To attach the inner span to the runtime context.
+            attach_call_args = mock_sic.call_args_list[-1]
+            self.assertIs(attach_call_args[0][0], inner_span)
+        mock_ctx.attach.assert_called_once()

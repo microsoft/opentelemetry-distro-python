@@ -93,6 +93,8 @@ CONTEXT_ATTRIBUTES = (
 class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-many-instance-attributes
     _MAX_TRACKED_RUNS = 10000
 
+    run_inline = True
+
     __slots__ = (
         "_tracer",
         "_separate_trace_from_runtime_context",
@@ -102,6 +104,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         "_agent_wrapper_spans",
         "_spans_by_run",
         "_event_logger",
+        "_context_tokens",
     )
 
     def __init__(
@@ -125,6 +128,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         self._agent_wrapper_spans: dict[UUID, Span] = {}
         self._spans_by_run: OrderedDict[UUID, Span] = OrderedDict()
         self._event_logger = event_logger
+        self._context_tokens: dict[UUID, list[object]] = {}
         self._lock = RLock()  # type: ignore[misc]
 
     def get_span(self, run_id: UUID) -> Span | None:
@@ -193,6 +197,11 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             kind=span_kind,
         )
 
+        if not self._separate_trace_from_runtime_context:
+            token = context_api.attach(trace_api.set_span_in_context(span))
+            with self._lock:
+                self._context_tokens[run.id] = [token]
+
         # For agent spans, set immediate attributes and init content aggregation
         if is_agent:
             # Use wrapper span (if present) as the agent span for attributes
@@ -248,6 +257,18 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         with self._lock:
             span = self._spans_by_run.pop(run.id, None)
             wrapper_span = self._agent_wrapper_spans.pop(run.id, None) if is_agent else None
+            tokens = self._context_tokens.pop(run.id, None)
+
+        if tokens:
+            runtime_ctx = getattr(context_api, "_RUNTIME_CONTEXT", None)
+            for token in reversed(tokens):
+                try:
+                    if runtime_ctx is not None:
+                        runtime_ctx.detach(token)
+                    else:
+                        context_api.detach(token)
+                except Exception:
+                    logger.debug("Failed to detach LangChain run context.", exc_info=True)
 
         end_time_utc_nano = as_utc_nano(run.end_time) if run.end_time else None
 

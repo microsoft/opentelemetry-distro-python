@@ -12,6 +12,7 @@ from microsoft.opentelemetry._constants import (
     DISABLE_METRICS_ARG,
     DISABLE_TRACING_ARG,
     ENABLE_LIVE_METRICS_ARG,
+    INSTRUMENTATION_OPTIONS_ARG,
     LOG_RECORD_PROCESSORS_ARG,
     METRIC_READERS_ARG,
     SPAN_PROCESSORS_ARG,
@@ -150,3 +151,26 @@ def _append_azure_monitor_components(
             exc_info=True,
         )
         return None, None, None
+
+
+def _disable_openai_v2_instrumentation(otel_kwargs: Dict[str, Any]) -> None:
+    options = otel_kwargs.get(INSTRUMENTATION_OPTIONS_ARG)
+    if isinstance(options, dict) and "openai" in options and "enabled" in options["openai"]:
+        return  # User has explicitly set openai instrumentation options; do not override
+
+    overlapping_present = False
+    for import_name in ("langchain_core", "agent_framework"):
+        try:
+            __import__(import_name)
+            overlapping_present = True
+            break
+        except ImportError:
+            continue
+
+    if not overlapping_present:
+        return
+
+    if not isinstance(options, dict):
+        options = {}
+    options.setdefault("openai", {})["enabled"] = False
+    otel_kwargs[INSTRUMENTATION_OPTIONS_ARG] = options

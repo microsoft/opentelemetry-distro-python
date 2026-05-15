@@ -323,7 +323,9 @@ class TestAllConfigOptions(unittest.TestCase):
         self.assertEqual(otel_kwargs["views"], ["v1"])
         self.assertEqual(otel_kwargs["logger_name"], "mylogger")
         self.assertEqual(otel_kwargs["logging_formatter"], formatter)
-        self.assertEqual(otel_kwargs["instrumentation_options"], {"flask": {"enabled": False}})
+        self.assertEqual(
+            otel_kwargs["instrumentation_options"], {"flask": {"enabled": False}, "openai": {"enabled": False}}
+        )
         self.assertEqual(otel_kwargs["enable_trace_based_sampling_for_logs"], True)
         self.assertEqual(otel_kwargs["sampling_ratio"], 0.25)
 
@@ -1080,6 +1082,87 @@ class TestA365DisablesWebInstrumentations(unittest.TestCase):
                 _is_instrumentation_enabled(otel_kwargs, lib),
                 f"{lib} should remain enabled when both a365 and azure_monitor are on",
             )
+
+
+class TestDisableOpenAIV2Instrumentation(unittest.TestCase):
+    """``_disable_openai_v2_instrumentation`` must respect explicit user preferences."""
+
+    def test_user_explicit_enabled_true_not_overridden(self):
+        """User setting openai.enabled=True must not be overridden, even with overlapping libs present."""
+        from microsoft.opentelemetry._utils import _disable_openai_v2_instrumentation
+
+        otel_kwargs = {"instrumentation_options": {"openai": {"enabled": True}}}
+        with patch(
+            "builtins.__import__",
+            side_effect=lambda name, *a, **kw: (
+                MagicMock() if name in ("langchain_core", "agent_framework") else __import__(name, *a, **kw)
+            ),
+        ):
+            _disable_openai_v2_instrumentation(otel_kwargs)
+        self.assertEqual(otel_kwargs["instrumentation_options"], {"openai": {"enabled": True}})
+
+    def test_user_explicit_enabled_false_not_overridden(self):
+        """User setting openai.enabled=False must be preserved."""
+        from microsoft.opentelemetry._utils import _disable_openai_v2_instrumentation
+
+        otel_kwargs = {"instrumentation_options": {"openai": {"enabled": False}}}
+        _disable_openai_v2_instrumentation(otel_kwargs)
+        self.assertEqual(otel_kwargs["instrumentation_options"], {"openai": {"enabled": False}})
+
+    def test_no_overlapping_libs_no_change(self):
+        """When neither langchain_core nor agent_framework is importable, kwargs are untouched."""
+        from microsoft.opentelemetry._utils import _disable_openai_v2_instrumentation
+
+        real_import = __import__
+
+        def fake_import(name, *a, **kw):
+            if name in ("langchain_core", "agent_framework"):
+                raise ImportError(name)
+            return real_import(name, *a, **kw)
+
+        otel_kwargs: dict = {}
+        with patch("builtins.__import__", side_effect=fake_import):
+            _disable_openai_v2_instrumentation(otel_kwargs)
+        self.assertEqual(otel_kwargs, {})
+
+    def test_disables_openai_when_overlapping_lib_present(self):
+        """Without an explicit user preference, openai is auto-disabled when an overlapping lib is present."""
+        from microsoft.opentelemetry._utils import _disable_openai_v2_instrumentation
+
+        real_import = __import__
+
+        def fake_import(name, *a, **kw):
+            if name == "langchain_core":
+                return MagicMock()
+            if name == "agent_framework":
+                raise ImportError(name)
+            return real_import(name, *a, **kw)
+
+        otel_kwargs: dict = {}
+        with patch("builtins.__import__", side_effect=fake_import):
+            _disable_openai_v2_instrumentation(otel_kwargs)
+        self.assertEqual(otel_kwargs["instrumentation_options"], {"openai": {"enabled": False}})
+
+    def test_preserves_other_libs_when_disabling_openai(self):
+        """Other libs in instrumentation_options must be preserved when openai is auto-disabled."""
+        from microsoft.opentelemetry._utils import _disable_openai_v2_instrumentation
+
+        real_import = __import__
+
+        def fake_import(name, *a, **kw):
+            if name == "agent_framework":
+                return MagicMock()
+            if name == "langchain_core":
+                raise ImportError(name)
+            return real_import(name, *a, **kw)
+
+        otel_kwargs = {"instrumentation_options": {"flask": {"enabled": False}}}
+        with patch("builtins.__import__", side_effect=fake_import):
+            _disable_openai_v2_instrumentation(otel_kwargs)
+        self.assertEqual(
+            otel_kwargs["instrumentation_options"],
+            {"flask": {"enabled": False}, "openai": {"enabled": False}},
+        )
 
 
 class TestGenAIMainAgentProcessorRegistration(unittest.TestCase):
