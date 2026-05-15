@@ -268,7 +268,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                         runtime_ctx.detach(token)
                     else:
                         context_api.detach(token)
-                except Exception:
+                except ValueError:
                     logger.debug("Failed to detach LangChain run context.", exc_info=True)
 
         end_time_utc_nano = as_utc_nano(run.end_time) if run.end_time else None

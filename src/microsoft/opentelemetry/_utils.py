@@ -4,6 +4,7 @@
 # license information.
 # --------------------------------------------------------------------------
 
+from importlib.util import find_spec
 from logging import getLogger
 from typing import Any, Dict
 
@@ -155,22 +156,25 @@ def _append_azure_monitor_components(
 
 def _disable_openai_v2_instrumentation(otel_kwargs: Dict[str, Any]) -> None:
     options = otel_kwargs.get(INSTRUMENTATION_OPTIONS_ARG)
-    if isinstance(options, dict) and "openai" in options and "enabled" in options["openai"]:
+    if (
+        isinstance(options, dict)
+        and isinstance(options.get("openai"), dict)
+        and "enabled" in options["openai"]
+    ):
         return  # User has explicitly set openai instrumentation options; do not override
 
-    overlapping_present = False
-    for import_name in ("langchain_core", "agent_framework"):
-        try:
-            __import__(import_name)
-            overlapping_present = True
-            break
-        except ImportError:
-            continue
+    overlapping_present = any(
+        find_spec(import_name) is not None for import_name in ("langchain_core", "agent_framework")
+    )
 
     if not overlapping_present:
         return
 
     if not isinstance(options, dict):
         options = {}
-    options.setdefault("openai", {})["enabled"] = False
+    openai_opts = options.get("openai")
+    if not isinstance(openai_opts, dict):
+        openai_opts = {}
+        options["openai"] = openai_opts
+    openai_opts["enabled"] = False
     otel_kwargs[INSTRUMENTATION_OPTIONS_ARG] = options
