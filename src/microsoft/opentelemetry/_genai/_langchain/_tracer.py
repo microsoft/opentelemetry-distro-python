@@ -25,12 +25,37 @@ from opentelemetry.context import (
     get_value,
 )
 from opentelemetry.trace import Span, SpanKind
-from microsoft.opentelemetry._genai._langchain._span_utils import (
-    _apply_error_attributes,
-    _apply_llm_finish_attributes,
-    _maybe_emit_llm_event,
+from opentelemetry._logs import LogRecord
+from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
+    GEN_AI_INPUT_MESSAGES,
+    GEN_AI_OPERATION_NAME,
+    GEN_AI_OUTPUT_MESSAGES,
+    GEN_AI_PROVIDER_NAME,
+    GEN_AI_REQUEST_FREQUENCY_PENALTY,
+    GEN_AI_REQUEST_MAX_TOKENS,
+    GEN_AI_REQUEST_MODEL,
+    GEN_AI_REQUEST_PRESENCE_PENALTY,
+    GEN_AI_REQUEST_SEED,
+    GEN_AI_REQUEST_STOP_SEQUENCES,
+    GEN_AI_REQUEST_TEMPERATURE,
+    GEN_AI_REQUEST_TOP_P,
+    GEN_AI_RESPONSE_FINISH_REASONS,
+    GEN_AI_RESPONSE_ID,
+    GEN_AI_RESPONSE_MODEL,
+    GEN_AI_SYSTEM_INSTRUCTIONS,
+    GEN_AI_USAGE_INPUT_TOKENS,
+    GEN_AI_USAGE_OUTPUT_TOKENS,
+    GenAiOperationNameValues,
 )
+from opentelemetry.semconv.attributes.error_attributes import ERROR_TYPE
+from opentelemetry.semconv.attributes.server_attributes import SERVER_ADDRESS, SERVER_PORT
+from opentelemetry.trace.status import Status, StatusCode
 from opentelemetry.util.genai.types import Error, LLMInvocation
+from opentelemetry.util.genai.utils import (
+    gen_ai_json_dumps,
+    is_experimental_mode,
+    should_emit_event,
+)
 from opentelemetry.util.types import AttributeValue
 
 from microsoft.opentelemetry._genai._langchain._utils import (
@@ -76,6 +101,104 @@ from microsoft.opentelemetry._genai._langchain._utils import (
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
+
+
+def _set_error(span: Span, error: Error) -> None:
+    """Set error status and ``error.type`` attribute on *span*."""
+    span.set_status(Status(StatusCode.ERROR, error.message))
+    span.set_attribute(ERROR_TYPE, error.type.__qualname__)
+
+
+def _apply_llm_finish_attributes(span: Span, invocation: LLMInvocation) -> None:
+    """Apply LLM response attributes from *invocation* onto *span*."""
+    from dataclasses import asdict
+
+    _operation_name = GenAiOperationNameValues.CHAT.value
+    attrs: dict[str, Any] = {GEN_AI_OPERATION_NAME: _operation_name}
+
+    _optional = (
+        (GEN_AI_REQUEST_MODEL, invocation.request_model),
+        (GEN_AI_PROVIDER_NAME, invocation.provider),
+        (SERVER_ADDRESS, invocation.server_address),
+        (SERVER_PORT, invocation.server_port),
+        (GEN_AI_REQUEST_TEMPERATURE, invocation.temperature),
+        (GEN_AI_REQUEST_TOP_P, invocation.top_p),
+        (GEN_AI_REQUEST_FREQUENCY_PENALTY, invocation.frequency_penalty),
+        (GEN_AI_REQUEST_PRESENCE_PENALTY, invocation.presence_penalty),
+        (GEN_AI_REQUEST_MAX_TOKENS, invocation.max_tokens),
+        (GEN_AI_REQUEST_STOP_SEQUENCES, invocation.stop_sequences),
+        (GEN_AI_REQUEST_SEED, invocation.seed),
+        (GEN_AI_RESPONSE_MODEL, invocation.response_model_name),
+        (GEN_AI_RESPONSE_ID, invocation.response_id),
+        (GEN_AI_USAGE_INPUT_TOKENS, invocation.input_tokens),
+        (GEN_AI_USAGE_OUTPUT_TOKENS, invocation.output_tokens),
+    )
+    attrs.update({k: v for k, v in _optional if v is not None})
+
+    # Finish reasons from output messages
+    finish_reasons = invocation.finish_reasons
+    if not finish_reasons and invocation.output_messages:
+        finish_reasons = [
+            msg.finish_reason
+            for msg in invocation.output_messages
+            if msg.finish_reason
+        ] or None
+    if finish_reasons:
+        attrs[GEN_AI_RESPONSE_FINISH_REASONS] = finish_reasons
+
+    # Structured message content – always capture (content-capture gate is
+    # handled at a higher level by the enriching processor).
+    def _serialize(items: list) -> str | None:
+        if not items:
+            return None
+        return gen_ai_json_dumps([asdict(item) for item in items])
+
+    if val := _serialize(invocation.input_messages):
+        attrs[GEN_AI_INPUT_MESSAGES] = val
+    if val := _serialize(invocation.output_messages):
+        attrs[GEN_AI_OUTPUT_MESSAGES] = val
+    if val := _serialize(invocation.system_instruction):
+        attrs[GEN_AI_SYSTEM_INSTRUCTIONS] = val
+
+    # Extra attributes stored on the invocation
+    attrs.update(invocation.attributes)
+
+    span.set_attributes(attrs)
+
+
+def _maybe_emit_llm_event(
+    event_logger: Any,
+    span: Span,
+    invocation: LLMInvocation,
+) -> None:
+    """Emit a ``gen_ai.client.inference.operation.details`` log event if configured."""
+    if not is_experimental_mode() or not should_emit_event():
+        return
+
+    from dataclasses import asdict
+
+    from opentelemetry.trace import set_span_in_context
+
+    attrs: dict[str, Any] = {}
+    attrs[GEN_AI_OPERATION_NAME] = GenAiOperationNameValues.CHAT.value
+    if invocation.request_model:
+        attrs[GEN_AI_REQUEST_MODEL] = invocation.request_model
+    if invocation.provider:
+        attrs[GEN_AI_PROVIDER_NAME] = invocation.provider
+
+    # Serialize messages for event (as list of dicts, not JSON strings)
+    if invocation.input_messages:
+        attrs[GEN_AI_INPUT_MESSAGES] = [asdict(m) for m in invocation.input_messages]
+    if invocation.output_messages:
+        attrs[GEN_AI_OUTPUT_MESSAGES] = [asdict(m) for m in invocation.output_messages]
+
+    span_context = set_span_in_context(span)
+    log_record = LogRecord(
+        event_name="gen_ai.client.inference.operation.details",
+        attributes=attrs,
+        context=span_context,
+    )
+    event_logger.emit(log_record)
 
 
 CONTEXT_ATTRIBUTES = (
@@ -294,7 +417,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             span = self._spans_by_run.get(run_id)
         if span:
             span.record_exception(error)
-            _apply_error_attributes(span, Error(message=str(error), type=type(error)))
+            _set_error(span, Error(message=str(error), type=type(error)))
         return super().on_llm_error(error, *args, run_id=run_id, **kwargs)
 
     def on_chain_error(self, error: BaseException, *args: Any, run_id: UUID, **kwargs: Any) -> Run:
@@ -302,7 +425,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             span = self._spans_by_run.get(run_id)
         if span:
             span.record_exception(error)
-            _apply_error_attributes(span, Error(message=str(error), type=type(error)))
+            _set_error(span, Error(message=str(error), type=type(error)))
         return super().on_chain_error(error, *args, run_id=run_id, **kwargs)
 
     def on_retriever_error(self, error: BaseException, *args: Any, run_id: UUID, **kwargs: Any) -> Run:
@@ -310,7 +433,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             span = self._spans_by_run.get(run_id)
         if span:
             span.record_exception(error)
-            _apply_error_attributes(span, Error(message=str(error), type=type(error)))
+            _set_error(span, Error(message=str(error), type=type(error)))
         return super().on_retriever_error(error, *args, run_id=run_id, **kwargs)
 
     def on_tool_error(self, error: BaseException, *args: Any, run_id: UUID, **kwargs: Any) -> Run:
@@ -318,7 +441,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             span = self._spans_by_run.get(run_id)
         if span:
             span.record_exception(error)
-            _apply_error_attributes(span, Error(message=str(error), type=type(error)))
+            _set_error(span, Error(message=str(error), type=type(error)))
         return super().on_tool_error(error, *args, run_id=run_id, **kwargs)
 
     # ---- Agent detection & aggregation ----------------------------------------
@@ -469,7 +592,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         if run.error is None or any(re.match(pattern, run.error) for pattern in IGNORED_EXCEPTION_PATTERNS):
             span.set_status(trace_api.StatusCode.OK)
         else:
-            _apply_error_attributes(span, Error(message=run.error, type=Exception))
+            _set_error(span, Error(message=run.error, type=Exception))
 
         span.set_attributes(dict(get_attributes_from_context()))
 
@@ -524,7 +647,7 @@ def _update_span(span: Span, run: Run) -> LLMInvocation | None:
     if run.error is None or any(re.match(pattern, run.error) for pattern in IGNORED_EXCEPTION_PATTERNS):
         span.set_status(trace_api.StatusCode.OK)
     else:
-        _apply_error_attributes(span, Error(message=run.error, type=Exception))
+        _set_error(span, Error(message=run.error, type=Exception))
 
     span.set_attributes(dict(get_attributes_from_context()))
 
