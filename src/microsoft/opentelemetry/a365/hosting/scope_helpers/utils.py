@@ -1,11 +1,20 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
+from __future__ import annotations
 
+import logging
 import json
 from collections.abc import Iterator
 from typing import Any
 
-from microsoft_agents.activity import Activity
+try:
+    from microsoft_agents.activity import Activity
+except ImportError:
+    logging.getLogger(__name__).error(
+        "microsoft.opentelemetry.a365.hosting requires the agents SDK. Install the "
+        "packages with `pip install microsoft-opentelemetry[hosting]`.",
+    )
+
 from microsoft.opentelemetry.a365.constants import (
     CHANNEL_LINK_KEY,
     CHANNEL_NAME_KEY,
