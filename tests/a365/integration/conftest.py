@@ -1,6 +1,8 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+# pylint: disable=redefined-outer-name
+
 """Shared fixtures for A365 integration tests.
 
 Uses ``use_microsoft_opentelemetry(enable_a365=True)`` so tests exercise

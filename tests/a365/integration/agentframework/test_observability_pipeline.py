@@ -115,7 +115,7 @@ class TestAgentFrameworkObservabilityPipeline:
     # ------------------------------------------------------------------
 
     @pytest.mark.asyncio
-    async def test_pipeline_invoke_agent_with_tool_call(
+    async def test_pipeline_invoke_agent_with_tool_call(  # pylint: disable=too-many-statements
         self,
         distro_exporter,
         chat_client: OpenAIChatClient,

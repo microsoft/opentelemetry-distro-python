@@ -232,7 +232,7 @@ class TestOpenAITraceProcessorIntegration:
             assert GEN_AI_OUTPUT_MESSAGES_KEY in instr_attrs, "Instrumentor span missing output messages"
             print("✓ Instrumentor span: gen_ai.input/output.messages validated")
 
-        print(f"✓ All required invoke_agent span attributes validated")
+        print("✓ All required invoke_agent span attributes validated")
         print(f"Agent response: {response}")
 
     def _validate_span_attributes(self, distro_exporter, agent365_config):
