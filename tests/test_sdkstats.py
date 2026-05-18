@@ -578,7 +578,10 @@ class TestRequestSuccessCallback(unittest.TestCase):
             metrics = SdkStatsMetrics(mp)
             obs = list(metrics._observe_request_success_count(MagicMock()))
             self.assertEqual(len(obs), 2)
-            by_endpoint = {o.attributes["endpoint"]: o.value for o in obs}
+            by_endpoint = {}
+            for o in obs:
+                assert o.attributes is not None
+                by_endpoint[o.attributes["endpoint"]] = o.value
             self.assertEqual(by_endpoint, {"a.example": 2, "b.example": 1})
         finally:
             mp.shutdown()
