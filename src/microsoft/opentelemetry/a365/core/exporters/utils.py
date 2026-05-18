@@ -29,6 +29,7 @@ from microsoft.opentelemetry.a365.constants import (
     A365_AGENT_APP_INSTANCE_ID_ENV,
     A365_AGENTIC_USER_ID_ENV,
     A365_CLUSTER_CATEGORY_ENV,
+    A365_HTTP_TIMEOUT_SECONDS,
     A365_OBSERVABILITY_DOMAIN_OVERRIDE,
     A365_SERVICE_CLIENT_ID_ENV,
     A365_SERVICE_CLIENT_SECRET_ENV,
@@ -433,7 +434,13 @@ def _create_fic_token_resolver(scope_override: Optional[str] = None) -> Callable
       - ``A365_AGENT_APP_INSTANCE_ID``
       - ``A365_AGENTIC_USER_ID``
     """
-    import msal
+    try:
+        import msal
+    except ImportError:
+        logger.warning(
+            "msal is not installed. Install it (`pip install msal`) to use FIC token authentication for A365 export."
+        )
+        return lambda _agent_id, _tenant_id: None  # type: ignore[return-value]
 
     _cache: dict[str, tuple[str, float]] = {}  # key -> (token, expires_at)
     _lock = threading.Lock()
@@ -473,6 +480,7 @@ def _create_fic_token_resolver(scope_override: Optional[str] = None) -> Callable
                 client_id=client_id,
                 client_credential=client_secret,
                 authority=authority,
+                timeout=A365_HTTP_TIMEOUT_SECONDS,
             )
             result = app.acquire_token_for_client(
                 scopes=["api://AzureAdTokenExchange/.default"],
@@ -488,6 +496,7 @@ def _create_fic_token_resolver(scope_override: Optional[str] = None) -> Callable
                 client_id=instance_id,
                 client_credential={"client_assertion": agent_token},
                 authority=authority,
+                timeout=A365_HTTP_TIMEOUT_SECONDS,
             )
             result = instance_app.acquire_token_for_client(
                 scopes=["api://AzureAdTokenExchange/.default"],
