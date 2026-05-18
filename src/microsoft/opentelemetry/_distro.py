@@ -81,6 +81,7 @@ from microsoft.opentelemetry._utils import (
     _append_azure_monitor_components,
     _append_console_components,
     _append_otlp_components,
+    _disable_openai_v2_instrumentation,
 )
 from microsoft.opentelemetry._version import VERSION
 
@@ -711,6 +712,7 @@ def _get_instrumentation_kwargs(otel_kwargs: Dict[str, Any], lib_name: str) -> D
 def _setup_instrumentations(otel_kwargs: Dict[str, Any], **kwargs: Any) -> None:
     """Discover and activate OTel instrumentations for supported libraries."""
     enable_a365: bool = kwargs.pop("enable_a365", False)
+    _disable_openai_v2_instrumentation(otel_kwargs)
     entry_point_finder = _EntryPointDistFinder()
     for entry_point in entry_points(group="opentelemetry_instrumentor"):
         lib_name = entry_point.name
