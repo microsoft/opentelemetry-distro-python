@@ -1,6 +1,6 @@
 # Release History
 
-## Unreleased
+## 1.2.0 (2026-05-18)
 
 ### Features Added
 - Forward `instrumentation_options` kwargs to instrumentors
