@@ -3,7 +3,32 @@
 ## Unreleased
 
 ### Features Added
+- Forward `instrumentation_options` kwargs to instrumentors
+  ([#149](https://github.com/microsoft/opentelemetry-distro-python/pull/149))
 - Add A365-specific OpenAI Agents SDK instrumentor (`A365OpenAIAgentsInstrumentor`). When `enable_a365=True`, the distro uses this bundled instrumentor instead of the upstream `opentelemetry-instrumentation-openai-agents-v2`, producing spans with the A365 versioned envelope format, `custom.parent.span.id`, per-message indexed attributes, detailed token counts, and `graph_node_parent_id` for handoffs.
+  ([#132](https://github.com/microsoft/opentelemetry-distro-python/pull/132))
+
+### Bugs Fixed
+- Fix duplicate chat spans and HTTP spans not propagating in LangChain
+  ([#147](https://github.com/microsoft/opentelemetry-distro-python/pull/147))
+- Revert: Fix `get_caller_pairs` userId fallback
+  ([#141](https://github.com/microsoft/opentelemetry-distro-python/pull/141))
+- Capitalize env var to avoid case-sensitive conflicts
+  ([#137](https://github.com/microsoft/opentelemetry-distro-python/pull/137))
+- Add product context fallback for subchannels
+  ([#129](https://github.com/microsoft/opentelemetry-distro-python/pull/129))
+
+### Other Changes
+- Port Agent365 integration tests using real distro pipeline
+  ([#146](https://github.com/microsoft/opentelemetry-distro-python/pull/146))
+- Make `microsoft-agents-hosting-core` and `microsoft-agents-activity` optional dependencies
+  ([#117](https://github.com/microsoft/opentelemetry-distro-python/pull/117))
+- Pin genai util
+  ([#145](https://github.com/microsoft/opentelemetry-distro-python/pull/145))
+- Update telemetry SDK name to `microsoft-opentelemetry`
+  ([#138](https://github.com/microsoft/opentelemetry-distro-python/pull/138))
+- Update azure monitor exporter minimum version
+  ([#136](https://github.com/microsoft/opentelemetry-distro-python/pull/136))
 
 ## 1.1.0 (2026-05-11)
 
