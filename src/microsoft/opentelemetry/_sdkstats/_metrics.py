@@ -22,6 +22,10 @@ from microsoft.opentelemetry._sdkstats._state import (
     get_sdkstats_feature_flags,
     get_sdkstats_instrumentation_flags,
 )
+from microsoft.opentelemetry._sdkstats._utils import (
+    REQUEST_SUCCESS_NAME,
+    drain,
+)
 from microsoft.opentelemetry._version import VERSION
 
 
@@ -85,6 +89,14 @@ class SdkStatsMetrics:
             description="SDKStats metric tracking enabled instrumentations",
         )
 
+        # Network: request success count.
+        self._meter.create_observable_gauge(
+            REQUEST_SUCCESS_NAME,
+            callbacks=[self._observe_request_success_count],
+            unit="count",
+            description="Number of successful HTTP exports per endpoint",
+        )
+
     # ---- callbacks ----
 
     def _observe_features(self, options: CallbackOptions) -> Iterable[Observation]:
@@ -105,4 +117,12 @@ class SdkStatsMetrics:
             attrs["feature"] = instr_bits
             attrs["type"] = _FeatureTypes.INSTRUMENTATION.value
             observations.append(Observation(1, attrs))
+        return observations
+
+    def _observe_request_success_count(self, options: CallbackOptions) -> Iterable[Observation]:
+        observations: List[Observation] = []
+        for key, value in drain(REQUEST_SUCCESS_NAME).items():
+            attrs = dict(self._common_attributes)
+            attrs["endpoint"] = key[0]
+            observations.append(Observation(value, attrs))
         return observations

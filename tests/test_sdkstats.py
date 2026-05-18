@@ -30,6 +30,17 @@ from microsoft.opentelemetry._sdkstats._state import (
     set_sdkstats_instrumentation_by_name,
     set_sdkstats_shutdown,
 )
+from microsoft.opentelemetry._sdkstats._utils import (
+    REQUEST_SUCCESS_NAME,
+    drain,
+    record_success,
+    reset_all,
+)
+from microsoft.opentelemetry._sdkstats._otlp_wrapper import (
+    NetworkStatsLogExporter,
+    NetworkStatsMetricExporter,
+    NetworkStatsSpanExporter,
+)
 
 
 def _reset_state():
@@ -38,6 +49,7 @@ def _reset_state():
         _SDKSTATS_STATE["SHUTDOWN"] = False
         _SDKSTATS_STATE["FEATURE_FLAGS"] = SdkStatsFeature.NONE
         _SDKSTATS_STATE["INSTRUMENTATION_FLAGS"] = SdkStatsInstrumentation.NONE
+    reset_all()
 
 
 class TestSdkStatsEnabled(unittest.TestCase):
@@ -467,15 +479,20 @@ class TestBridgeSdkStatsToAzureMonitor(unittest.TestCase):
         self.assertEqual(_exporter_utils._INSTRUMENTATIONS_BIT_MASK, 0)
 
     def test_initialize_sdkstats_bridges_when_azure_monitor_enabled(self):
-        """_initialize_sdkstats calls the bridge when enable_azure_monitor=True."""
+        """_initialize_sdkstats bridges AND starts the manager when enable_azure_monitor=True."""
         from microsoft.opentelemetry._distro import _initialize_sdkstats
 
         set_sdkstats_feature(SdkStatsFeature.DISTRO)
         set_sdkstats_feature(SdkStatsFeature.A365_EXPORT)
 
-        with patch("microsoft.opentelemetry._distro._bridge_sdkstats_to_azure_monitor") as mock_bridge:
+        with patch("microsoft.opentelemetry._distro._bridge_sdkstats_to_azure_monitor") as mock_bridge, patch(
+            "microsoft.opentelemetry._sdkstats._manager.SdkStatsManager"
+        ) as mock_cls:
+            mock_manager = MagicMock()
+            mock_cls.return_value = mock_manager
             _initialize_sdkstats(enable_azure_monitor=True)
             mock_bridge.assert_called_once()
+            mock_manager.initialize.assert_called_once()
 
     def test_initialize_sdkstats_uses_manager_when_azure_monitor_disabled(self):
         """_initialize_sdkstats creates SdkStatsManager when Azure Monitor is off."""

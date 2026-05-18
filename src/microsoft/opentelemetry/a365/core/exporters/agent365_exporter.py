@@ -347,6 +347,16 @@ class _Agent365Exporter(SpanExporter):
             )
             return False
 
+        # Local imports to avoid pulling sdkstats into the exporter module's
+        # import graph for non-distro consumers.
+        from urllib.parse import urlparse
+
+        from microsoft.opentelemetry._sdkstats import is_sdkstats_enabled
+        from microsoft.opentelemetry._sdkstats._utils import record_success
+
+        endpoint_host = urlparse(url).hostname or url
+        record_a365_sdkstats = is_sdkstats_enabled()
+
         for attempt in range(DEFAULT_MAX_RETRIES + 1):
             try:
                 resp = self._session.post(
@@ -359,6 +369,8 @@ class _Agent365Exporter(SpanExporter):
                 correlation_id = resp.headers.get("x-ms-correlation-id") or resp.headers.get("request-id") or "N/A"
 
                 if 200 <= resp.status_code < 300:
+                    if record_a365_sdkstats:
+                        record_success(endpoint_host)
                     logger.debug(
                         "HTTP %d success on attempt %d. Correlation ID: %s. Response: %s",
                         resp.status_code,

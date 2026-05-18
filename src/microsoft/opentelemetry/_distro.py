@@ -371,10 +371,10 @@ def _initialize_sdkstats(enable_azure_monitor: bool) -> None:
         # The exporter package runs its own statsbeat.  Bridge our
         # distro-level feature bits (A365_EXPORT, OTLP_EXPORT, etc.)
         # and instrumentation bits into the exporter's state so they
-        # appear in the same observation.  Our bit values (128+) do
-        # not collide with the exporter's (1–64).
+        # appear in its observations.  Our bit values (128+) do not
+        # collide with the exporter's (1–64).
+
         _bridge_sdkstats_to_azure_monitor()
-        return
 
     from microsoft.opentelemetry._sdkstats._manager import SdkStatsManager
 
