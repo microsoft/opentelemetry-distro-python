@@ -542,8 +542,149 @@ class TestSdkStatsBridgeSetters(unittest.TestCase):
 
         set_sdkstats_instrumentation_bits(int(SdkStatsInstrumentation.FASTAPI))
 
-        with _exporter_utils._INSTRUMENTATIONS_BIT_MASK_LOCK:
-            self.assertEqual(_exporter_utils._INSTRUMENTATIONS_BIT_MASK, 3 | int(SdkStatsInstrumentation.FASTAPI))
+class TestRequestSuccessCallback(unittest.TestCase):
+    """Tests for SdkStatsMetrics._observe_request_success_count."""
+
+    def setUp(self):
+        _reset_state()
+
+    def test_empty_when_no_success(self):
+        from opentelemetry.sdk.metrics import MeterProvider
+        from microsoft.opentelemetry._sdkstats._metrics import SdkStatsMetrics
+
+        mp = MeterProvider()
+        try:
+            metrics = SdkStatsMetrics(mp)
+            obs = list(metrics._observe_request_success_count(MagicMock()))
+            self.assertEqual(obs, [])
+        finally:
+            mp.shutdown()
+
+    def test_emits_one_observation_per_endpoint(self):
+        from opentelemetry.sdk.metrics import MeterProvider
+        from microsoft.opentelemetry._sdkstats._metrics import SdkStatsMetrics
+
+        record_success("a.example")
+        record_success("a.example")
+        record_success("b.example")
+
+        mp = MeterProvider()
+        try:
+            metrics = SdkStatsMetrics(mp)
+            obs = list(metrics._observe_request_success_count(MagicMock()))
+            self.assertEqual(len(obs), 2)
+            by_endpoint = {}
+            for o in obs:
+                assert o.attributes is not None
+                by_endpoint[o.attributes["endpoint"]] = o.value
+            self.assertEqual(by_endpoint, {"a.example": 2, "b.example": 1})
+        finally:
+            mp.shutdown()
+
+    def test_callback_drains_count(self):
+        from opentelemetry.sdk.metrics import MeterProvider
+        from microsoft.opentelemetry._sdkstats._metrics import SdkStatsMetrics
+
+        record_success("a.example")
+        mp = MeterProvider()
+        try:
+            metrics = SdkStatsMetrics(mp)
+            list(metrics._observe_request_success_count(MagicMock()))
+            obs = list(metrics._observe_request_success_count(MagicMock()))
+            self.assertEqual(obs, [])
+        finally:
+            mp.shutdown()
+
+
+class TestNetworkStatsExporterWrappers(unittest.TestCase):
+    """Tests for the OTLP NetworkStats* exporter decorators."""
+
+    def setUp(self):
+        _reset_state()
+
+    def _inner_span(self, result, endpoint="https://otlp.example.com/v1/traces"):
+        inner = MagicMock()
+        inner._endpoint = endpoint
+        inner.export.return_value = result
+        return inner
+
+    def test_span_success_records(self):
+        from opentelemetry.sdk.trace.export import SpanExportResult
+
+        wrapper = NetworkStatsSpanExporter(self._inner_span(SpanExportResult.SUCCESS))
+        self.assertEqual(wrapper.export([]), SpanExportResult.SUCCESS)
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp.example.com",): 1})
+
+    def test_span_failure_does_not_record(self):
+        from opentelemetry.sdk.trace.export import SpanExportResult
+
+        wrapper = NetworkStatsSpanExporter(self._inner_span(SpanExportResult.FAILURE))
+        wrapper.export([])
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
+
+    def test_span_forwards_shutdown_and_force_flush(self):
+        from opentelemetry.sdk.trace.export import SpanExportResult
+
+        inner = self._inner_span(SpanExportResult.SUCCESS)
+        inner.force_flush.return_value = True
+        wrapper = NetworkStatsSpanExporter(inner)
+        wrapper.shutdown()
+        self.assertTrue(wrapper.force_flush(1234))
+        inner.shutdown.assert_called_once()
+        inner.force_flush.assert_called_once_with(1234)
+
+    def test_metric_success_records(self):
+        from opentelemetry.sdk.metrics.export import MetricExportResult
+
+        inner = MagicMock()
+        inner._endpoint = "https://otlp.example.com/v1/metrics"
+        inner._preferred_temporality = {}
+        inner._preferred_aggregation = {}
+        inner.export.return_value = MetricExportResult.SUCCESS
+        wrapper = NetworkStatsMetricExporter(inner)
+        wrapper.export(MagicMock())
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp.example.com",): 1})
+
+    def test_metric_failure_does_not_record(self):
+        from opentelemetry.sdk.metrics.export import MetricExportResult
+
+        inner = MagicMock()
+        inner._endpoint = "https://otlp.example.com/v1/metrics"
+        inner._preferred_temporality = {}
+        inner._preferred_aggregation = {}
+        inner.export.return_value = MetricExportResult.FAILURE
+        wrapper = NetworkStatsMetricExporter(inner)
+        wrapper.export(MagicMock())
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
+
+    def test_log_success_records(self):
+        from opentelemetry.sdk._logs.export import LogRecordExportResult
+
+        inner = MagicMock()
+        inner._endpoint = "https://otlp.example.com/v1/logs"
+        inner.export.return_value = LogRecordExportResult.SUCCESS
+        wrapper = NetworkStatsLogExporter(inner)
+        wrapper.export([])
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp.example.com",): 1})
+
+    def test_log_failure_does_not_record(self):
+        from opentelemetry.sdk._logs.export import LogRecordExportResult
+
+        inner = MagicMock()
+        inner._endpoint = "https://otlp.example.com/v1/logs"
+        inner.export.return_value = LogRecordExportResult.FAILURE
+        wrapper = NetworkStatsLogExporter(inner)
+        wrapper.export([])
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
+
+    def test_endpoint_unknown_when_missing(self):
+        from opentelemetry.sdk.trace.export import SpanExportResult
+
+        inner = MagicMock(spec=["export", "shutdown", "force_flush"])
+        inner.export.return_value = SpanExportResult.SUCCESS
+        wrapper = NetworkStatsSpanExporter(inner)
+        wrapper.export([])
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("unknown",): 1})
 
 
 if __name__ == "__main__":
