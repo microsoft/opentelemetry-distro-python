@@ -74,23 +74,39 @@ def create_otlp_components(
     Per-signal overrides follow the pattern
     ``OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_{ENDPOINT,HEADERS,TIMEOUT,COMPRESSION}``.
     """
-    # Lazy imports to avoid pulling in OTLP exporter modules when OTLP is not enabled.
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
     from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
     from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-    from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
+    from opentelemetry.sdk.metrics.export import MetricExporter, PeriodicExportingMetricReader
+    from opentelemetry.sdk._logs.export import BatchLogRecordProcessor, LogRecordExporter
 
+    from microsoft.opentelemetry._sdkstats import is_sdkstats_enabled
+    from microsoft.opentelemetry._sdkstats._otlp_wrapper import (
+        NetworkStatsLogExporter,
+        NetworkStatsMetricExporter,
+        NetworkStatsSpanExporter,
+    )
+
+    record_network_sdkstats = is_sdkstats_enabled()
     components = OtlpHandlers()
 
     if enable_traces:
-        components.span_processor = BatchSpanProcessor(OTLPSpanExporter())
+        span_exporter: SpanExporter = OTLPSpanExporter()
+        if record_network_sdkstats:
+            span_exporter = NetworkStatsSpanExporter(span_exporter)
+        components.span_processor = BatchSpanProcessor(span_exporter)
 
     if enable_metrics:
-        components.metric_reader = PeriodicExportingMetricReader(OTLPMetricExporter())
+        metric_exporter: MetricExporter = OTLPMetricExporter()
+        if record_network_sdkstats:
+            metric_exporter = NetworkStatsMetricExporter(metric_exporter)
+        components.metric_reader = PeriodicExportingMetricReader(metric_exporter)
 
     if enable_logs:
-        components.log_record_processor = BatchLogRecordProcessor(OTLPLogExporter())
+        log_exporter: LogRecordExporter = OTLPLogExporter()
+        if record_network_sdkstats:
+            log_exporter = NetworkStatsLogExporter(log_exporter)
+        components.log_record_processor = BatchLogRecordProcessor(log_exporter)
 
     return components
