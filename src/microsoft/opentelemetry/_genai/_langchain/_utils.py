@@ -218,8 +218,6 @@ GEN_AI_TOOL_TYPE_KEY = GEN_AI_TOOL_TYPE
 GEN_AI_TOOL_DEFINITIONS_KEY = GEN_AI_TOOL_DEFINITIONS
 GEN_AI_AGENT_VERSION_KEY = GEN_AI_AGENT_VERSION
 
-SESSION_ID_KEY = "microsoft.session.id"
-
 
 # ---- Internal helpers --------------------------------------------------------
 
@@ -291,7 +289,7 @@ def metadata(run: Run) -> Iterator[tuple[str, str]]:
     if session_id := (
         meta.get(LANGCHAIN_SESSION_ID) or meta.get(LANGCHAIN_CONVERSATION_ID) or meta.get(LANGCHAIN_THREAD_ID)
     ):
-        yield SESSION_ID_KEY, session_id
+        yield GEN_AI_CONVERSATION_ID_KEY, session_id
 
 
 @stop_on_exception
@@ -929,7 +927,5 @@ def extract_session_info(run: Run) -> Iterator[tuple[str, str]]:
         return
     for key in (LANGCHAIN_SESSION_ID, LANGCHAIN_CONVERSATION_ID, LANGCHAIN_THREAD_ID):
         if sid := meta.get(key):
-            yield SESSION_ID_KEY, sid
+            yield GEN_AI_CONVERSATION_ID_KEY, sid
             break
-    if conv_id := meta.get(LANGCHAIN_CONVERSATION_ID):
-        yield GEN_AI_CONVERSATION_ID_KEY, conv_id
