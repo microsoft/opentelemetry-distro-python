@@ -28,6 +28,17 @@ from microsoft.opentelemetry._sdkstats._state import (
     set_sdkstats_instrumentation_by_name,
     set_sdkstats_shutdown,
 )
+from microsoft.opentelemetry._sdkstats._utils import (
+    REQUEST_SUCCESS_NAME,
+    drain,
+    record_success,
+    reset_all,
+)
+from microsoft.opentelemetry._sdkstats._otlp_wrapper import (
+    NetworkStatsLogExporter,
+    NetworkStatsMetricExporter,
+    NetworkStatsSpanExporter,
+)
 
 
 def _reset_state():
@@ -36,6 +47,7 @@ def _reset_state():
         _SDKSTATS_STATE["SHUTDOWN"] = False
         _SDKSTATS_STATE["FEATURE_FLAGS"] = SdkStatsFeature.NONE
         _SDKSTATS_STATE["INSTRUMENTATION_FLAGS"] = SdkStatsInstrumentation.NONE
+    reset_all()
 
 
 class TestSdkStatsEnabled(unittest.TestCase):
@@ -465,15 +477,20 @@ class TestBridgeSdkStatsToAzureMonitor(unittest.TestCase):
         self.assertEqual(_exporter_utils._INSTRUMENTATIONS_BIT_MASK, 0)
 
     def test_initialize_sdkstats_bridges_when_azure_monitor_enabled(self):
-        """_initialize_sdkstats calls the bridge when enable_azure_monitor=True."""
+        """_initialize_sdkstats bridges AND starts the manager when enable_azure_monitor=True."""
         from microsoft.opentelemetry._distro import _initialize_sdkstats
 
         set_sdkstats_feature(SdkStatsFeature.DISTRO)
         set_sdkstats_feature(SdkStatsFeature.A365_EXPORT)
 
-        with patch("microsoft.opentelemetry._distro._bridge_sdkstats_to_azure_monitor") as mock_bridge:
+        with patch("microsoft.opentelemetry._distro._bridge_sdkstats_to_azure_monitor") as mock_bridge, patch(
+            "microsoft.opentelemetry._sdkstats._manager.SdkStatsManager"
+        ) as mock_cls:
+            mock_manager = MagicMock()
+            mock_cls.return_value = mock_manager
             _initialize_sdkstats(enable_azure_monitor=True)
             mock_bridge.assert_called_once()
+            mock_manager.initialize.assert_called_once()
 
     def test_initialize_sdkstats_uses_manager_when_azure_monitor_disabled(self):
         """_initialize_sdkstats creates SdkStatsManager when Azure Monitor is off."""
@@ -486,6 +503,193 @@ class TestBridgeSdkStatsToAzureMonitor(unittest.TestCase):
             mock_cls.return_value = mock_manager
             _initialize_sdkstats(enable_azure_monitor=False)
             mock_manager.initialize.assert_called_once()
+
+
+class TestRequestSuccessRecorder(unittest.TestCase):
+    """Tests for _utils.record_success / drain / reset_all."""
+
+    def setUp(self):
+        _reset_state()
+
+    def test_default_empty(self):
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
+
+    def test_record_accumulates(self):
+        record_success("host.example")
+        record_success("host.example")
+        record_success("other.example")
+        self.assertEqual(
+            drain(REQUEST_SUCCESS_NAME),
+            {("host.example",): 2, ("other.example",): 1},
+        )
+
+    def test_drain_resets(self):
+        record_success("host.example")
+        drain(REQUEST_SUCCESS_NAME)
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
+
+    def test_concurrent_record_thread_safety(self):
+        errors = []
+
+        def worker():
+            try:
+                for _ in range(500):
+                    record_success("host.example")
+            except Exception as e:  # pylint: disable=broad-exception-caught
+                errors.append(e)
+
+        threads = [threading.Thread(target=worker) for _ in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(errors, [])
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("host.example",): 8 * 500})
+
+
+class TestRequestSuccessCallback(unittest.TestCase):
+    """Tests for SdkStatsMetrics._observe_request_success_count."""
+
+    def setUp(self):
+        _reset_state()
+
+    def test_empty_when_no_success(self):
+        from opentelemetry.sdk.metrics import MeterProvider
+        from microsoft.opentelemetry._sdkstats._metrics import SdkStatsMetrics
+
+        mp = MeterProvider()
+        try:
+            metrics = SdkStatsMetrics(mp)
+            obs = list(metrics._observe_request_success_count(MagicMock()))
+            self.assertEqual(obs, [])
+        finally:
+            mp.shutdown()
+
+    def test_emits_one_observation_per_endpoint(self):
+        from opentelemetry.sdk.metrics import MeterProvider
+        from microsoft.opentelemetry._sdkstats._metrics import SdkStatsMetrics
+
+        record_success("a.example")
+        record_success("a.example")
+        record_success("b.example")
+
+        mp = MeterProvider()
+        try:
+            metrics = SdkStatsMetrics(mp)
+            obs = list(metrics._observe_request_success_count(MagicMock()))
+            self.assertEqual(len(obs), 2)
+            by_endpoint = {}
+            for o in obs:
+                assert o.attributes is not None
+                by_endpoint[o.attributes["endpoint"]] = o.value
+            self.assertEqual(by_endpoint, {"a.example": 2, "b.example": 1})
+        finally:
+            mp.shutdown()
+
+    def test_callback_drains_count(self):
+        from opentelemetry.sdk.metrics import MeterProvider
+        from microsoft.opentelemetry._sdkstats._metrics import SdkStatsMetrics
+
+        record_success("a.example")
+        mp = MeterProvider()
+        try:
+            metrics = SdkStatsMetrics(mp)
+            list(metrics._observe_request_success_count(MagicMock()))
+            obs = list(metrics._observe_request_success_count(MagicMock()))
+            self.assertEqual(obs, [])
+        finally:
+            mp.shutdown()
+
+
+class TestNetworkStatsExporterWrappers(unittest.TestCase):
+    """Tests for the OTLP NetworkStats* exporter decorators."""
+
+    def setUp(self):
+        _reset_state()
+
+    def _inner_span(self, result, endpoint="https://otlp.example.com/v1/traces"):
+        inner = MagicMock()
+        inner._endpoint = endpoint
+        inner.export.return_value = result
+        return inner
+
+    def test_span_success_records(self):
+        from opentelemetry.sdk.trace.export import SpanExportResult
+
+        wrapper = NetworkStatsSpanExporter(self._inner_span(SpanExportResult.SUCCESS))
+        self.assertEqual(wrapper.export([]), SpanExportResult.SUCCESS)
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp.example.com",): 1})
+
+    def test_span_failure_does_not_record(self):
+        from opentelemetry.sdk.trace.export import SpanExportResult
+
+        wrapper = NetworkStatsSpanExporter(self._inner_span(SpanExportResult.FAILURE))
+        wrapper.export([])
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
+
+    def test_span_forwards_shutdown_and_force_flush(self):
+        from opentelemetry.sdk.trace.export import SpanExportResult
+
+        inner = self._inner_span(SpanExportResult.SUCCESS)
+        inner.force_flush.return_value = True
+        wrapper = NetworkStatsSpanExporter(inner)
+        wrapper.shutdown()
+        self.assertTrue(wrapper.force_flush(1234))
+        inner.shutdown.assert_called_once()
+        inner.force_flush.assert_called_once_with(1234)
+
+    def test_metric_success_records(self):
+        from opentelemetry.sdk.metrics.export import MetricExportResult
+
+        inner = MagicMock()
+        inner._endpoint = "https://otlp.example.com/v1/metrics"
+        inner._preferred_temporality = {}
+        inner._preferred_aggregation = {}
+        inner.export.return_value = MetricExportResult.SUCCESS
+        wrapper = NetworkStatsMetricExporter(inner)
+        wrapper.export(MagicMock())
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp.example.com",): 1})
+
+    def test_metric_failure_does_not_record(self):
+        from opentelemetry.sdk.metrics.export import MetricExportResult
+
+        inner = MagicMock()
+        inner._endpoint = "https://otlp.example.com/v1/metrics"
+        inner._preferred_temporality = {}
+        inner._preferred_aggregation = {}
+        inner.export.return_value = MetricExportResult.FAILURE
+        wrapper = NetworkStatsMetricExporter(inner)
+        wrapper.export(MagicMock())
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
+
+    def test_log_success_records(self):
+        from opentelemetry.sdk._logs.export import LogRecordExportResult
+
+        inner = MagicMock()
+        inner._endpoint = "https://otlp.example.com/v1/logs"
+        inner.export.return_value = LogRecordExportResult.SUCCESS
+        wrapper = NetworkStatsLogExporter(inner)
+        wrapper.export([])
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp.example.com",): 1})
+
+    def test_log_failure_does_not_record(self):
+        from opentelemetry.sdk._logs.export import LogRecordExportResult
+
+        inner = MagicMock()
+        inner._endpoint = "https://otlp.example.com/v1/logs"
+        inner.export.return_value = LogRecordExportResult.FAILURE
+        wrapper = NetworkStatsLogExporter(inner)
+        wrapper.export([])
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
+
+    def test_endpoint_unknown_when_missing(self):
+        from opentelemetry.sdk.trace.export import SpanExportResult
+
+        inner = MagicMock(spec=["export", "shutdown", "force_flush"])
+        inner.export.return_value = SpanExportResult.SUCCESS
+        wrapper = NetworkStatsSpanExporter(inner)
+        wrapper.export([])
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("unknown",): 1})
 
 
 if __name__ == "__main__":
