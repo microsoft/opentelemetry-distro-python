@@ -136,10 +136,24 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         with self._lock:
             return self._spans_by_run.get(run_id)
 
-    @staticmethod
-    def _cap_ordered_dict(d: OrderedDict, max_size: int) -> None:
-        while len(d) > max_size:
-            d.popitem(last=False)
+    def _evict_tracked_runs(self) -> None:
+        """Evict oldest entries from _spans_by_run and clean up all related state.
+
+        This prevents unbounded memory growth in long-running agents by ensuring
+        that when spans are evicted from the primary tracking dict, corresponding
+        entries in all auxiliary dictionaries are also removed.
+
+        Acquires ``self._lock`` internally so eviction is always atomic
+        regardless of call site.
+        """
+        with self._lock:
+            while len(self._spans_by_run) > self._MAX_TRACKED_RUNS:
+                evicted_id, _ = self._spans_by_run.popitem(last=False)
+                self._agent_run_ids.discard(evicted_id)
+                self._agent_content.pop(evicted_id, None)
+                self._agent_wrapper_spans.pop(evicted_id, None)
+                self._context_tokens.pop(evicted_id, None)
+                self.run_map.pop(str(evicted_id), None)
 
     def _start_trace(self, run: Run) -> None:
         self.run_map[str(run.id)] = run
@@ -242,7 +256,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
 
         with self._lock:
             self._spans_by_run[run.id] = span
-            self._cap_ordered_dict(self._spans_by_run, self._MAX_TRACKED_RUNS)
+        self._evict_tracked_runs()
 
     def _end_trace(self, run: Run) -> None:
         self.run_map.pop(str(run.id), None)
