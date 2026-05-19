@@ -52,7 +52,7 @@ langchain = [
     "langchain-core>=0.2.0",
 ]
 agent-framework = [
-    "agent-framework>=1.0.0",
+    "agent-framework>=1.4.0",
 ]
 openai-agents = [
     "openai-agents>=0.0.7",
