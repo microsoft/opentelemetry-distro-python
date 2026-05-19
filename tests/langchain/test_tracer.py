@@ -2,10 +2,9 @@
 # Licensed under the MIT License.
 
 import datetime
-from collections import OrderedDict
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -62,16 +61,34 @@ def _make_tracer(**kwargs):
 # ---- Static helpers ----------------------------------------------------------
 
 
-class TestCapOrderedDict(TestCase):
-    def test_caps_size(self):
-        d = OrderedDict()
-        for i in range(10):
-            d[i] = f"val-{i}"
-        LangChainTracer._cap_ordered_dict(d, 5)
-        self.assertEqual(len(d), 5)
-        # Oldest entries removed
-        self.assertNotIn(0, d)
-        self.assertIn(9, d)
+class TestEvictTrackedRuns(TestCase):
+    def test_evicts_oldest_entries_from_all_dicts(self):
+        tracer, _, _ = _make_tracer()
+        tracer._MAX_TRACKED_RUNS = 5
+        uuids = [UUID(int=i) for i in range(10)]
+        for uid in uuids:
+            tracer._spans_by_run[uid] = f"span-{uid}"
+            tracer._agent_run_ids.add(uid)
+            tracer._agent_content[uid] = {"model": None}
+            tracer._agent_wrapper_spans[uid] = f"wrapper-{uid}"
+            tracer._context_tokens[uid] = []
+            tracer.run_map[str(uid)] = f"run-{uid}"
+        tracer._evict_tracked_runs()
+        # Only 5 newest entries remain
+        self.assertEqual(len(tracer._spans_by_run), 5)
+        self.assertNotIn(uuids[0], tracer._spans_by_run)
+        self.assertIn(uuids[9], tracer._spans_by_run)
+        # Related dicts also cleaned up
+        for uid in uuids[:5]:
+            self.assertNotIn(uid, tracer._agent_run_ids)
+            self.assertNotIn(uid, tracer._agent_content)
+            self.assertNotIn(uid, tracer._agent_wrapper_spans)
+            self.assertNotIn(uid, tracer._context_tokens)
+            self.assertNotIn(str(uid), tracer.run_map)
+        for uid in uuids[5:]:
+            self.assertIn(uid, tracer._agent_run_ids)
+            self.assertIn(uid, tracer._agent_content)
+            self.assertIn(uid, tracer._agent_wrapper_spans)
 
 
 # ---- Agent detection ---------------------------------------------------------

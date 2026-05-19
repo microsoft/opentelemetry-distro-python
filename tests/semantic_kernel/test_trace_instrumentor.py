@@ -19,9 +19,18 @@ class TestSemanticKernelInstrumentor(unittest.TestCase):
     def setUp(self):
         # Clear any globally registered enricher to avoid cross-test pollution
         unregister_span_enricher()
+        # Reset the BaseInstrumentor singleton to avoid stale state from other tests.
+        inst = SemanticKernelInstrumentor()
+        inst._is_instrumented_by_opentelemetry = False
+        SemanticKernelInstrumentor._instance = None
+        SemanticKernelInstrumentor._is_instrumented_by_opentelemetry = False
 
     def tearDown(self):
         unregister_span_enricher()
+        inst = SemanticKernelInstrumentor()
+        inst._is_instrumented_by_opentelemetry = False
+        SemanticKernelInstrumentor._instance = None
+        SemanticKernelInstrumentor._is_instrumented_by_opentelemetry = False
 
     def test_instrumentor_initialization(self):
         instrumentor = SemanticKernelInstrumentor()

@@ -19,11 +19,16 @@ class TestAgentFrameworkInstrumentor(unittest.TestCase):
     def setUp(self):
         unregister_span_enricher()
         # Reset the BaseInstrumentor singleton so each test gets a fresh instance.
+        # Must clear instance-level attrs too, since they shadow class attrs.
+        inst = AgentFrameworkInstrumentor()
+        inst._is_instrumented_by_opentelemetry = False
         AgentFrameworkInstrumentor._instance = None
         AgentFrameworkInstrumentor._is_instrumented_by_opentelemetry = False
 
     def tearDown(self):
         unregister_span_enricher()
+        inst = AgentFrameworkInstrumentor()
+        inst._is_instrumented_by_opentelemetry = False
         AgentFrameworkInstrumentor._instance = None
         AgentFrameworkInstrumentor._is_instrumented_by_opentelemetry = False
 
