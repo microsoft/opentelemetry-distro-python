@@ -237,5 +237,64 @@ class TestIsAgent365ExporterEnabled(unittest.TestCase):
             self.assertFalse(is_agent365_exporter_enabled())
 
 
+class TestFicTokenResolverTimeout(unittest.TestCase):
+    """Verify FIC token resolver passes timeout to MSAL and handles missing msal."""
+
+    FIC_ENV = {
+        "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID": "test-client-id",
+        "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET": "test-secret",
+        "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID": "test-tenant",
+        "A365_AGENT_APP_INSTANCE_ID": "test-instance-id",
+        "A365_AGENTIC_USER_ID": "test-user-id",
+    }
+
+    def test_msal_apps_created_with_timeout(self):
+        """Both ConfidentialClientApplication instances receive timeout parameter."""
+        from microsoft.opentelemetry.a365.constants import A365_HTTP_TIMEOUT_SECONDS
+
+        mock_msal = MagicMock()
+        mock_app = MagicMock()
+        mock_app.acquire_token_for_client.return_value = {
+            "access_token": "fake-token",
+            "expires_in": 3600,
+        }
+        mock_msal.ConfidentialClientApplication.return_value = mock_app
+
+        with unittest.mock.patch.dict("sys.modules", {"msal": mock_msal}):
+            from microsoft.opentelemetry.a365.core.exporters.utils import _create_fic_token_resolver
+
+            resolver = _create_fic_token_resolver()
+
+        with unittest.mock.patch.dict(os.environ, self.FIC_ENV):
+            resolver("agent-id", "tenant-id")
+
+        calls = mock_msal.ConfidentialClientApplication.call_args_list
+        self.assertEqual(len(calls), 2)
+        for call in calls:
+            self.assertEqual(call.kwargs["timeout"], A365_HTTP_TIMEOUT_SECONDS)
+
+    def test_msal_not_installed_returns_none(self):
+        """Resolver returns None gracefully when msal is not installed."""
+        # Temporarily remove msal from modules to simulate ImportError
+        with unittest.mock.patch.dict("sys.modules", {"msal": None}):
+            # Need to force re-import of the factory
+            import importlib
+            import microsoft.opentelemetry.a365.core.exporters.utils as utils_mod
+
+            importlib.reload(utils_mod)
+            resolver = utils_mod._create_fic_token_resolver()
+
+        with unittest.mock.patch.dict(os.environ, self.FIC_ENV):
+            result = resolver("agent-id", "tenant-id")
+
+        self.assertIsNone(result)
+
+        # Reload to restore normal state
+        import importlib
+        import microsoft.opentelemetry.a365.core.exporters.utils as utils_mod
+
+        importlib.reload(utils_mod)
+
+
 if __name__ == "__main__":
     unittest.main()

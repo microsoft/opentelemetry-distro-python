@@ -37,11 +37,12 @@ from microsoft.opentelemetry.a365.core.exporters.utils import (
     status_name,
     truncate_span,
 )
+from microsoft.opentelemetry.a365.constants import A365_HTTP_TIMEOUT_SECONDS
 
 # mypy: disable-error-code="import-untyped, union-attr"
 
 # Hardcoded constants - not configurable
-DEFAULT_HTTP_TIMEOUT_SECONDS = 30.0
+DEFAULT_HTTP_TIMEOUT_SECONDS = A365_HTTP_TIMEOUT_SECONDS
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_ENDPOINT_URL = "https://agent365.svc.cloud.microsoft"
 
