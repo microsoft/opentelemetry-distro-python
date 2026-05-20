@@ -21,12 +21,20 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_AGENT_NAME,
     GEN_AI_CONVERSATION_ID,
     GEN_AI_INPUT_MESSAGES,
+    GEN_AI_OPENAI_REQUEST_RESPONSE_FORMAT,
+    GEN_AI_OPENAI_REQUEST_SERVICE_TIER,
+    GEN_AI_OPENAI_RESPONSE_SERVICE_TIER,
+    GEN_AI_OPENAI_RESPONSE_SYSTEM_FINGERPRINT,
     GEN_AI_OPERATION_NAME,
     GEN_AI_OUTPUT_MESSAGES,
+    GEN_AI_OUTPUT_TYPE,
     GEN_AI_PROVIDER_NAME,
+    GEN_AI_REQUEST_CHOICE_COUNT,
     GEN_AI_REQUEST_MODEL,
+    GEN_AI_REQUEST_TOP_K,
     GEN_AI_RESPONSE_FINISH_REASONS,
     GEN_AI_RESPONSE_ID,
+    GEN_AI_RESPONSE_MODEL,
     GEN_AI_SYSTEM_INSTRUCTIONS,
     GEN_AI_TOOL_CALL_ARGUMENTS,
     GEN_AI_TOOL_CALL_ID,
@@ -34,6 +42,8 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_TOOL_DESCRIPTION,
     GEN_AI_TOOL_NAME,
     GEN_AI_TOOL_TYPE,
+    GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS,
+    GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS,
     GEN_AI_USAGE_INPUT_TOKENS,
     GEN_AI_USAGE_OUTPUT_TOKENS,
     GenAiOperationNameValues,
@@ -195,16 +205,26 @@ GEN_AI_OPERATION_NAME_KEY = GEN_AI_OPERATION_NAME
 GEN_AI_REQUEST_MODEL_KEY = GEN_AI_REQUEST_MODEL
 GEN_AI_RESPONSE_FINISH_REASONS_KEY = GEN_AI_RESPONSE_FINISH_REASONS
 GEN_AI_RESPONSE_ID_KEY = GEN_AI_RESPONSE_ID
+GEN_AI_RESPONSE_MODEL_KEY = GEN_AI_RESPONSE_MODEL
 GEN_AI_USAGE_INPUT_TOKENS_KEY = GEN_AI_USAGE_INPUT_TOKENS
 GEN_AI_USAGE_OUTPUT_TOKENS_KEY = GEN_AI_USAGE_OUTPUT_TOKENS
+GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_KEY = GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS
+GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_KEY = GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS
 GEN_AI_PROVIDER_NAME_KEY = GEN_AI_PROVIDER_NAME
 GEN_AI_SYSTEM_INSTRUCTIONS_KEY = GEN_AI_SYSTEM_INSTRUCTIONS
 GEN_AI_INPUT_MESSAGES_KEY = GEN_AI_INPUT_MESSAGES
 GEN_AI_OUTPUT_MESSAGES_KEY = GEN_AI_OUTPUT_MESSAGES
+GEN_AI_OUTPUT_TYPE_KEY = GEN_AI_OUTPUT_TYPE
 GEN_AI_AGENT_NAME_KEY = GEN_AI_AGENT_NAME
 GEN_AI_AGENT_ID_KEY = GEN_AI_AGENT_ID
 GEN_AI_AGENT_DESCRIPTION_KEY = GEN_AI_AGENT_DESCRIPTION
 GEN_AI_CONVERSATION_ID_KEY = GEN_AI_CONVERSATION_ID
+GEN_AI_REQUEST_CHOICE_COUNT_KEY = GEN_AI_REQUEST_CHOICE_COUNT
+GEN_AI_REQUEST_TOP_K_KEY = GEN_AI_REQUEST_TOP_K
+GEN_AI_OPENAI_REQUEST_RESPONSE_FORMAT_KEY = GEN_AI_OPENAI_REQUEST_RESPONSE_FORMAT
+GEN_AI_OPENAI_REQUEST_SERVICE_TIER_KEY = GEN_AI_OPENAI_REQUEST_SERVICE_TIER
+GEN_AI_OPENAI_RESPONSE_SERVICE_TIER_KEY = GEN_AI_OPENAI_RESPONSE_SERVICE_TIER
+GEN_AI_OPENAI_RESPONSE_SYSTEM_FINGERPRINT_KEY = GEN_AI_OPENAI_RESPONSE_SYSTEM_FINGERPRINT
 SERVER_ADDRESS_KEY = SERVER_ADDRESS
 SERVER_PORT_KEY = SERVER_PORT
 
@@ -383,6 +403,59 @@ def invocation_parameters(run: Run) -> Iterator[tuple[str, str]]:
         if tool_defs:
             yield GEN_AI_TOOL_DEFINITIONS_KEY, safe_json_dumps(tool_defs)
 
+        # gen_ai.request.choice_count (OpenAI/Anthropic "n")
+        for choice_key in ("n", "num_choices", "candidate_count"):
+            if (n_val := inv_params.get(choice_key)) is not None:
+                try:
+                    n_int = int(n_val)
+                except (ValueError, TypeError):
+                    pass
+                else:
+                    if n_int > 1:
+                        yield GEN_AI_REQUEST_CHOICE_COUNT_KEY, n_int
+                    break
+
+        # gen_ai.request.top_k
+        if (top_k_val := inv_params.get("top_k")) is not None:
+            try:
+                yield GEN_AI_REQUEST_TOP_K_KEY, float(top_k_val)
+            except (ValueError, TypeError):
+                pass
+
+        # gen_ai.openai.request.response_format + gen_ai.output.type
+        if (response_format := inv_params.get("response_format")) is not None:
+            out_type = _output_type_from_response_format(response_format)
+            if out_type:
+                yield GEN_AI_OUTPUT_TYPE_KEY, out_type
+            if isinstance(response_format, Mapping):
+                yield GEN_AI_OPENAI_REQUEST_RESPONSE_FORMAT_KEY, safe_json_dumps(response_format)
+            elif isinstance(response_format, str):
+                yield GEN_AI_OPENAI_REQUEST_RESPONSE_FORMAT_KEY, response_format
+
+        # gen_ai.openai.request.service_tier
+        if service_tier := inv_params.get("service_tier"):
+            yield GEN_AI_OPENAI_REQUEST_SERVICE_TIER_KEY, str(service_tier)
+
+
+def _output_type_from_response_format(response_format: Any) -> str | None:
+    """Map OpenAI/LangChain ``response_format`` to ``gen_ai.output.type``."""
+    if isinstance(response_format, str):
+        rf = response_format.lower()
+        if rf in ("json", "json_object", "json_schema"):
+            return "json"
+        if rf == "text":
+            return "text"
+        return None
+    if isinstance(response_format, Mapping):
+        rf_type = response_format.get("type")
+        if isinstance(rf_type, str):
+            rf_type_l = rf_type.lower()
+            if rf_type_l in ("json_object", "json_schema"):
+                return "json"
+            if rf_type_l == "text":
+                return "text"
+    return None
+
 
 @stop_on_exception
 def llm_provider(extra: Mapping[str, Any] | None) -> Iterator[tuple[str, str]]:
@@ -551,6 +624,47 @@ def _iter_generation_mappings(outputs: Mapping[str, Any] | None) -> Iterator[Map
             if isinstance(generation, Mapping):
                 yield generation
         return
+    for attribute_name, keys in [
+        (GEN_AI_USAGE_INPUT_TOKENS_KEY, ("prompt_tokens", "input_tokens", "prompt_token_count")),
+        (GEN_AI_USAGE_OUTPUT_TOKENS_KEY, ("completion_tokens", "output_tokens", "candidates_token_count")),
+    ]:
+        if (token_count := get_first_value(token_usage, keys)) is not None:
+            yield attribute_name, token_count
+    # langchain_core UsageMetadata
+    for attribute_name, details_key, keys in [  # type: ignore[assignment]
+        (GEN_AI_USAGE_INPUT_TOKENS_KEY, None, ("input_tokens",)),
+        (GEN_AI_USAGE_OUTPUT_TOKENS_KEY, None, ("output_tokens",)),
+    ]:
+        details = token_usage.get(details_key) if details_key else token_usage
+        if details is not None:
+            if (token_count := get_first_value(details, keys)) is not None:
+                yield attribute_name, token_count
+    # Cache token accounting (gen_ai.usage.cache_*_input_tokens).
+    # Sources:
+    #   - OpenAI: token_usage["prompt_tokens_details"]["cached_tokens"]
+    #   - Anthropic: top-level "cache_read_input_tokens" / "cache_creation_input_tokens"
+    #   - langchain_core UsageMetadata: token_usage["input_token_details"]["cache_read"|"cache_creation"]
+    cache_read: int | None = None
+    cache_creation: int | None = None
+    if isinstance(input_details := token_usage.get("input_token_details"), Mapping):
+        cr = input_details.get("cache_read")
+        if isinstance(cr, int):
+            cache_read = cr
+        cc = input_details.get("cache_creation")
+        if isinstance(cc, int):
+            cache_creation = cc
+    if cache_read is None and isinstance(prompt_details := token_usage.get("prompt_tokens_details"), Mapping):
+        cr = prompt_details.get("cached_tokens")
+        if isinstance(cr, int):
+            cache_read = cr
+    if cache_read is None and isinstance(top_cr := token_usage.get("cache_read_input_tokens"), int):
+        cache_read = top_cr
+    if cache_creation is None and isinstance(top_cc := token_usage.get("cache_creation_input_tokens"), int):
+        cache_creation = top_cc
+    if cache_read is not None:
+        yield GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_KEY, cache_read
+    if cache_creation is not None:
+        yield GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_KEY, cache_creation
 
 
 def _iter_generation_response_metadata(outputs: Mapping[str, Any] | None) -> Iterator[Mapping[str, Any]]:
@@ -572,58 +686,81 @@ def _iter_generation_response_metadata(outputs: Mapping[str, Any] | None) -> Ite
             yield meta
 
 
+@stop_on_exception
+def response_metadata_attributes(outputs: Mapping[str, Any] | None) -> Iterator[tuple[str, str]]:
+    """Extract OpenAI-specific response metadata into ``gen_ai.openai.response.*`` attributes.
+
+    Yields ``gen_ai.openai.response.service_tier`` and
+    ``gen_ai.openai.response.system_fingerprint`` when present on either
+    ``llm_output`` or on per-generation ``response_metadata``.
+    """
+    if not isinstance(outputs, Mapping):
+        return
+    seen_service_tier = False
+    seen_fingerprint = False
+    llm_output = outputs.get("llm_output")
+    if isinstance(llm_output, Mapping):
+        if st := llm_output.get("service_tier"):
+            yield GEN_AI_OPENAI_RESPONSE_SERVICE_TIER_KEY, str(st)
+            seen_service_tier = True
+        if fp := llm_output.get("system_fingerprint"):
+            yield GEN_AI_OPENAI_RESPONSE_SYSTEM_FINGERPRINT_KEY, str(fp)
+            seen_fingerprint = True
+    if seen_service_tier and seen_fingerprint:
+        return
+    for meta in _iter_generation_response_metadata(outputs):
+        if not seen_service_tier and (st := meta.get("service_tier")):
+            yield GEN_AI_OPENAI_RESPONSE_SERVICE_TIER_KEY, str(st)
+            seen_service_tier = True
+        if not seen_fingerprint and (fp := meta.get("system_fingerprint")):
+            yield GEN_AI_OPENAI_RESPONSE_SYSTEM_FINGERPRINT_KEY, str(fp)
+            seen_fingerprint = True
+        if seen_service_tier and seen_fingerprint:
+            return
+
+
 def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
-    if outputs and hasattr(outputs, "get") and (llm_output := outputs.get("llm_output")) and hasattr(llm_output, "get"):
-        if usage := get_first_value(llm_output, ("token_usage", "usage")):
-            if usage_mapping := _as_usage_mapping(usage):
-                return usage_mapping
-
-    for generation in _iter_generation_mappings(outputs):
-        for usage_candidate in (
-            generation.get("token_usage"),
-            generation.get("usage"),
-            generation.get("usage_metadata"),
-        ):
-            if usage_candidate and (usage_mapping := _as_usage_mapping(usage_candidate)):
-                return usage_mapping
-
-        if isinstance(generation_info := generation.get("generation_info"), Mapping):
-            for usage_candidate in (
-                generation_info.get("token_usage"),
-                generation_info.get("usage"),
-                generation_info,
-            ):
-                if usage_candidate and (usage_mapping := _as_usage_mapping(usage_candidate)):
-                    return usage_mapping
-
-        message_data = generation.get("message")
-        if isinstance(message_data, BaseMessage):
-            for usage_candidate in (
-                getattr(message_data, "usage_metadata", None),
-                get_first_value(getattr(message_data, "response_metadata", {}), ("token_usage", "usage")),
-                getattr(message_data, "response_metadata", None),
-            ):
-                if usage_candidate and (usage_mapping := _as_usage_mapping(usage_candidate)):
-                    return usage_mapping
-        elif isinstance(message_data, Mapping):
-            kwargs = message_data.get("kwargs") if isinstance(message_data.get("kwargs"), Mapping) else {}
-            response_meta = message_data.get("response_metadata")
-            if not isinstance(response_meta, Mapping):
-                response_meta = kwargs.get("response_metadata") if isinstance(kwargs, Mapping) else None
-
-            for usage_candidate in (
-                message_data.get("usage_metadata"),
-                kwargs.get("usage_metadata") if isinstance(kwargs, Mapping) else None,
-                (
-                    get_first_value(response_meta, ("token_usage", "usage"))
-                    if isinstance(response_meta, Mapping)
-                    else None
-                ),
-                response_meta,
-            ):
-                if usage_candidate and (usage_mapping := _as_usage_mapping(usage_candidate)):
-                    return usage_mapping
-
+    if (
+        outputs
+        and hasattr(outputs, "get")
+        and (llm_output := outputs.get("llm_output"))
+        and hasattr(llm_output, "get")
+        and (token_usage := get_first_value(llm_output, ("token_usage", "usage")))
+    ):
+        return token_usage
+    # Fallback for code paths (e.g. OpenAI Responses API in langchain-openai) where
+    # ``llm_output["token_usage"]`` is not populated and usage lives on each
+    # generation's ``message.usage_metadata`` (langchain_core ``UsageMetadata``) or
+    # in ``message.response_metadata.token_usage``.
+    if not isinstance(outputs, Mapping):
+        return None
+    multiple_generations = outputs.get("generations")
+    if not isinstance(multiple_generations, Iterable):
+        return None
+    for first_generations in multiple_generations:
+        if not isinstance(first_generations, Iterable):
+            continue
+        for generation in first_generations:
+            if not isinstance(generation, Mapping):
+                continue
+            message_data = generation.get("message")
+            usage: Any = None
+            if isinstance(message_data, BaseMessage):
+                usage = getattr(message_data, "usage_metadata", None)
+                if not usage:
+                    resp_meta = getattr(message_data, "response_metadata", None)
+                    if isinstance(resp_meta, Mapping):
+                        usage = get_first_value(resp_meta, ("token_usage", "usage"))
+            elif isinstance(message_data, Mapping):
+                usage = message_data.get("usage_metadata")
+                if not usage and isinstance(kwargs := message_data.get("kwargs"), Mapping):
+                    usage = kwargs.get("usage_metadata")
+                    if not usage and isinstance(resp_meta := kwargs.get("response_metadata"), Mapping):
+                        usage = get_first_value(resp_meta, ("token_usage", "usage"))
+                if not usage and isinstance(resp_meta := message_data.get("response_metadata"), Mapping):
+                    usage = get_first_value(resp_meta, ("token_usage", "usage"))
+            if isinstance(usage, Mapping) and usage:
+                return usage
     return None
 
 
