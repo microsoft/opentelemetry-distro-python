@@ -385,7 +385,7 @@ def output_messages(
 
 
 @stop_on_exception
-def invocation_parameters(run: Run) -> Iterator[tuple[str, str]]:
+def invocation_parameters(run: Run) -> Iterator[tuple[str, AttributeValue]]:
     if run.run_type.lower() not in ("llm", "chat_model"):
         return
     if not (extra := run.extra):
