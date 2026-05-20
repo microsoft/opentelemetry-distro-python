@@ -19,11 +19,14 @@ class TestA365OpenAIAgentsInstrumentor(unittest.TestCase):
     """Unit tests for A365OpenAIAgentsInstrumentor class."""
 
     def setUp(self):
-        # Reset singleton state between tests
+        # Clear the cached singleton first, then reset class-level attributes
+        # so the next constructor creates a fresh instance with clean defaults.
+        A365OpenAIAgentsInstrumentor._instance = None
         A365OpenAIAgentsInstrumentor._processor = None
         A365OpenAIAgentsInstrumentor._is_instrumented_by_opentelemetry = False
 
     def tearDown(self):
+        A365OpenAIAgentsInstrumentor._instance = None
         A365OpenAIAgentsInstrumentor._processor = None
         A365OpenAIAgentsInstrumentor._is_instrumented_by_opentelemetry = False
 
