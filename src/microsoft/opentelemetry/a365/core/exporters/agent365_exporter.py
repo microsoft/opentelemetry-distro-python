@@ -23,6 +23,7 @@ from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 from opentelemetry.trace import StatusCode
 
+from microsoft.opentelemetry._sdkstats import is_sdkstats_enabled
 from microsoft.opentelemetry.a365.core.exporters.utils import (
     DEFAULT_MAX_PAYLOAD_BYTES,
     build_export_url,
@@ -189,6 +190,7 @@ class _Agent365Exporter(SpanExporter):
         self._max_payload_bytes = max_payload_bytes
         self._domain_override = get_validated_domain_override()
         self._circuit_breaker = _CircuitBreaker()
+        self.record_sdkstats = is_sdkstats_enabled()
 
     # ------------- SpanExporter API -----------------
 
@@ -351,11 +353,10 @@ class _Agent365Exporter(SpanExporter):
         # import graph for non-distro consumers.
         from urllib.parse import urlparse
 
-        from microsoft.opentelemetry._sdkstats import is_sdkstats_enabled
         from microsoft.opentelemetry._sdkstats._utils import record_success
 
         endpoint_host = urlparse(url).hostname or url
-        record_a365_sdkstats = is_sdkstats_enabled()
+        record_a365_sdkstats = self.record_sdkstats
 
         for attempt in range(DEFAULT_MAX_RETRIES + 1):
             try:

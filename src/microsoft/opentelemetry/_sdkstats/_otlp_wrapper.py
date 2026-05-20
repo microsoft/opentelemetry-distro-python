@@ -34,7 +34,7 @@ def _endpoint_host(exporter: Any) -> str:
         return raw
 
 
-class NetworkStatsSpanExporter(SpanExporter):
+class _NetworkStatsSpanExporter(SpanExporter):
     """Span exporter decorator that records ``request_success_count``."""
 
     def __init__(self, inner: SpanExporter) -> None:
@@ -54,7 +54,7 @@ class NetworkStatsSpanExporter(SpanExporter):
         return self._inner.force_flush(timeout_millis)
 
 
-class NetworkStatsMetricExporter(MetricExporter):
+class _NetworkStatsMetricExporter(MetricExporter):
     """Metric exporter decorator that records ``request_success_count``."""
 
     def __init__(self, inner: MetricExporter) -> None:
@@ -65,11 +65,11 @@ class NetworkStatsMetricExporter(MetricExporter):
 
     @property
     def _preferred_temporality(self):  # type: ignore[no-untyped-def]
-        return self._inner._preferred_temporality
+        return getattr(self._inner, "_preferred_temporality", None)
 
     @property
     def _preferred_aggregation(self):  # type: ignore[no-untyped-def]
-        return self._inner._preferred_aggregation
+        return getattr(self._inner, "_preferred_aggregation", None)
 
     def export(  # type: ignore[override]
         self,
@@ -89,7 +89,7 @@ class NetworkStatsMetricExporter(MetricExporter):
         self._inner.shutdown(timeout_millis, **kwargs)
 
 
-class NetworkStatsLogExporter(LogRecordExporter):
+class _NetworkStatsLogExporter(LogRecordExporter):
     """Log exporter decorator that records ``request_success_count``."""
 
     def __init__(self, inner: LogRecordExporter) -> None:
@@ -107,7 +107,7 @@ class NetworkStatsLogExporter(LogRecordExporter):
 
 
 __all__ = [
-    "NetworkStatsSpanExporter",
-    "NetworkStatsMetricExporter",
-    "NetworkStatsLogExporter",
+    "_NetworkStatsSpanExporter",
+    "_NetworkStatsMetricExporter",
+    "_NetworkStatsLogExporter",
 ]

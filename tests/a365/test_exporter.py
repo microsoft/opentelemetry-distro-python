@@ -348,7 +348,7 @@ class TestNetworkStatsbeatHook(unittest.TestCase):
 
         reset_all()
 
-    @patch("microsoft.opentelemetry._sdkstats.is_sdkstats_enabled", return_value=True)
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.is_sdkstats_enabled", return_value=True)
     def test_success_records_success(self, _enabled):
         from microsoft.opentelemetry._sdkstats._utils import REQUEST_SUCCESS_NAME, drain
 
@@ -360,7 +360,7 @@ class TestNetworkStatsbeatHook(unittest.TestCase):
         self.assertEqual(drain(REQUEST_SUCCESS_NAME), {(self.HOST,): 1})
         exporter.shutdown()
 
-    @patch("microsoft.opentelemetry._sdkstats.is_sdkstats_enabled", return_value=True)
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.is_sdkstats_enabled", return_value=True)
     def test_non_2xx_does_not_record(self, _enabled):
         from microsoft.opentelemetry._sdkstats._utils import REQUEST_SUCCESS_NAME, drain
 
@@ -371,7 +371,7 @@ class TestNetworkStatsbeatHook(unittest.TestCase):
         self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
         exporter.shutdown()
 
-    @patch("microsoft.opentelemetry._sdkstats.is_sdkstats_enabled", return_value=False)
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.is_sdkstats_enabled", return_value=False)
     def test_disabled_does_not_record(self, _enabled):
         from microsoft.opentelemetry._sdkstats._utils import REQUEST_SUCCESS_NAME, drain
 

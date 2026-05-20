@@ -83,9 +83,9 @@ def create_otlp_components(
 
     from microsoft.opentelemetry._sdkstats import is_sdkstats_enabled
     from microsoft.opentelemetry._sdkstats._otlp_wrapper import (
-        NetworkStatsLogExporter,
-        NetworkStatsMetricExporter,
-        NetworkStatsSpanExporter,
+        _NetworkStatsLogExporter,
+        _NetworkStatsMetricExporter,
+        _NetworkStatsSpanExporter,
     )
 
     record_network_sdkstats = is_sdkstats_enabled()
@@ -94,19 +94,19 @@ def create_otlp_components(
     if enable_traces:
         span_exporter: SpanExporter = OTLPSpanExporter()
         if record_network_sdkstats:
-            span_exporter = NetworkStatsSpanExporter(span_exporter)
+            span_exporter = _NetworkStatsSpanExporter(span_exporter)
         components.span_processor = BatchSpanProcessor(span_exporter)
 
     if enable_metrics:
         metric_exporter: MetricExporter = OTLPMetricExporter()
         if record_network_sdkstats:
-            metric_exporter = NetworkStatsMetricExporter(metric_exporter)
+            metric_exporter = _NetworkStatsMetricExporter(metric_exporter)
         components.metric_reader = PeriodicExportingMetricReader(metric_exporter)
 
     if enable_logs:
         log_exporter: LogRecordExporter = OTLPLogExporter()
         if record_network_sdkstats:
-            log_exporter = NetworkStatsLogExporter(log_exporter)
+            log_exporter = _NetworkStatsLogExporter(log_exporter)
         components.log_record_processor = BatchLogRecordProcessor(log_exporter)
 
     return components

@@ -37,9 +37,9 @@ from microsoft.opentelemetry._sdkstats._utils import (
     reset_all,
 )
 from microsoft.opentelemetry._sdkstats._otlp_wrapper import (
-    NetworkStatsLogExporter,
-    NetworkStatsMetricExporter,
-    NetworkStatsSpanExporter,
+    _NetworkStatsLogExporter,
+    _NetworkStatsMetricExporter,
+    _NetworkStatsSpanExporter,
 )
 
 
@@ -390,108 +390,27 @@ class TestSdkStatsManager(unittest.TestCase):
         self.assertIn("feature", metric_names)
 
 
-class TestBridgeSdkStatsToAzureMonitor(unittest.TestCase):
-    """Tests for _bridge_sdkstats_to_azure_monitor in _distro.py."""
+class TestInitializeSdkStats(unittest.TestCase):
+    """Tests for _initialize_sdkstats in _distro.py."""
 
     def setUp(self):
         _reset_state()
-        # Reset exporter state that the bridge touches
-        try:
-            from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (
-                _StatsbeatMetrics,
-            )
-            import azure.monitor.opentelemetry.exporter._utils as _exporter_utils
-
-            _StatsbeatMetrics._FEATURE_ATTRIBUTES["feature"] = None
-            with _exporter_utils._INSTRUMENTATIONS_BIT_MASK_LOCK:
-                _exporter_utils._INSTRUMENTATIONS_BIT_MASK = 0
-        except ImportError:
-            pass
 
     def tearDown(self):
         _reset_state()
-        # Reset exporter state touched by the bridge
-        try:
-            from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (
-                _StatsbeatMetrics,
-            )
-            import azure.monitor.opentelemetry.exporter._utils as _exporter_utils
 
-            _StatsbeatMetrics._FEATURE_ATTRIBUTES["feature"] = None
-            with _exporter_utils._INSTRUMENTATIONS_BIT_MASK_LOCK:
-                _exporter_utils._INSTRUMENTATIONS_BIT_MASK = 0
-        except ImportError:
-            pass
-
-    def test_bridge_feature_flags_into_exporter(self):
-        """Distro feature flags are OR'd into the exporter's _FEATURE_ATTRIBUTES."""
-        from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (
-            _StatsbeatMetrics,
-        )
-        from microsoft.opentelemetry._distro import _bridge_sdkstats_to_azure_monitor
-
-        set_sdkstats_feature(SdkStatsFeature.DISTRO)
-        set_sdkstats_feature(SdkStatsFeature.A365_EXPORT)
-        _bridge_sdkstats_to_azure_monitor()
-
-        expected = int(SdkStatsFeature.DISTRO | SdkStatsFeature.A365_EXPORT)
-        self.assertEqual(_StatsbeatMetrics._FEATURE_ATTRIBUTES["feature"], expected)
-
-    def test_bridge_preserves_existing_exporter_feature_flags(self):
-        """Bridge OR's into existing exporter bits, doesn't overwrite."""
-        from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (
-            _StatsbeatMetrics,
-        )
-        from microsoft.opentelemetry._distro import _bridge_sdkstats_to_azure_monitor
-
-        # Simulate exporter has already set DISK_RETRY=1 and AAD=2
-        _StatsbeatMetrics._FEATURE_ATTRIBUTES["feature"] = 3
-        set_sdkstats_feature(SdkStatsFeature.OTLP_EXPORT)
-
-        _bridge_sdkstats_to_azure_monitor()
-
-        # 3 (existing) | 256 (OTLP_EXPORT) = 259
-        self.assertEqual(_StatsbeatMetrics._FEATURE_ATTRIBUTES["feature"], 3 | 256)
-
-    def test_bridge_instrumentation_flags_into_exporter(self):
-        """Distro instrumentation flags are OR'd into the exporter's bitmask."""
-        import azure.monitor.opentelemetry.exporter._utils as _exporter_utils
-        from microsoft.opentelemetry._distro import _bridge_sdkstats_to_azure_monitor
-
-        set_sdkstats_instrumentation(SdkStatsInstrumentation.FASTAPI)
-        set_sdkstats_instrumentation(SdkStatsInstrumentation.LANGCHAIN)
-        _bridge_sdkstats_to_azure_monitor()
-
-        expected = int(SdkStatsInstrumentation.FASTAPI | SdkStatsInstrumentation.LANGCHAIN)
-        self.assertEqual(_exporter_utils._INSTRUMENTATIONS_BIT_MASK, expected)
-
-    def test_bridge_noop_when_no_flags(self):
-        """Bridge does nothing when no flags are set."""
-        from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (
-            _StatsbeatMetrics,
-        )
-        import azure.monitor.opentelemetry.exporter._utils as _exporter_utils
-        from microsoft.opentelemetry._distro import _bridge_sdkstats_to_azure_monitor
-
-        _bridge_sdkstats_to_azure_monitor()
-
-        self.assertIsNone(_StatsbeatMetrics._FEATURE_ATTRIBUTES["feature"])
-        self.assertEqual(_exporter_utils._INSTRUMENTATIONS_BIT_MASK, 0)
-
-    def test_initialize_sdkstats_bridges_when_azure_monitor_enabled(self):
-        """_initialize_sdkstats bridges AND starts the manager when enable_azure_monitor=True."""
+    def test_initialize_sdkstats_starts_manager_when_azure_monitor_enabled(self):
+        """_initialize_sdkstats starts the distro manager regardless of AzMon — the
+        two pipelines run independently so each emits its own statsbeat row."""
         from microsoft.opentelemetry._distro import _initialize_sdkstats
 
         set_sdkstats_feature(SdkStatsFeature.DISTRO)
         set_sdkstats_feature(SdkStatsFeature.A365_EXPORT)
 
-        with patch("microsoft.opentelemetry._distro._bridge_sdkstats_to_azure_monitor") as mock_bridge, patch(
-            "microsoft.opentelemetry._sdkstats._manager.SdkStatsManager"
-        ) as mock_cls:
+        with patch("microsoft.opentelemetry._sdkstats._manager.SdkStatsManager") as mock_cls:
             mock_manager = MagicMock()
             mock_cls.return_value = mock_manager
             _initialize_sdkstats(enable_azure_monitor=True)
-            mock_bridge.assert_called_once()
             mock_manager.initialize.assert_called_once()
 
     def test_initialize_sdkstats_uses_manager_when_azure_monitor_disabled(self):
@@ -611,14 +530,14 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
     def test_span_success_records(self):
         from opentelemetry.sdk.trace.export import SpanExportResult
 
-        wrapper = NetworkStatsSpanExporter(self._inner_span(SpanExportResult.SUCCESS))
+        wrapper = _NetworkStatsSpanExporter(self._inner_span(SpanExportResult.SUCCESS))
         self.assertEqual(wrapper.export([]), SpanExportResult.SUCCESS)
         self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp.example.com",): 1})
 
     def test_span_failure_does_not_record(self):
         from opentelemetry.sdk.trace.export import SpanExportResult
 
-        wrapper = NetworkStatsSpanExporter(self._inner_span(SpanExportResult.FAILURE))
+        wrapper = _NetworkStatsSpanExporter(self._inner_span(SpanExportResult.FAILURE))
         wrapper.export([])
         self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
 
@@ -627,7 +546,7 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
 
         inner = self._inner_span(SpanExportResult.SUCCESS)
         inner.force_flush.return_value = True
-        wrapper = NetworkStatsSpanExporter(inner)
+        wrapper = _NetworkStatsSpanExporter(inner)
         wrapper.shutdown()
         self.assertTrue(wrapper.force_flush(1234))
         inner.shutdown.assert_called_once()
@@ -641,7 +560,7 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
         inner._preferred_temporality = {}
         inner._preferred_aggregation = {}
         inner.export.return_value = MetricExportResult.SUCCESS
-        wrapper = NetworkStatsMetricExporter(inner)
+        wrapper = _NetworkStatsMetricExporter(inner)
         wrapper.export(MagicMock())
         self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp.example.com",): 1})
 
@@ -653,7 +572,7 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
         inner._preferred_temporality = {}
         inner._preferred_aggregation = {}
         inner.export.return_value = MetricExportResult.FAILURE
-        wrapper = NetworkStatsMetricExporter(inner)
+        wrapper = _NetworkStatsMetricExporter(inner)
         wrapper.export(MagicMock())
         self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
 
@@ -663,7 +582,7 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
         inner = MagicMock()
         inner._endpoint = "https://otlp.example.com/v1/logs"
         inner.export.return_value = LogRecordExportResult.SUCCESS
-        wrapper = NetworkStatsLogExporter(inner)
+        wrapper = _NetworkStatsLogExporter(inner)
         wrapper.export([])
         self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp.example.com",): 1})
 
@@ -673,7 +592,7 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
         inner = MagicMock()
         inner._endpoint = "https://otlp.example.com/v1/logs"
         inner.export.return_value = LogRecordExportResult.FAILURE
-        wrapper = NetworkStatsLogExporter(inner)
+        wrapper = _NetworkStatsLogExporter(inner)
         wrapper.export([])
         self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
 
@@ -682,7 +601,7 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
 
         inner = MagicMock(spec=["export", "shutdown", "force_flush"])
         inner.export.return_value = SpanExportResult.SUCCESS
-        wrapper = NetworkStatsSpanExporter(inner)
+        wrapper = _NetworkStatsSpanExporter(inner)
         wrapper.export([])
         self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("unknown",): 1})
 

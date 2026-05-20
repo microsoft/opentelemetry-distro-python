@@ -22,7 +22,7 @@ from microsoft.opentelemetry._sdkstats._constants import REQUEST_SUCCESS_NAME
 # ``SdkStatsMetrics`` callback drains the accumulated counts on each
 # export interval.
 
-__all__ = ["REQUEST_SUCCESS_NAME", "record_success", "drain", "reset_all"]
+__all__ = ["record_success", "drain", "reset_all"]
 
 
 _REQUESTS_MAP_LOCK = threading.Lock()
