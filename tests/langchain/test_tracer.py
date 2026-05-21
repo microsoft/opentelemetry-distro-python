@@ -3,6 +3,7 @@
 
 import datetime
 from collections import OrderedDict
+from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
@@ -447,6 +448,73 @@ class TestAggregateIntoParent(TestCase):
 
         content = tracer._agent_content[agent_run.id]
         self.assertIn("42", content["output_messages"])
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_aggregates_tokens_from_generation_info_usage(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        wrapper = MagicMock()
+        inner = MagicMock()
+        otel_tracer.start_span.side_effect = [wrapper, inner]
+
+        agent_run = _make_run(run_type="chain", name="LangGraph")
+        tracer._start_trace(agent_run)
+
+        llm_run = _make_run(
+            run_type="llm",
+            name="gpt-4o",
+            parent_run_id=agent_run.id,
+            outputs={
+                "generations": [[{"generation_info": {"usage": {"prompt_tokens": 11, "completion_tokens": 4}}}]],
+            },
+            extra=None,
+            inputs=None,
+        )
+        tracer.run_map[str(llm_run.id)] = llm_run
+        tracer._aggregate_into_parent(llm_run)
+
+        content = tracer._agent_content[agent_run.id]
+        self.assertEqual(content["input_tokens"], 11)
+        self.assertEqual(content["output_tokens"], 4)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_aggregates_tokens_from_message_usage_metadata_object(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        wrapper = MagicMock()
+        inner = MagicMock()
+        otel_tracer.start_span.side_effect = [wrapper, inner]
+
+        agent_run = _make_run(run_type="chain", name="LangGraph")
+        tracer._start_trace(agent_run)
+
+        llm_run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o-mini",
+            parent_run_id=agent_run.id,
+            outputs={
+                "generations": [
+                    [
+                        {
+                            "message": {
+                                "usage_metadata": SimpleNamespace(
+                                    input_tokens=9,
+                                    output_tokens=3,
+                                )
+                            }
+                        }
+                    ]
+                ]
+            },
+            extra=None,
+            inputs=None,
+        )
+        tracer.run_map[str(llm_run.id)] = llm_run
+        tracer._aggregate_into_parent(llm_run)
+
+        content = tracer._agent_content[agent_run.id]
+        self.assertEqual(content["input_tokens"], 9)
+        self.assertEqual(content["output_tokens"], 3)
 
 
 class TestFindAgentAncestor(TestCase):
