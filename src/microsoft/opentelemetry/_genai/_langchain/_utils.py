@@ -7,6 +7,7 @@ import datetime
 import json
 import logging
 import math
+from urllib.parse import urlparse
 from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
 from copy import deepcopy
 from enum import Enum
@@ -76,6 +77,17 @@ try:
     )
 except ImportError:
     GEN_AI_TOOL_DEFINITIONS = "gen_ai.tool.definitions"  # type: ignore[misc]
+
+try:
+    from opentelemetry.semconv._incubating.attributes import gen_ai_attributes as _gen_ai_attributes
+
+    GEN_AI_USAGE_REASONING_OUTPUT_TOKENS = getattr(
+        _gen_ai_attributes,
+        "GEN_AI_USAGE_REASONING_OUTPUT_TOKENS",
+        "gen_ai.usage.reasoning.output_tokens",
+    )
+except ImportError:
+    GEN_AI_USAGE_REASONING_OUTPUT_TOKENS = "gen_ai.usage.reasoning.output_tokens"  # type: ignore[misc]
 
 try:
     from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
@@ -208,6 +220,7 @@ GEN_AI_RESPONSE_ID_KEY = GEN_AI_RESPONSE_ID
 GEN_AI_RESPONSE_MODEL_KEY = GEN_AI_RESPONSE_MODEL
 GEN_AI_USAGE_INPUT_TOKENS_KEY = GEN_AI_USAGE_INPUT_TOKENS
 GEN_AI_USAGE_OUTPUT_TOKENS_KEY = GEN_AI_USAGE_OUTPUT_TOKENS
+GEN_AI_USAGE_REASONING_OUTPUT_TOKENS_KEY = GEN_AI_USAGE_REASONING_OUTPUT_TOKENS
 GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_KEY = GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS
 GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_KEY = GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS
 GEN_AI_PROVIDER_NAME_KEY = GEN_AI_PROVIDER_NAME
@@ -395,35 +408,46 @@ def invocation_parameters(run: Run) -> Iterator[tuple[str, AttributeValue]]:
     if inv_params := extra.get("invocation_params"):
         if not isinstance(inv_params, Mapping):
             return
+        param_sources: list[Mapping[str, Any]] = [inv_params]
+        if isinstance(model_kwargs := inv_params.get("model_kwargs"), Mapping):
+            param_sources.append(model_kwargs)
+
+        def _first_param(*keys: str) -> Any:
+            for source in param_sources:
+                if (value := get_first_value(source, keys)) is not None:
+                    return value
+            return None
+
         tool_defs = []
         for source_key in ("tools", "functions"):
-            tool_list = inv_params.get(source_key, [])
-            if isinstance(tool_list, list):
-                tool_defs.extend(tool_list)
+            for source in param_sources:
+                tool_list = source.get(source_key, [])
+                if isinstance(tool_list, list):
+                    tool_defs.extend(tool_list)
         if tool_defs:
             yield GEN_AI_TOOL_DEFINITIONS_KEY, safe_json_dumps(tool_defs)
 
         # gen_ai.request.choice_count (OpenAI/Anthropic "n")
         for choice_key in ("n", "num_choices", "candidate_count"):
-            if (n_val := inv_params.get(choice_key)) is not None:
+            if (n_val := _first_param(choice_key)) is not None:
                 try:
                     n_int = int(n_val)
                 except (ValueError, TypeError):
                     pass
                 else:
-                    if n_int > 1:
+                    if n_int > 0:
                         yield GEN_AI_REQUEST_CHOICE_COUNT_KEY, n_int
                     break
 
         # gen_ai.request.top_k
-        if (top_k_val := inv_params.get("top_k")) is not None:
+        if (top_k_val := _first_param("top_k")) is not None:
             try:
                 yield GEN_AI_REQUEST_TOP_K_KEY, float(top_k_val)
             except (ValueError, TypeError):
                 pass
 
         # gen_ai.openai.request.response_format + gen_ai.output.type
-        if (response_format := inv_params.get("response_format")) is not None:
+        if (response_format := _first_param("response_format")) is not None:
             out_type = _output_type_from_response_format(response_format)
             if out_type:
                 yield GEN_AI_OUTPUT_TYPE_KEY, out_type
@@ -433,8 +457,51 @@ def invocation_parameters(run: Run) -> Iterator[tuple[str, AttributeValue]]:
                 yield GEN_AI_OPENAI_REQUEST_RESPONSE_FORMAT_KEY, response_format
 
         # gen_ai.openai.request.service_tier
-        if service_tier := inv_params.get("service_tier"):
+        if service_tier := _first_param("service_tier"):
             yield GEN_AI_OPENAI_REQUEST_SERVICE_TIER_KEY, str(service_tier)
+
+
+def _usage_mapping(token_usage: Any) -> Mapping[str, Any] | None:
+    if isinstance(token_usage, Mapping):
+        return token_usage
+    if callable(model_dump := getattr(token_usage, "model_dump", None)):
+        try:
+            dumped = model_dump(exclude_none=True)
+        except TypeError:
+            dumped = model_dump()
+        if isinstance(dumped, Mapping):
+            return dumped
+    if callable(dict_method := getattr(token_usage, "dict", None)):
+        try:
+            dumped = dict_method(exclude_none=True)
+        except TypeError:
+            dumped = dict_method()
+        if isinstance(dumped, Mapping):
+            return dumped
+    extracted: dict[str, Any] = {}
+    for attr_name in (
+        "prompt_tokens",
+        "input_tokens",
+        "prompt_token_count",
+        "completion_tokens",
+        "output_tokens",
+        "candidates_token_count",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+    ):
+        value = getattr(token_usage, attr_name, None)
+        if value is not None:
+            extracted[attr_name] = value
+    for attr_name in (
+        "input_token_details",
+        "prompt_tokens_details",
+        "output_token_details",
+        "completion_tokens_details",
+    ):
+        value = getattr(token_usage, attr_name, None)
+        if value is not None and (nested := _usage_mapping(value)) is not None:
+            extracted[attr_name] = nested
+    return extracted or None
 
 
 def _output_type_from_response_format(response_format: Any) -> str | None:
@@ -665,6 +732,17 @@ def _iter_generation_mappings(outputs: Mapping[str, Any] | None) -> Iterator[Map
         yield GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_KEY, cache_read
     if cache_creation is not None:
         yield GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_KEY, cache_creation
+    reasoning_output: int | None = None
+    if isinstance(output_details := token_usage.get("output_token_details"), Mapping):
+        rv = output_details.get("reasoning")
+        if isinstance(rv, int):
+            reasoning_output = rv
+    if reasoning_output is None and isinstance(completion_details := token_usage.get("completion_tokens_details"), Mapping):
+        rv = completion_details.get("reasoning_tokens")
+        if isinstance(rv, int):
+            reasoning_output = rv
+    if reasoning_output is not None:
+        yield GEN_AI_USAGE_REASONING_OUTPUT_TOKENS_KEY, reasoning_output
 
 
 def _iter_generation_response_metadata(outputs: Mapping[str, Any] | None) -> Iterator[Mapping[str, Any]]:
@@ -875,6 +953,17 @@ def add_operation_type(run: Run) -> Iterator[tuple[str, str]]:
         yield GEN_AI_OPERATION_NAME_KEY, EXECUTE_TOOL_OPERATION_NAME
 
 
+def _normalize_server_address(raw: Any) -> str | None:
+    """Normalize URL-like endpoint values to host names for server.address."""
+    if raw is None:
+        return None
+    text = str(raw).strip()
+    if not text:
+        return None
+    parsed = urlparse(text if "://" in text else f"//{text}")
+    return parsed.hostname or text.rstrip("/")
+
+
 def build_llm_invocation(run: Run) -> LLMInvocation:  # pylint: disable=too-many-statements
     """Build an ``LLMInvocation`` from a LangChain ``Run`` for LLM-type spans.
 
@@ -897,54 +986,83 @@ def build_llm_invocation(run: Run) -> LLMInvocation:  # pylint: disable=too-many
     if run.extra and isinstance(run.extra, Mapping):
         inv_params = run.extra.get("invocation_params") or {}
         if isinstance(inv_params, Mapping):
+            params_sources: list[Mapping[str, Any]] = [inv_params]
+            model_kwargs = inv_params.get("model_kwargs")
+            if isinstance(model_kwargs, Mapping):
+                params_sources.append(model_kwargs)
+
+            def _first_param(*keys: str) -> Any:
+                for source in params_sources:
+                    value = get_first_value(source, keys)
+                    if value is not None:
+                        return value
+                return None
+
             try:
-                if (temp := inv_params.get("temperature")) is not None:
+                if (temp := _first_param("temperature")) is not None:
                     val = float(temp)
                     if math.isfinite(val):
                         inv.temperature = val
             except (ValueError, TypeError):
                 pass
             try:
-                if (tp := inv_params.get("top_p")) is not None:
+                if (tp := _first_param("top_p")) is not None:
                     val = float(tp)
                     if math.isfinite(val):
                         inv.top_p = val
             except (ValueError, TypeError):
                 pass
             try:
-                if (mt := inv_params.get("max_tokens")) is not None:
+                if (mt := _first_param("max_tokens", "max_output_tokens")) is not None:
                     inv.max_tokens = int(mt)
             except (ValueError, TypeError):
                 pass
             try:
-                if (fp := inv_params.get("frequency_penalty")) is not None:
+                if (fp := _first_param("frequency_penalty")) is not None:
                     val = float(fp)
                     if math.isfinite(val):
                         inv.frequency_penalty = val
             except (ValueError, TypeError):
                 pass
             try:
-                if (pp := inv_params.get("presence_penalty")) is not None:
+                if (pp := _first_param("presence_penalty")) is not None:
                     val = float(pp)
                     if math.isfinite(val):
                         inv.presence_penalty = val
             except (ValueError, TypeError):
                 pass
             try:
-                if (seed_val := inv_params.get("seed")) is not None:
+                if (seed_val := _first_param("seed")) is not None:
                     inv.seed = int(seed_val)
             except (ValueError, TypeError):
                 pass
-            stop = inv_params.get("stop")
+            stop = _first_param("stop", "stop_sequences")
             if stop is not None:
                 if isinstance(stop, str):
                     inv.stop_sequences = [stop]
                 elif isinstance(stop, list):
                     inv.stop_sequences = [str(s) for s in stop]
-            for key in ("base_url", "api_base", "azure_endpoint"):
-                if addr := inv_params.get(key):
-                    inv.server_address = str(addr).rstrip("/")
-                    break
+
+            for key in (
+                "base_url",
+                "api_base",
+                "openai_api_base",
+                "azure_endpoint",
+                "endpoint",
+                "endpoint_url",
+                "service_url",
+            ):
+                if (addr := _first_param(key)) is not None:
+                    if normalized_addr := _normalize_server_address(addr):
+                        inv.server_address = normalized_addr
+                        break
+
+        if not inv.server_address and isinstance(meta := run.extra.get("metadata"), Mapping):
+            for key in ("ls_server_address", "server.address"):
+                if (addr := meta.get(key)) is not None:
+                    if normalized_addr := _normalize_server_address(addr):
+                        inv.server_address = normalized_addr
+                        break
 
     # --- Response model name (from llm_output) ---
     if run.outputs and isinstance(run.outputs, Mapping):
@@ -961,6 +1079,12 @@ def build_llm_invocation(run: Run) -> LLMInvocation:  # pylint: disable=too-many
             inv.input_tokens = val
         elif key == GEN_AI_USAGE_OUTPUT_TOKENS_KEY:
             inv.output_tokens = val
+        elif key in (
+            GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_KEY,
+            GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_KEY,
+            GEN_AI_USAGE_REASONING_OUTPUT_TOKENS_KEY,
+        ):
+            inv.attributes[key] = val
 
     # --- Response ID ---
     if run.outputs and isinstance(run.outputs, Mapping):

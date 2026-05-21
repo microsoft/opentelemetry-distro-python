@@ -45,6 +45,8 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_KEY,
     GEN_AI_USAGE_INPUT_TOKENS_KEY,
     GEN_AI_USAGE_OUTPUT_TOKENS_KEY,
+    GEN_AI_USAGE_REASONING_OUTPUT_TOKENS_KEY,
+    SESSION_ID_KEY,
     add_operation_type,
     as_utc_nano,
     build_llm_invocation,
@@ -368,7 +370,7 @@ class TestTokenCounts(TestCase):
         result = dict(token_counts(outputs))
         self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 10)
         self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 20)
-        self.assertNotIn(GEN_AI_RESPONSE_FINISH_REASONS_KEY, result)
+        self.assertEqual(result[GEN_AI_USAGE_REASONING_OUTPUT_TOKENS_KEY], 5)
 
     def test_returns_empty_on_none(self):
         self.assertEqual(list(token_counts(None)), [])
@@ -624,13 +626,21 @@ class TestInvocationParameters(TestCase):
         result = dict(invocation_parameters(run))
         self.assertEqual(result[GEN_AI_REQUEST_CHOICE_COUNT_KEY], 3)
 
-    def test_omits_choice_count_when_one(self):
+    def test_extracts_choice_count_when_one(self):
         run = _make_run(
             run_type="llm",
             extra={"invocation_params": {"n": 1}},
         )
         result = dict(invocation_parameters(run))
-        self.assertNotIn(GEN_AI_REQUEST_CHOICE_COUNT_KEY, result)
+        self.assertEqual(result[GEN_AI_REQUEST_CHOICE_COUNT_KEY], 1)
+
+    def test_extracts_choice_count_from_model_kwargs(self):
+        run = _make_run(
+            run_type="llm",
+            extra={"invocation_params": {"model_kwargs": {"n": 1}}},
+        )
+        result = dict(invocation_parameters(run))
+        self.assertEqual(result[GEN_AI_REQUEST_CHOICE_COUNT_KEY], 1)
 
     def test_extracts_top_k(self):
         run = _make_run(
@@ -1061,9 +1071,47 @@ class TestBuildLlmInvocation(TestCase):
         self.assertEqual(inv.presence_penalty, 0.2)
         self.assertEqual(inv.seed, 7)
         self.assertEqual(inv.stop_sequences, ["END"])
-        self.assertEqual(inv.server_address, "https://example.test")
+        self.assertEqual(inv.server_address, "example.test")
         self.assertEqual(inv.response_model_name, "gpt-4o")
         self.assertEqual(inv.response_id, "resp-1")
+
+    def test_builds_invocation_with_model_kwargs_and_alt_endpoint_keys(self):
+        run = _make_run(
+            run_type="llm",
+            outputs={"llm_output": {"model_name": "gpt-4o", "id": "resp-2"}},
+            extra={
+                "invocation_params": {
+                    "openai_api_base": "https://api.contoso.test/v1",
+                    "model_kwargs": {
+                        "temperature": "0.3",
+                        "top_p": "0.8",
+                        "max_output_tokens": "128",
+                        "frequency_penalty": "0.4",
+                        "presence_penalty": "0.6",
+                        "stop_sequences": ["STOP"],
+                    },
+                }
+            },
+            inputs=None,
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(inv.temperature, 0.3)
+        self.assertEqual(inv.top_p, 0.8)
+        self.assertEqual(inv.max_tokens, 128)
+        self.assertEqual(inv.frequency_penalty, 0.4)
+        self.assertEqual(inv.presence_penalty, 0.6)
+        self.assertEqual(inv.stop_sequences, ["STOP"])
+        self.assertEqual(inv.server_address, "api.contoso.test")
+
+    def test_builds_invocation_server_address_from_metadata(self):
+        run = _make_run(
+            run_type="llm",
+            outputs={"llm_output": {}},
+            extra={"metadata": {"ls_server_address": "https://meta.contoso.test/"}},
+            inputs=None,
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(inv.server_address, "meta.contoso.test")
 
     def test_response_model_from_generation_metadata(self):
         # Simulates LangChain AzureChatOpenAI streaming / httpx pipeline:
