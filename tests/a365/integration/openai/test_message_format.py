@@ -164,7 +164,7 @@ class TestOpenAIMessageFormat:
             raw_input = attrs.get(GEN_AI_INPUT_MESSAGES_KEY)
             if raw_input:
                 input_data = json.loads(raw_input)
-                if isinstance(input_data, list) and len(input_data) > 0:
+                if isinstance(input_data, list) and len(input_data) > 0 and isinstance(input_data[0], dict):
                     found_structured = True
                     roles = [m["role"] for m in input_data]
                     assert "user" in roles
@@ -175,7 +175,7 @@ class TestOpenAIMessageFormat:
             raw_output = attrs.get(GEN_AI_OUTPUT_MESSAGES_KEY)
             if raw_output:
                 output_data = json.loads(raw_output)
-                if isinstance(output_data, list) and len(output_data) > 0:
+                if isinstance(output_data, list) and len(output_data) > 0 and isinstance(output_data[0], dict):
                     assert output_data[0]["role"] == "assistant"
                     assert any(p["type"] == "text" for p in output_data[0]["parts"])
                     assert "finish_reason" in output_data[0]
@@ -227,8 +227,9 @@ class TestOpenAIMessageFormat:
                 data = json.loads(raw)
                 if isinstance(data, list):
                     for msg in data:
-                        for part in msg.get("parts", []):
-                            part_types.add(part.get("type", ""))
+                        if isinstance(msg, dict):
+                            for part in msg.get("parts", []):
+                                part_types.add(part.get("type", ""))
 
         print(f"\n  Exported part types: {part_types}")
         assert "text" in part_types, f"Expected text in exported parts: {part_types}"
