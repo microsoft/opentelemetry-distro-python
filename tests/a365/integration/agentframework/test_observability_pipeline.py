@@ -242,17 +242,15 @@ class TestAgentFrameworkObservabilityPipeline:
             attrs = dict(chat_span.attributes or {})
             if GEN_AI_INPUT_MESSAGES_KEY in attrs:
                 input_data = json.loads(attrs[GEN_AI_INPUT_MESSAGES_KEY])
-                if isinstance(input_data, dict) and "version" in input_data:
-                    assert input_data["version"] == "0.1.0"
-                    for msg in input_data["messages"]:
+                if isinstance(input_data, list):
+                    for msg in input_data:
                         assert "role" in msg
                         assert "parts" in msg
 
             if GEN_AI_OUTPUT_MESSAGES_KEY in attrs:
                 output_data = json.loads(str(attrs[GEN_AI_OUTPUT_MESSAGES_KEY]))
-                if isinstance(output_data, dict) and "version" in output_data:
-                    assert output_data["version"] == "0.1.0"
-                    for msg in output_data["messages"]:
+                if isinstance(output_data, list):
+                    for msg in output_data:
                         assert "role" in msg
                         assert "parts" in msg
 

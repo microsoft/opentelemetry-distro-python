@@ -29,11 +29,11 @@ class TestMapInputMessages(TestCase):
         result = map_input_messages("Hello world")
         self.assertIsNotNone(result)
         data = json.loads(result)
-        self.assertEqual(data["version"], "0.1.0")
-        self.assertEqual(len(data["messages"]), 1)
-        self.assertEqual(data["messages"][0]["role"], "user")
-        self.assertEqual(data["messages"][0]["parts"][0]["type"], "text")
-        self.assertEqual(data["messages"][0]["parts"][0]["content"], "Hello world")
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 1)
+        self.assertEqual(data[0]["role"], "user")
+        self.assertEqual(data[0]["parts"][0]["type"], "text")
+        self.assertEqual(data[0]["parts"][0]["content"], "Hello world")
 
     def test_chat_completions_format(self) -> None:
         """Standard chat completions format with system + user messages."""
@@ -46,12 +46,12 @@ class TestMapInputMessages(TestCase):
         result = map_input_messages(raw)
         self.assertIsNotNone(result)
         data = json.loads(result)
-        self.assertEqual(data["version"], "0.1.0")
-        self.assertEqual(len(data["messages"]), 2)
-        self.assertEqual(data["messages"][0]["role"], "system")
-        self.assertEqual(data["messages"][0]["parts"][0]["content"], "You are helpful.")
-        self.assertEqual(data["messages"][1]["role"], "user")
-        self.assertEqual(data["messages"][1]["parts"][0]["content"], "Hi there")
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]["role"], "system")
+        self.assertEqual(data[0]["parts"][0]["content"], "You are helpful.")
+        self.assertEqual(data[1]["role"], "user")
+        self.assertEqual(data[1]["parts"][0]["content"], "Hi there")
 
     def test_chat_completions_with_tool_calls(self) -> None:
         """Messages with assistant tool_calls and tool response."""
@@ -74,24 +74,24 @@ class TestMapInputMessages(TestCase):
         result = map_input_messages(raw)
         self.assertIsNotNone(result)
         data = json.loads(result)
-        self.assertEqual(data["version"], "0.1.0")
-        self.assertEqual(len(data["messages"]), 3)
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 3)
 
         # User message
-        self.assertEqual(data["messages"][0]["role"], "user")
-        self.assertEqual(data["messages"][0]["parts"][0]["type"], "text")
+        self.assertEqual(data[0]["role"], "user")
+        self.assertEqual(data[0]["parts"][0]["type"], "text")
 
         # Assistant with tool call
-        self.assertEqual(data["messages"][1]["role"], "assistant")
-        self.assertEqual(data["messages"][1]["parts"][0]["type"], "tool_call")
-        self.assertEqual(data["messages"][1]["parts"][0]["name"], "add")
-        self.assertEqual(data["messages"][1]["parts"][0]["id"], "call_123")
+        self.assertEqual(data[1]["role"], "assistant")
+        self.assertEqual(data[1]["parts"][0]["type"], "tool_call")
+        self.assertEqual(data[1]["parts"][0]["name"], "add")
+        self.assertEqual(data[1]["parts"][0]["id"], "call_123")
 
         # Tool response
-        self.assertEqual(data["messages"][2]["role"], "tool")
-        self.assertEqual(data["messages"][2]["parts"][0]["type"], "tool_call_response")
-        self.assertEqual(data["messages"][2]["parts"][0]["id"], "call_123")
-        self.assertEqual(data["messages"][2]["parts"][0]["response"], "4")
+        self.assertEqual(data[2]["role"], "tool")
+        self.assertEqual(data[2]["parts"][0]["type"], "tool_call_response")
+        self.assertEqual(data[2]["parts"][0]["id"], "call_123")
+        self.assertEqual(data[2]["parts"][0]["response"], "4")
 
     def test_response_input_item_param_format(self) -> None:
         """ResponseInputItemParam format with typed items."""
@@ -114,22 +114,22 @@ class TestMapInputMessages(TestCase):
         result = map_input_messages(raw)
         self.assertIsNotNone(result)
         data = json.loads(result)
-        self.assertEqual(data["version"], "0.1.0")
-        self.assertEqual(len(data["messages"]), 3)
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 3)
 
         # Message
-        self.assertEqual(data["messages"][0]["role"], "user")
-        self.assertEqual(data["messages"][0]["parts"][0]["type"], "text")
+        self.assertEqual(data[0]["role"], "user")
+        self.assertEqual(data[0]["parts"][0]["type"], "text")
 
         # Function call
-        self.assertEqual(data["messages"][1]["role"], "assistant")
-        self.assertEqual(data["messages"][1]["parts"][0]["type"], "tool_call")
-        self.assertEqual(data["messages"][1]["parts"][0]["name"], "get_weather")
+        self.assertEqual(data[1]["role"], "assistant")
+        self.assertEqual(data[1]["parts"][0]["type"], "tool_call")
+        self.assertEqual(data[1]["parts"][0]["name"], "get_weather")
 
         # Function call output
-        self.assertEqual(data["messages"][2]["role"], "tool")
-        self.assertEqual(data["messages"][2]["parts"][0]["type"], "tool_call_response")
-        self.assertEqual(data["messages"][2]["parts"][0]["response"], "Sunny, 22C")
+        self.assertEqual(data[2]["role"], "tool")
+        self.assertEqual(data[2]["parts"][0]["type"], "tool_call_response")
+        self.assertEqual(data[2]["parts"][0]["response"], "Sunny, 22C")
 
     def test_message_without_type_field(self) -> None:
         """Messages without explicit 'type' field (EasyInputMessageParam)."""
@@ -141,14 +141,14 @@ class TestMapInputMessages(TestCase):
         result = map_input_messages(raw)
         self.assertIsNotNone(result)
         data = json.loads(result)
-        self.assertEqual(data["messages"][0]["role"], "user")
+        self.assertEqual(data[0]["role"], "user")
 
     def test_invalid_json_wraps_as_plain_text(self) -> None:
         result = map_input_messages("not json {")
         self.assertIsNotNone(result)
         data = json.loads(result)
-        self.assertEqual(data["version"], "0.1.0")
-        self.assertEqual(data["messages"][0]["parts"][0]["content"], "not json {")
+        self.assertIsInstance(data, list)
+        self.assertEqual(data[0]["parts"][0]["content"], "not json {")
 
     def test_empty_list_returns_none(self) -> None:
         self.assertIsNone(map_input_messages("[]"))
@@ -173,10 +173,10 @@ class TestMapInputMessages(TestCase):
         result = map_input_messages(raw)
         self.assertIsNotNone(result)
         data = json.loads(result)
-        self.assertEqual(len(data["messages"]), 2)
-        self.assertEqual(data["messages"][0]["parts"][0]["type"], "tool_call")
-        self.assertEqual(data["messages"][0]["parts"][0]["name"], "my_tool")
-        self.assertEqual(data["messages"][1]["parts"][0]["type"], "tool_call_response")
+        self.assertEqual(len(data), 2)
+        self.assertEqual(data[0]["parts"][0]["type"], "tool_call")
+        self.assertEqual(data[0]["parts"][0]["name"], "my_tool")
+        self.assertEqual(data[1]["parts"][0]["type"], "tool_call_response")
 
 
 class TestMapOutputMessages(TestCase):
@@ -189,9 +189,10 @@ class TestMapOutputMessages(TestCase):
         result = map_output_messages("The answer is 42.")
         self.assertIsNotNone(result)
         data = json.loads(result)
-        self.assertEqual(data["version"], "0.1.0")
-        self.assertEqual(data["messages"][0]["role"], "assistant")
-        self.assertEqual(data["messages"][0]["parts"][0]["content"], "The answer is 42.")
+        self.assertIsInstance(data, list)
+        self.assertEqual(data[0]["role"], "assistant")
+        self.assertEqual(data[0]["parts"][0]["content"], "The answer is 42.")
+        self.assertEqual(data[0]["finish_reason"], "stop")
 
     def test_chat_completions_output(self) -> None:
         """Standard chat completions output with finish_reason."""
@@ -207,9 +208,9 @@ class TestMapOutputMessages(TestCase):
         result = map_output_messages(raw)
         self.assertIsNotNone(result)
         data = json.loads(result)
-        self.assertEqual(data["version"], "0.1.0")
-        self.assertEqual(len(data["messages"]), 1)
-        msg = data["messages"][0]
+        self.assertIsInstance(data, list)
+        self.assertEqual(len(data), 1)
+        msg = data[0]
         self.assertEqual(msg["role"], "assistant")
         self.assertEqual(msg["parts"][0]["type"], "text")
         self.assertEqual(msg["parts"][0]["content"], "Paris is the capital.")
@@ -235,7 +236,7 @@ class TestMapOutputMessages(TestCase):
         result = map_output_messages(raw)
         self.assertIsNotNone(result)
         data = json.loads(result)
-        msg = data["messages"][0]
+        msg = data[0]
         self.assertEqual(msg["role"], "assistant")
         self.assertEqual(msg["parts"][0]["type"], "tool_call")
         self.assertEqual(msg["parts"][0]["name"], "search")
@@ -260,8 +261,8 @@ class TestMapOutputMessages(TestCase):
         result = map_output_messages(raw)
         self.assertIsNotNone(result)
         data = json.loads(result)
-        self.assertEqual(data["version"], "0.1.0")
-        msg = data["messages"][0]
+        self.assertIsInstance(data, list)
+        msg = data[0]
         self.assertEqual(msg["role"], "assistant")
         self.assertEqual(msg["parts"][0]["type"], "text")
         self.assertEqual(msg["parts"][0]["content"], "Hello!")
@@ -285,7 +286,7 @@ class TestMapOutputMessages(TestCase):
         result = map_output_messages(raw)
         self.assertIsNotNone(result)
         data = json.loads(result)
-        msg = data["messages"][0]
+        msg = data[0]
         self.assertEqual(msg["role"], "assistant")
         self.assertEqual(msg["parts"][0]["type"], "tool_call")
         self.assertEqual(msg["parts"][0]["name"], "get_weather")
@@ -303,5 +304,5 @@ class TestMapOutputMessages(TestCase):
         result = map_output_messages("bad json")
         self.assertIsNotNone(result)
         data = json.loads(result)
-        self.assertEqual(data["version"], "0.1.0")
-        self.assertEqual(data["messages"][0]["role"], "assistant")
+        self.assertIsInstance(data, list)
+        self.assertEqual(data[0]["role"], "assistant")

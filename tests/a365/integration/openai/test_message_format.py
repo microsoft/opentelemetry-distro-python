@@ -6,7 +6,7 @@
 These tests use the real A365 observability pipeline via the shared
 distro_exporter fixture from conftest. The message mapping is applied
 directly in trace_processor before spans are ended, converting raw OpenAI
-messages to the A365 versioned format (v0.1.0) with typed parts.
+messages to the A365 structured array format with typed parts.
 """
 
 import json
@@ -101,7 +101,7 @@ def _span_to_json(span: ReadableSpan) -> dict[str, object]:
 @pytest.mark.integration
 class TestOpenAIMessageFormat:
     """Capture real OpenAI Agents SDK span attributes after enrichment
-    and verify the A365 versioned message format."""
+and verify the A365 structured message format."""
 
     @pytest.fixture
     def openai_client(self, azure_openai_config: dict[str, Any]) -> AsyncAzureOpenAI:
@@ -129,7 +129,7 @@ class TestOpenAIMessageFormat:
         openai_client: AsyncAzureOpenAI,
         azure_openai_config: dict[str, Any],
     ) -> None:
-        """Simple chat: verify exported spans contain versioned A365 messages."""
+        """Simple chat: verify exported spans contain structured A365 messages."""
         agent = Agent(
             name="TestAgent",
             instructions="You are a helpful assistant. Reply in one sentence.",
@@ -157,31 +157,30 @@ class TestOpenAIMessageFormat:
             f"No message spans found. All spans: {[s.name for s in distro_exporter.spans]}"
         )
 
-        # Verify at least one span has versioned A365 format
-        found_versioned = False
+        # Verify at least one span has structured A365 array format
+        found_structured = False
         for span in message_spans:
             attrs = dict(span.attributes or {})
             raw_input = attrs.get(GEN_AI_INPUT_MESSAGES_KEY)
             if raw_input:
                 input_data = json.loads(raw_input)
-                if isinstance(input_data, dict) and input_data.get("version") == "0.1.0":
-                    found_versioned = True
-                    messages = input_data["messages"]
-                    roles = [m["role"] for m in messages]
+                if isinstance(input_data, list) and len(input_data) > 0:
+                    found_structured = True
+                    roles = [m["role"] for m in input_data]
                     assert "user" in roles
-                    for msg in messages:
+                    for msg in input_data:
                         for part in msg["parts"]:
                             assert "type" in part
 
             raw_output = attrs.get(GEN_AI_OUTPUT_MESSAGES_KEY)
             if raw_output:
                 output_data = json.loads(raw_output)
-                if isinstance(output_data, dict) and output_data.get("version") == "0.1.0":
-                    out_messages = output_data["messages"]
-                    assert out_messages[0]["role"] == "assistant"
-                    assert any(p["type"] == "text" for p in out_messages[0]["parts"])
+                if isinstance(output_data, list) and len(output_data) > 0:
+                    assert output_data[0]["role"] == "assistant"
+                    assert any(p["type"] == "text" for p in output_data[0]["parts"])
+                    assert "finish_reason" in output_data[0]
 
-        assert found_versioned, "Expected at least one span with versioned A365 message format"
+        assert found_structured, "Expected at least one span with structured A365 message format"
 
     @pytest.mark.asyncio
     async def test_tool_call_message_mapping(
@@ -226,9 +225,8 @@ class TestOpenAIMessageFormat:
                 if not raw:
                     continue
                 data = json.loads(raw)
-                if isinstance(data, dict) and "messages" in data:
-                    messages = data["messages"]
-                    for msg in messages:
+                if isinstance(data, list):
+                    for msg in data:
                         for part in msg.get("parts", []):
                             part_types.add(part.get("type", ""))
 

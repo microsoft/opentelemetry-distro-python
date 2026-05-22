@@ -723,7 +723,7 @@ def _setup_instrumentations(otel_kwargs: Dict[str, Any], **kwargs: Any) -> None:
             continue
         # When A365 is enabled, use the A365-specific OpenAI Agents
         # instrumentation instead of the upstream entry point so that
-        # spans carry the versioned message format A365 consumers expect.
+        # spans carry the structured message format A365 consumers expect.
         if lib_name == "openai_agents" and enable_a365:
             _setup_a365_openai_agents_instrumentation()
             continue

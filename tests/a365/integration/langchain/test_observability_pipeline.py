@@ -88,7 +88,7 @@ class TestLangChainObservabilityPipeline:
 
     Verifies that wrapping LangChain calls inside InvokeAgentScope
     produces a single trace with correct parent-child span hierarchy,
-    operation names, and A365 versioned message format attributes.
+    operation names, and A365 structured message format attributes.
     """
 
     @pytest.fixture
@@ -261,23 +261,24 @@ class TestLangChainObservabilityPipeline:
             print(f"\n✓ Found {len(tool_spans)} tool execution spans")
 
         # --- 8. A365 message format on inference spans ---
-        # The A365 mapper emits the versioned format {"version": "0.1.0", "messages": [...]}.
+        # The A365 mapper emits a plain array format per OTel spec.
         # Older or third-party instrumentors may emit a raw JSON list instead;
         # the raw-list branch is kept for backward compatibility.
         for inf_span in inference_spans:
             attrs = dict(inf_span.attributes or {})
             if GEN_AI_INPUT_MESSAGES_KEY in attrs:
                 input_data = json.loads(attrs[GEN_AI_INPUT_MESSAGES_KEY])
-                if isinstance(input_data, dict) and "version" in input_data:
-                    assert input_data["version"] == "0.1.0"
-                    for msg in input_data["messages"]:
+                if isinstance(input_data, list):
+                    for msg in input_data:
                         assert "role" in msg
                         assert "parts" in msg
 
             if GEN_AI_OUTPUT_MESSAGES_KEY in attrs:
                 output_data = json.loads(attrs[GEN_AI_OUTPUT_MESSAGES_KEY])
-                if isinstance(output_data, dict) and "version" in output_data:
-                    assert output_data["version"] == "0.1.0"
+                if isinstance(output_data, list):
+                    for msg in output_data:
+                        assert "role" in msg
+                        assert "parts" in msg
 
         print(
             f"\n✓ All pipeline assertions passed: "

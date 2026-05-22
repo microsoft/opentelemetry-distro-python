@@ -175,33 +175,36 @@ class ChatMessage:
 
 @dataclass
 class OutputMessage(ChatMessage):
-    """An output message produced by a model (OTEL gen-ai semantic conventions)."""
+    """An output message produced by a model (OTEL gen-ai semantic conventions).
 
-    finish_reason: str | None = None
+    ``finish_reason`` defaults to ``"stop"`` per OTel spec when not provided.
+    """
+
+    finish_reason: str = "stop"
+
+    def __post_init__(self) -> None:
+        """Coerce None finish_reason to default."""
+        if self.finish_reason is None:  # type: ignore[comparison-overlap]
+            self.finish_reason = "stop"
 
 
 # ---------------------------------------------------------------------------
-# Versioned wrappers
+# Message containers
 # ---------------------------------------------------------------------------
-
-A365_MESSAGE_SCHEMA_VERSION: str = "0.1.0"
-"""Schema version embedded in serialized message payloads."""
 
 
 @dataclass
 class InputMessages:
-    """Versioned wrapper for input messages."""
+    """Container for input messages. Serializes as a plain JSON array per OTel spec."""
 
     messages: list[ChatMessage] = field(default_factory=list)
-    version: str = field(default=A365_MESSAGE_SCHEMA_VERSION, init=False)
 
 
 @dataclass
 class OutputMessages:
-    """Versioned wrapper for output messages."""
+    """Container for output messages. Serializes as a plain JSON array per OTel spec."""
 
     messages: list[OutputMessage] = field(default_factory=list)
-    version: str = field(default=A365_MESSAGE_SCHEMA_VERSION, init=False)
 
 
 # ---------------------------------------------------------------------------
@@ -211,12 +214,13 @@ class OutputMessages:
 InputMessagesParam = Union[str, list[str], InputMessages]
 """Accepted input for ``record_input_messages``.
 
-Supports a single string, a list of strings (backward compat), or the versioned
-wrapper.
+Supports a single string, a list of strings (backward compat), or the structured
+container.
 """
 
 OutputMessagesParam = Union[str, list[str], OutputMessages]
 """Accepted input for ``record_output_messages``.
 
-Supports a single string, a list of strings (backward compat), or the versioned wrapper.
+Supports a single string, a list of strings (backward compat), or the structured
+container.
 """

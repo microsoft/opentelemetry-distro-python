@@ -262,7 +262,7 @@ class OpenAIAgentsTraceProcessor(TracingProcessor):
             # Clean up tracking
             self._agent_span_ids.pop(span.span_id, None)
 
-        # Map raw messages to A365 versioned format before ending the span
+        # Map raw messages to A365 structured format before ending the span
         self._apply_message_mapping(otel_span)
 
         end_time: int | None = None
@@ -276,7 +276,7 @@ class OpenAIAgentsTraceProcessor(TracingProcessor):
 
     @staticmethod
     def _apply_message_mapping(otel_span: OtelSpan) -> None:
-        """Map raw ``gen_ai.input/output.messages`` to the A365 versioned format."""
+        """Map raw ``gen_ai.input/output.messages`` to the A365 structured format."""
         attrs = otel_span.attributes or {}  # type: ignore[attr-defined]
         operation = attrs.get(GEN_AI_OPERATION_NAME_KEY, "")
         if operation not in (INVOKE_AGENT_OPERATION_NAME, CHAT_OPERATION_NAME):
