@@ -516,33 +516,62 @@ def token_counts(outputs: Mapping[str, Any] | None) -> Iterator[tuple[str, int]]
         yield GEN_AI_USAGE_OUTPUT_TOKENS_KEY, output_tokens
 
 
-def _iter_generation_response_metadata(outputs: Mapping[str, Any] | None) -> Iterator[Mapping[str, Any]]:
-    """Yield ``response_metadata`` / ``generation_info`` mappings on each generation."""
+def _iter_generation_mappings(outputs: Mapping[str, Any] | None) -> Iterator[Mapping[str, Any]]:
+    """Yield generation mappings from both nested and flat generations payloads."""
     if not isinstance(outputs, Mapping):
         return
-    multiple_generations = outputs.get("generations")
-    if not isinstance(multiple_generations, Iterable):
+    generations = outputs.get("generations")
+    if not isinstance(generations, Iterable):
         return
-    for first_generations in multiple_generations:
-        if not isinstance(first_generations, Iterable):
-            continue
+
+    if isinstance(generations, list):
+        if not generations:
+            return
+        first_item = generations[0]
+        # Nested shape: generations = [[{...}, {...}], ...]
+        if isinstance(first_item, list):
+            for generation in first_item:
+                if isinstance(generation, Mapping):
+                    yield generation
+            return
+        # Flat shape: generations = [{...}, {...}]
+        if isinstance(first_item, Mapping):
+            for generation in generations:
+                if isinstance(generation, Mapping):
+                    yield generation
+            return
+
+    # Generic iterable fallback
+    first_generations = next(iter(generations), None)
+    if first_generations is None:
+        return
+    if isinstance(first_generations, Mapping):
+        yield first_generations
+        return
+    if isinstance(first_generations, Iterable):
         for generation in first_generations:
-            if not isinstance(generation, Mapping):
-                continue
-            gen_info = generation.get("generation_info")
-            if isinstance(gen_info, Mapping):
-                yield gen_info
-            message_data = generation.get("message")
-            if isinstance(message_data, BaseMessage):
-                meta = getattr(message_data, "response_metadata", None)
-            elif isinstance(message_data, Mapping):
-                meta = message_data.get("response_metadata")
-                if meta is None and isinstance(kwargs := message_data.get("kwargs"), Mapping):
-                    meta = kwargs.get("response_metadata")
-            else:
-                meta = None
-            if isinstance(meta, Mapping):
-                yield meta
+            if isinstance(generation, Mapping):
+                yield generation
+        return
+
+
+def _iter_generation_response_metadata(outputs: Mapping[str, Any] | None) -> Iterator[Mapping[str, Any]]:
+    """Yield ``response_metadata`` / ``generation_info`` mappings on each generation."""
+    for generation in _iter_generation_mappings(outputs):
+        gen_info = generation.get("generation_info")
+        if isinstance(gen_info, Mapping):
+            yield gen_info
+        message_data = generation.get("message")
+        if isinstance(message_data, BaseMessage):
+            meta = getattr(message_data, "response_metadata", None)
+        elif isinstance(message_data, Mapping):
+            meta = message_data.get("response_metadata")
+            if meta is None and isinstance(kwargs := message_data.get("kwargs"), Mapping):
+                meta = kwargs.get("response_metadata")
+        else:
+            meta = None
+        if isinstance(meta, Mapping):
+            yield meta
 
 
 def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
@@ -551,60 +580,47 @@ def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
             if usage_mapping := _as_usage_mapping(usage):
                 return usage_mapping
 
-    if not isinstance(outputs, Mapping):
-        return None
+    for generation in _iter_generation_mappings(outputs):
+        for usage_candidate in (
+            generation.get("token_usage"),
+            generation.get("usage"),
+            generation.get("usage_metadata"),
+        ):
+            if usage_candidate and (usage_mapping := _as_usage_mapping(usage_candidate)):
+                return usage_mapping
 
-    multiple_generations = outputs.get("generations")
-    if not isinstance(multiple_generations, Iterable):
-        return None
-
-    for first_generations in multiple_generations:
-        if not isinstance(first_generations, Iterable):
-            continue
-        for generation in first_generations:
-            if not isinstance(generation, Mapping):
-                continue
-
+        if isinstance(generation_info := generation.get("generation_info"), Mapping):
             for usage_candidate in (
-                generation.get("token_usage"),
-                generation.get("usage"),
-                generation.get("usage_metadata"),
+                generation_info.get("token_usage"),
+                generation_info.get("usage"),
+                generation_info,
             ):
                 if usage_candidate and (usage_mapping := _as_usage_mapping(usage_candidate)):
                     return usage_mapping
 
-            if isinstance(generation_info := generation.get("generation_info"), Mapping):
-                for usage_candidate in (
-                    generation_info.get("token_usage"),
-                    generation_info.get("usage"),
-                    generation_info,
-                ):
-                    if usage_candidate and (usage_mapping := _as_usage_mapping(usage_candidate)):
-                        return usage_mapping
+        message_data = generation.get("message")
+        if isinstance(message_data, BaseMessage):
+            for usage_candidate in (
+                getattr(message_data, "usage_metadata", None),
+                get_first_value(getattr(message_data, "response_metadata", {}), ("token_usage", "usage")),
+                getattr(message_data, "response_metadata", None),
+            ):
+                if usage_candidate and (usage_mapping := _as_usage_mapping(usage_candidate)):
+                    return usage_mapping
+        elif isinstance(message_data, Mapping):
+            kwargs = message_data.get("kwargs") if isinstance(message_data.get("kwargs"), Mapping) else {}
+            response_meta = message_data.get("response_metadata")
+            if not isinstance(response_meta, Mapping):
+                response_meta = kwargs.get("response_metadata") if isinstance(kwargs, Mapping) else None
 
-            message_data = generation.get("message")
-            if isinstance(message_data, BaseMessage):
-                for usage_candidate in (
-                    getattr(message_data, "usage_metadata", None),
-                    get_first_value(getattr(message_data, "response_metadata", {}), ("token_usage", "usage")),
-                    getattr(message_data, "response_metadata", None),
-                ):
-                    if usage_candidate and (usage_mapping := _as_usage_mapping(usage_candidate)):
-                        return usage_mapping
-            elif isinstance(message_data, Mapping):
-                kwargs = message_data.get("kwargs") if isinstance(message_data.get("kwargs"), Mapping) else {}
-                response_meta = message_data.get("response_metadata")
-                if not isinstance(response_meta, Mapping):
-                    response_meta = kwargs.get("response_metadata") if isinstance(kwargs, Mapping) else None
-
-                for usage_candidate in (
-                    message_data.get("usage_metadata"),
-                    kwargs.get("usage_metadata") if isinstance(kwargs, Mapping) else None,
-                    get_first_value(response_meta, ("token_usage", "usage")) if isinstance(response_meta, Mapping) else None,
-                    response_meta,
-                ):
-                    if usage_candidate and (usage_mapping := _as_usage_mapping(usage_candidate)):
-                        return usage_mapping
+            for usage_candidate in (
+                message_data.get("usage_metadata"),
+                kwargs.get("usage_metadata") if isinstance(kwargs, Mapping) else None,
+                get_first_value(response_meta, ("token_usage", "usage")) if isinstance(response_meta, Mapping) else None,
+                response_meta,
+            ):
+                if usage_candidate and (usage_mapping := _as_usage_mapping(usage_candidate)):
+                    return usage_mapping
 
     return None
 

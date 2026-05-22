@@ -383,6 +383,14 @@ class TestTokenCounts(TestCase):
         self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 12)
         self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 7)
 
+    def test_extracts_from_flat_generations_usage_metadata(self):
+        outputs = {
+            "generations": [{"message": {"usage_metadata": {"input_tokens": 5, "output_tokens": 2}}}],
+        }
+        result = dict(token_counts(outputs))
+        self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 5)
+        self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 2)
+
     def test_extracts_from_message_response_metadata_token_usage(self):
         outputs = {
             "generations": [
