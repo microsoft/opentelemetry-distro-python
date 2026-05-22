@@ -118,8 +118,8 @@ class OutputScope(OpenTelemetryScope):
         """Records the output messages for telemetry tracking.
 
         Overwrites any previously set output messages. Accepts a single string,
-        a list of strings (auto-wrapped as OTEL OutputMessage), a versioned
-        ``OutputMessages`` wrapper, or a ``dict[str, object]`` for tool call
+        a list of strings (auto-wrapped as OTEL OutputMessage), a structured
+        ``OutputMessages`` container, or a ``dict[str, object]`` for tool call
         results (per OTEL spec).
 
         Args:

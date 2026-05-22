@@ -186,10 +186,10 @@ class InvokeAgentScope(OpenTelemetryScope):
         """Record the input messages for telemetry tracking.
 
         Accepts plain strings (auto-wrapped as OTEL ChatMessage with role ``user``)
-        or a versioned ``InputMessages`` wrapper.
+        or a structured ``InputMessages`` container.
 
         Args:
-            messages: List of input message strings or an InputMessages wrapper
+            messages: List of input message strings or an InputMessages container
         """
         wrapper = normalize_input_messages(messages)
         self.set_tag_maybe(GEN_AI_INPUT_MESSAGES_KEY, serialize_messages(wrapper))
@@ -198,10 +198,10 @@ class InvokeAgentScope(OpenTelemetryScope):
         """Record the output messages for telemetry tracking.
 
         Accepts plain strings (auto-wrapped as OTEL OutputMessage with role ``assistant``)
-        or a versioned ``OutputMessages`` wrapper.
+        or a structured ``OutputMessages`` container.
 
         Args:
-            messages: List of output message strings or an OutputMessages wrapper
+            messages: List of output message strings or an OutputMessages container
         """
         wrapper = normalize_output_messages(messages)
         self.set_tag_maybe(GEN_AI_OUTPUT_MESSAGES_KEY, serialize_messages(wrapper))
