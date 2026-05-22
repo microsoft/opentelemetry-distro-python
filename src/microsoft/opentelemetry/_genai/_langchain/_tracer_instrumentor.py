@@ -21,6 +21,12 @@ from opentelemetry._logs import get_logger as get_otel_logger
 from opentelemetry.instrumentation.instrumentor import BaseInstrumentor  # type: ignore[attr-defined]
 from opentelemetry.trace import Span
 
+from microsoft.opentelemetry.a365.core.exporters.enriching_span_processor import (
+    register_span_enricher,
+    unregister_span_enricher,
+)
+from microsoft.opentelemetry._genai._langchain._span_enricher import enrich_langchain_span
+
 logger = logging.getLogger(__name__)
 
 _INSTRUMENTS: str = "langchain-core >= 0.2.0"
@@ -97,15 +103,10 @@ class LangChainInstrumentor(BaseInstrumentor):
             wrapper=_BaseCallbackManagerInit(self._tracer),
         )
 
-        # Register the A365 span enricher when the A365 pipeline is available.
+        # Register the A365 span enricher for LangChain.
         try:
-            from microsoft.opentelemetry.a365.core.exporters.enriching_span_processor import register_span_enricher
-            from microsoft.opentelemetry._genai._langchain._span_enricher import enrich_langchain_span
-
             register_span_enricher(enrich_langchain_span)
             self._owns_enricher = True
-        except ImportError:
-            logger.debug("A365 enricher modules not available. Skipping enricher registration.")
         except RuntimeError:
             logger.debug("A span enricher is already registered. Skipping LangChain enricher registration.")
 
@@ -113,14 +114,7 @@ class LangChainInstrumentor(BaseInstrumentor):
         if not langchain_available:
             return
         if self._owns_enricher:
-            try:
-                from microsoft.opentelemetry.a365.core.exporters.enriching_span_processor import (
-                    unregister_span_enricher,
-                )
-
-                unregister_span_enricher()
-            except ImportError:
-                pass
+            unregister_span_enricher()
             self._owns_enricher = False
         if self._original_cb_init is not None:
             langchain_core.callbacks.BaseCallbackManager.__init__ = self._original_cb_init  # type: ignore[assignment]

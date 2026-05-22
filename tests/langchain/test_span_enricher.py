@@ -44,7 +44,7 @@ class TestLangChainSpanEnricher(unittest.TestCase):
 
         result = enrich_langchain_span(span)
         # Should return original span unchanged
-        self.assertEqual(result, span)
+        self.assertIs(result, span)
 
     def test_invoke_agent_span_enrichment(self):
         """invoke_agent spans pass through input/output messages."""
@@ -97,7 +97,7 @@ class TestLangChainSpanEnricher(unittest.TestCase):
         span.name = "other_operation"
         span.attributes = {"key": "value"}
 
-        self.assertEqual(enrich_langchain_span(span), span)
+        self.assertIs(enrich_langchain_span(span), span)
 
     def test_none_attributes_returns_original(self):
         """Spans with None attributes return unchanged."""
@@ -105,7 +105,7 @@ class TestLangChainSpanEnricher(unittest.TestCase):
         span.name = "invoke_agent Test"
         span.attributes = None
 
-        self.assertEqual(enrich_langchain_span(span), span)
+        self.assertIs(enrich_langchain_span(span), span)
 
     def test_empty_attributes_returns_original(self):
         """Spans with empty attributes return unchanged."""
@@ -113,4 +113,4 @@ class TestLangChainSpanEnricher(unittest.TestCase):
         span.name = "invoke_agent Test"
         span.attributes = {}
 
-        self.assertEqual(enrich_langchain_span(span), span)
+        self.assertIs(enrich_langchain_span(span), span)

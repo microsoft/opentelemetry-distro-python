@@ -919,7 +919,7 @@ def extract_agent_metadata(run: Run) -> Iterator[tuple[str, str]]:
 
 @stop_on_exception
 def extract_session_info(run: Run) -> Iterator[tuple[str, str]]:
-    """Extract session_id and conversation_id from run metadata."""
+    """Extract conversation ID from run metadata as gen_ai.conversation.id."""
     if not run.extra or not isinstance(run.extra, dict):
         return
     meta = run.extra.get("metadata")
