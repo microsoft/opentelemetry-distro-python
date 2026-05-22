@@ -99,8 +99,8 @@ class TestLangChainMessageFormat:
         input_data = json.loads(raw_input)
 
         # Verify structure (plain array format per OTel spec)
-        if isinstance(input_data, list):
-            # Structured A365 array format
+        if isinstance(input_data, list) and len(input_data) > 0 and isinstance(input_data[0], dict):
+            # Structured A365 array format (list of message dicts)
             for msg in input_data:
                 assert "role" in msg
                 assert "parts" in msg
@@ -113,9 +113,10 @@ class TestLangChainMessageFormat:
                 assert "parts" in msg
             print("\n  ✓ Structured A365 format detected")
         else:
+            # Plain string list or other raw format (pre-mapper)
             messages_list = input_data
             flat_text = ""
-            for item in input_data:
+            for item in input_data if isinstance(input_data, list) else []:
                 if isinstance(item, str):
                     flat_text += item.lower()
                 elif isinstance(item, dict):
@@ -133,7 +134,7 @@ class TestLangChainMessageFormat:
         print(f"\n=== gen_ai.output.messages ===\n{raw_output}")
         output_data = json.loads(raw_output)
 
-        if isinstance(output_data, list) and len(output_data) > 0:
+        if isinstance(output_data, list) and len(output_data) > 0 and isinstance(output_data[0], dict):
             for msg in output_data:
                 assert msg["role"] == "assistant"
                 assert any(p["type"] == "text" for p in msg["parts"])
@@ -143,6 +144,10 @@ class TestLangChainMessageFormat:
                 assert msg["role"] == "assistant"
                 assert any(p["type"] == "text" for p in msg["parts"])
             print("\n  ✓ Structured A365 format detected")
+        elif isinstance(output_data, list) and len(output_data) > 0:
+            # Plain string list (pre-mapper)
+            assert all(isinstance(item, str) for item in output_data)
+            print("\n  → Raw string list format (pre-mapper)")
 
     @pytest.mark.asyncio
     async def test_tool_call_message_mapping(

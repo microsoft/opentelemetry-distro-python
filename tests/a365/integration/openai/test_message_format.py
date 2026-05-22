@@ -101,7 +101,7 @@ def _span_to_json(span: ReadableSpan) -> dict[str, object]:
 @pytest.mark.integration
 class TestOpenAIMessageFormat:
     """Capture real OpenAI Agents SDK span attributes after enrichment
-and verify the A365 structured message format."""
+    and verify the A365 structured message format."""
 
     @pytest.fixture
     def openai_client(self, azure_openai_config: dict[str, Any]) -> AsyncAzureOpenAI:

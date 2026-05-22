@@ -180,11 +180,11 @@ class OutputMessage(ChatMessage):
     ``finish_reason`` defaults to ``"stop"`` per OTel spec when not provided.
     """
 
-    finish_reason: str = "stop"
+    finish_reason: str | None = "stop"
 
     def __post_init__(self) -> None:
         """Coerce None finish_reason to default."""
-        if self.finish_reason is None:  # type: ignore[comparison-overlap]
+        if self.finish_reason is None:
             self.finish_reason = "stop"
 
 
