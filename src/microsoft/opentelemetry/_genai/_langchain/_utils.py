@@ -1015,6 +1015,66 @@ def _extract_structured_output_messages(
     return results
 
 
+def _extract_agent_input_messages(
+    inputs: Mapping[str, Any] | None,
+) -> list[InputMessage]:
+    """Convert agent-level input messages to OTel ``InputMessage`` list.
+
+    Agent runs store messages as a flat list under the ``messages`` key,
+    unlike LLM runs which nest them as list-of-lists.
+    """
+    if not inputs or not isinstance(inputs, Mapping):
+        return []
+    messages = inputs.get("messages")
+    if not messages or not isinstance(messages, list):
+        return []
+    # Handle potential nested lists
+    if len(messages) > 0 and isinstance(messages[0], list):
+        messages = messages[0]
+    results: list[InputMessage] = []
+    for msg in messages:
+        role = _langchain_role(msg)
+        parts: list[Any] = []
+        content = _langchain_content(msg)
+        if content:
+            parts.append(Text(content=content))
+        parts.extend(_langchain_tool_calls(msg))
+        if parts:
+            results.append(InputMessage(role=role, parts=parts))
+    return results
+
+
+def _extract_agent_output_messages(
+    outputs: Mapping[str, Any] | None,
+) -> list[OutputMessage]:
+    """Convert agent-level output messages to OTel ``OutputMessage`` list.
+
+    Agent runs store output as a flat messages list.  Extracts the last
+    assistant/AI message as the agent output.
+    """
+    if not outputs or not isinstance(outputs, Mapping):
+        return []
+    messages = outputs.get("messages")
+    if not messages or not isinstance(messages, list):
+        return []
+    # Handle potential nested lists
+    if len(messages) > 0 and isinstance(messages[0], list):
+        messages = messages[0]
+    results: list[OutputMessage] = []
+    for msg in reversed(messages):
+        role = _langchain_role(msg)
+        if role and role.lower() in ("ai", "assistant"):
+            parts: list[Any] = []
+            content = _langchain_content(msg)
+            if content and isinstance(content, str) and content.strip():
+                parts.append(Text(content=content))
+            parts.extend(_langchain_tool_calls(msg))
+            if parts:
+                results.append(OutputMessage(role=role, parts=parts, finish_reason="stop"))
+                break
+    return results
+
+
 @stop_on_exception
 def invoke_agent_input_message(
     inputs: Mapping[str, Any] | None,

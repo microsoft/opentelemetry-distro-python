@@ -6,6 +6,7 @@
 import logging
 import re
 from collections import OrderedDict
+from dataclasses import asdict
 from collections.abc import Iterator, Mapping
 from itertools import chain
 from threading import RLock
@@ -31,7 +32,7 @@ from opentelemetry.util.genai.span_utils import (
     _apply_llm_finish_attributes,
     _maybe_emit_llm_event,
 )
-from opentelemetry.util.genai.types import Error, LLMInvocation
+from opentelemetry.util.genai.types import Error, LLMInvocation, OutputMessage as OTelOutputMessage, Text as OTelText
 from opentelemetry.util.types import AttributeValue
 
 from microsoft.opentelemetry._genai._langchain._utils import (
@@ -64,12 +65,14 @@ from microsoft.opentelemetry._genai._langchain._utils import (
     function_calls,
     input_messages,
     invocation_parameters,
-    invoke_agent_input_message,
-    invoke_agent_output_message,
     metadata,
     model_name,
     output_messages,
     prompts,
+    _extract_structured_input_messages,
+    _extract_structured_output_messages,
+    _extract_agent_input_messages,
+    _extract_agent_output_messages,
     _should_capture_content_on_spans,
     token_counts,
     tools,
@@ -449,22 +452,15 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             # Capture input messages from LLM runs (first LLM child wins)
             if run_type in ("llm", "chat_model") and not content["input_messages"]:
                 if run.inputs:
-                    for _, val in input_messages(run.inputs):
-                        content["input_messages"].append(val)
-                        break
-                    if not content["input_messages"]:
-                        for _, val in prompts(run.inputs):
-                            if isinstance(val, list) and val:
-                                content["input_messages"].append(str(val[0]))
-                            elif isinstance(val, str):
-                                content["input_messages"].append(val)
-                            break
+                    structured = _extract_structured_input_messages(run.inputs)
+                    if structured:
+                        content["input_messages"] = structured
 
             # Capture output messages from LLM runs (last LLM child wins)
             if run_type in ("llm", "chat_model") and run.outputs:
-                for _, val in output_messages(run.outputs):
-                    content["output_messages"] = [val]  # overwrite with latest
-                    break
+                out_structured = _extract_structured_output_messages(run.outputs)
+                if out_structured:
+                    content["output_messages"] = out_structured  # type: ignore[assignment]
 
             # Capture tool results
             if run_type == "tool" and run.outputs and hasattr(run.outputs, "get"):
@@ -472,7 +468,9 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                 output = run.outputs.get("output", _sentinel)
                 if output is not _sentinel:
                     result_str = output if isinstance(output, str) else safe_json_dumps(output)
-                    content["output_messages"].append(result_str)
+                    content["output_messages"].append(
+                        OTelOutputMessage(role="tool", parts=[OTelText(content=result_str)], finish_reason="stop")
+                    )
 
     def _find_agent_ancestor(self, run: Run) -> UUID | None:
         """Walk up the run tree to find the nearest agent ancestor run_id."""
@@ -513,18 +511,30 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         # Set aggregated input/output messages only when content capture is enabled
         if _should_capture_content_on_spans():
             if msgs := content.get("input_messages"):
-                span.set_attribute(GEN_AI_INPUT_MESSAGES_KEY, safe_json_dumps(msgs))
+                span.set_attribute(
+                    GEN_AI_INPUT_MESSAGES_KEY,
+                    safe_json_dumps([asdict(m) for m in msgs]),
+                )
             else:
-                for _, val in invoke_agent_input_message(run.inputs):
-                    span.set_attribute(GEN_AI_INPUT_MESSAGES_KEY, val)
-                    break
+                agent_msgs = _extract_agent_input_messages(run.inputs)
+                if agent_msgs:
+                    span.set_attribute(
+                        GEN_AI_INPUT_MESSAGES_KEY,
+                        safe_json_dumps([asdict(m) for m in agent_msgs]),
+                    )
 
-            if msgs := content.get("output_messages"):
-                span.set_attribute(GEN_AI_OUTPUT_MESSAGES_KEY, safe_json_dumps(msgs))
+            if out_msgs := content.get("output_messages"):
+                span.set_attribute(
+                    GEN_AI_OUTPUT_MESSAGES_KEY,
+                    safe_json_dumps([asdict(m) for m in out_msgs]),
+                )
             else:
-                for _, val in invoke_agent_output_message(run.outputs):
-                    span.set_attribute(GEN_AI_OUTPUT_MESSAGES_KEY, val)
-                    break
+                agent_out_msgs = _extract_agent_output_messages(run.outputs)
+                if agent_out_msgs:
+                    span.set_attribute(
+                        GEN_AI_OUTPUT_MESSAGES_KEY,
+                        safe_json_dumps([asdict(m) for m in agent_out_msgs]),
+                    )
 
         # Set metadata (session_id, etc.)
         span.set_attributes(dict(flatten(metadata(run))))

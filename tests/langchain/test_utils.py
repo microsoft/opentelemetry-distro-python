@@ -58,6 +58,8 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     safe_json_dumps,
     stop_on_exception,
     token_counts,
+    _extract_agent_input_messages,
+    _extract_agent_output_messages,
     tools,
 )
 
@@ -640,6 +642,79 @@ class TestInvokeAgentOutputMessage(TestCase):
         }
         result = list(invoke_agent_output_message(outputs))
         self.assertEqual(result, [(GEN_AI_OUTPUT_MESSAGES_KEY, "Second")])
+
+
+# ---- Agent structured message extractors ------------------------------------
+
+
+class TestExtractAgentInputMessages(TestCase):
+    def test_extracts_structured_human_message(self):
+        inputs = {"messages": [{"role": "human", "content": "What is 2+2?"}]}
+        result = _extract_agent_input_messages(inputs)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].role, "human")
+        self.assertEqual(len(result[0].parts), 1)
+        self.assertEqual(result[0].parts[0].content, "What is 2+2?")
+
+    def test_extracts_multiple_messages(self):
+        inputs = {
+            "messages": [
+                {"role": "system", "content": "You are helpful"},
+                {"role": "human", "content": "Hello"},
+            ]
+        }
+        result = _extract_agent_input_messages(inputs)
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0].role, "system")
+        self.assertEqual(result[1].role, "human")
+
+    def test_extracts_from_nested_list(self):
+        inputs = {"messages": [[{"role": "human", "content": "Hello"}]]}
+        result = _extract_agent_input_messages(inputs)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].parts[0].content, "Hello")
+
+    def test_returns_empty_on_none(self):
+        self.assertEqual(_extract_agent_input_messages(None), [])
+
+    def test_returns_empty_on_no_messages(self):
+        self.assertEqual(_extract_agent_input_messages({"other": "data"}), [])
+
+
+class TestExtractAgentOutputMessages(TestCase):
+    def test_extracts_structured_ai_message(self):
+        outputs = {"messages": [{"role": "ai", "content": "The answer is 4"}]}
+        result = _extract_agent_output_messages(outputs)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].role, "ai")
+        self.assertEqual(result[0].parts[0].content, "The answer is 4")
+        self.assertEqual(result[0].finish_reason, "stop")
+
+    def test_returns_empty_on_none(self):
+        self.assertEqual(_extract_agent_output_messages(None), [])
+
+    def test_extracts_last_ai_message(self):
+        outputs = {
+            "messages": [
+                {"role": "ai", "content": "First"},
+                {"role": "human", "content": "Again"},
+                {"role": "ai", "content": "Second"},
+            ]
+        }
+        result = _extract_agent_output_messages(outputs)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].parts[0].content, "Second")
+
+    def test_skips_empty_content(self):
+        outputs = {"messages": [{"role": "ai", "content": ""}]}
+        result = _extract_agent_output_messages(outputs)
+        self.assertEqual(result, [])
+
+    def test_extracts_from_nested_list(self):
+        outputs = {"messages": [[{"role": "ai", "content": "Nested answer"}]]}
+        result = _extract_agent_output_messages(outputs)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].parts[0].content, "Nested answer")
 
 
 # ---- Agent metadata extractors -----------------------------------------------
