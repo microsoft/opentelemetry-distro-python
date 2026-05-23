@@ -135,3 +135,6 @@ disable = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Skip pytest-benchmark tests by default; the perf workflow opts in with
+# --benchmark-only.
+addopts = "--benchmark-skip"
