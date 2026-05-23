@@ -106,7 +106,11 @@ jobs:
             report.md
 
       - name: Post sticky PR comment
-        if: always() && github.event_name == 'pull_request'
+        # Skip for PRs from forks — the default GITHUB_TOKEN has read-only
+        # access in that case and the comment API will reject the call. The
+        # JSON artifacts and the workflow log still contain the comparison.
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
         uses: marocchino/sticky-pull-request-comment@v2
         with:
           header: perf-comparison

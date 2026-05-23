@@ -18,6 +18,9 @@ Two pairs of scenarios are measured:
   build.
 """
 
+# pylint: disable=redefined-outer-name
+# (pytest fixtures shadow the fixture function name by design.)
+
 from __future__ import annotations
 
 import logging
