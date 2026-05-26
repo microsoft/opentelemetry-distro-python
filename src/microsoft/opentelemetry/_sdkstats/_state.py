@@ -15,13 +15,16 @@ Azure Monitor consumers see no behavioural change.
 import os
 import threading
 from enum import IntFlag
-from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (
+from typing import Any
+from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (  # type: ignore[import-not-found]
     _StatsbeatMetrics,
 )
+
+_exporter_utils: Any = None
 try:
     import azure.monitor.opentelemetry.exporter._utils as _exporter_utils  # type: ignore[import-not-found]
 except Exception:  # pylint: disable=broad-exception-caught
-    _exporter_utils = None
+    pass
 
 # ---------------------------------------------------------------------------
 # Environment variable to disable SDKStats globally
