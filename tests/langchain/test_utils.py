@@ -321,6 +321,16 @@ class TestLlmProvider(TestCase):
     def test_returns_empty_on_none(self):
         self.assertEqual(list(llm_provider(None)), [])
 
+    def test_falls_back_to_openai_for_responses_api(self):
+        extra = {"invocation_params": {"use_responses_api": True, "model": "gpt-4.1"}}
+        result = list(llm_provider(extra))
+        self.assertEqual(result, [(GEN_AI_PROVIDER_NAME_KEY, "openai")])
+
+    def test_falls_back_to_openai_from_base_url(self):
+        extra = {"invocation_params": {"base_url": "https://example.test/openai/v1/"}}
+        result = list(llm_provider(extra))
+        self.assertEqual(result, [(GEN_AI_PROVIDER_NAME_KEY, "openai")])
+
 
 class TestModelName(TestCase):
     def test_from_llm_output(self):
@@ -403,6 +413,25 @@ class TestTokenCounts(TestCase):
         result = dict(token_counts(outputs))
         self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 5)
         self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 2)
+
+    def test_extracts_from_flat_generations_kwargs_usage_metadata(self):
+        outputs = {
+            "generations": [
+                {
+                    "message": {
+                        "kwargs": {
+                            "usage_metadata": {
+                                "input_tokens": 12,
+                                "output_tokens": 4,
+                            }
+                        }
+                    }
+                }
+            ],
+        }
+        result = dict(token_counts(outputs))
+        self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 12)
+        self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 4)
 
     def test_extracts_from_message_response_metadata_token_usage(self):
         outputs = {
@@ -641,6 +670,47 @@ class TestInvocationParameters(TestCase):
         )
         result = dict(invocation_parameters(run))
         self.assertEqual(result[GEN_AI_REQUEST_CHOICE_COUNT_KEY], 1)
+
+    def test_extracts_choice_count_from_invocation_kwargs(self):
+        run = _make_run(
+            run_type="chat_model",
+            extra={"invocation_params": {"kwargs": {"n": 2}, "use_responses_api": True}},
+            outputs={"generations": [{"message": {"content": "only one"}}]},
+        )
+        result = dict(invocation_parameters(run))
+        self.assertEqual(result[GEN_AI_REQUEST_CHOICE_COUNT_KEY], 2)
+
+    def test_extracts_choice_count_from_model_kwargs_extra_body(self):
+        run = _make_run(
+            run_type="chat_model",
+            extra={
+                "invocation_params": {
+                    "model_kwargs": {"extra_body": {"n": 2}},
+                    "use_responses_api": True,
+                }
+            },
+            outputs={"generations": [{"message": {"content": "only one"}}]},
+        )
+        result = dict(invocation_parameters(run))
+        self.assertEqual(result[GEN_AI_REQUEST_CHOICE_COUNT_KEY], 2)
+
+    def test_infers_choice_count_from_flat_generations_when_n_missing(self):
+        run = _make_run(
+            run_type="chat_model",
+            extra={"invocation_params": {"model": "gpt-4.1", "use_responses_api": True}},
+            outputs={"generations": [{"message": {"content": "a"}}, {"message": {"content": "b"}}]},
+        )
+        result = dict(invocation_parameters(run))
+        self.assertEqual(result[GEN_AI_REQUEST_CHOICE_COUNT_KEY], 2)
+
+    def test_infers_choice_count_from_nested_generations_when_n_missing(self):
+        run = _make_run(
+            run_type="llm",
+            extra={"invocation_params": {"model": "gpt-4.1", "use_responses_api": True}},
+            outputs={"generations": [[{"message": {"content": "a"}}, {"message": {"content": "b"}}]]},
+        )
+        result = dict(invocation_parameters(run))
+        self.assertEqual(result[GEN_AI_REQUEST_CHOICE_COUNT_KEY], 2)
 
     def test_extracts_top_k(self):
         run = _make_run(

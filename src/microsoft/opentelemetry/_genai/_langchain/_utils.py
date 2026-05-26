@@ -411,6 +411,20 @@ def invocation_parameters(run: Run) -> Iterator[tuple[str, AttributeValue]]:
         param_sources: list[Mapping[str, Any]] = [inv_params]
         if isinstance(model_kwargs := inv_params.get("model_kwargs"), Mapping):
             param_sources.append(model_kwargs)
+            if isinstance(model_kwargs_extra_body := model_kwargs.get("extra_body"), Mapping):
+                param_sources.append(model_kwargs_extra_body)
+            if isinstance(model_kwargs_kwargs := model_kwargs.get("kwargs"), Mapping):
+                param_sources.append(model_kwargs_kwargs)
+        if isinstance(inv_extra_body := inv_params.get("extra_body"), Mapping):
+            param_sources.append(inv_extra_body)
+        if isinstance(inv_kwargs := inv_params.get("kwargs"), Mapping):
+            param_sources.append(inv_kwargs)
+        if isinstance(extra_model_kwargs := extra.get("model_kwargs"), Mapping):
+            param_sources.append(extra_model_kwargs)
+            if isinstance(extra_model_kwargs_extra_body := extra_model_kwargs.get("extra_body"), Mapping):
+                param_sources.append(extra_model_kwargs_extra_body)
+            if isinstance(extra_model_kwargs_kwargs := extra_model_kwargs.get("kwargs"), Mapping):
+                param_sources.append(extra_model_kwargs_kwargs)
 
         def _first_param(*keys: str) -> Any:
             for source in param_sources:
@@ -428,6 +442,7 @@ def invocation_parameters(run: Run) -> Iterator[tuple[str, AttributeValue]]:
             yield GEN_AI_TOOL_DEFINITIONS_KEY, safe_json_dumps(tool_defs)
 
         # gen_ai.request.choice_count (OpenAI/Anthropic "n")
+        choice_count: int | None = None
         for choice_key in ("n", "num_choices", "candidate_count"):
             if (n_val := _first_param(choice_key)) is not None:
                 try:
@@ -436,8 +451,24 @@ def invocation_parameters(run: Run) -> Iterator[tuple[str, AttributeValue]]:
                     pass
                 else:
                     if n_int > 0:
-                        yield GEN_AI_REQUEST_CHOICE_COUNT_KEY, n_int
+                        choice_count = n_int
                     break
+        # Some wrappers (notably OpenAI Responses) may not preserve ``n`` in
+        # invocation_params. In that case infer count from returned choices.
+        if choice_count is None and isinstance(run.outputs, Mapping):
+            generations = run.outputs.get("generations")
+            if isinstance(generations, list) and generations:
+                first_item = generations[0]
+                if isinstance(first_item, list):
+                    inferred = len(first_item)
+                elif isinstance(first_item, Mapping):
+                    inferred = len(generations)
+                else:
+                    inferred = 0
+                if inferred > 0:
+                    choice_count = inferred
+        if choice_count is not None:
+            yield GEN_AI_REQUEST_CHOICE_COUNT_KEY, choice_count
 
         # gen_ai.request.top_k
         if (top_k_val := _first_param("top_k")) is not None:
@@ -530,6 +561,16 @@ def llm_provider(extra: Mapping[str, Any] | None) -> Iterator[tuple[str, str]]:
         return
     if (meta := extra.get("metadata")) and (ls_provider := meta.get("ls_provider")):
         yield GEN_AI_PROVIDER_NAME_KEY, ls_provider.lower()
+        return
+    inv_params = extra.get("invocation_params")
+    if not isinstance(inv_params, Mapping):
+        return
+    if inv_params.get("use_responses_api"):
+        yield GEN_AI_PROVIDER_NAME_KEY, "openai"
+        return
+    base_url = inv_params.get("base_url")
+    if isinstance(base_url, str) and "openai" in base_url.lower():
+        yield GEN_AI_PROVIDER_NAME_KEY, "openai"
 
 
 @stop_on_exception
@@ -652,6 +693,9 @@ def token_counts(outputs: Mapping[str, Any] | None) -> Iterator[tuple[str, int]]
         yield GEN_AI_USAGE_INPUT_TOKENS_KEY, input_tokens
     if (output_tokens := usage.get("output_tokens")) is not None:
         yield GEN_AI_USAGE_OUTPUT_TOKENS_KEY, output_tokens
+    if usage_mapping := _as_usage_mapping(_parse_token_usage(outputs)):
+        for attribute_name, token_count in _extra_usage_attributes(usage_mapping):
+            yield attribute_name, token_count
 
 
 def _iter_generation_mappings(outputs: Mapping[str, Any] | None) -> Iterator[Mapping[str, Any]]:
@@ -691,21 +735,9 @@ def _iter_generation_mappings(outputs: Mapping[str, Any] | None) -> Iterator[Map
             if isinstance(generation, Mapping):
                 yield generation
         return
-    for attribute_name, keys in [
-        (GEN_AI_USAGE_INPUT_TOKENS_KEY, ("prompt_tokens", "input_tokens", "prompt_token_count")),
-        (GEN_AI_USAGE_OUTPUT_TOKENS_KEY, ("completion_tokens", "output_tokens", "candidates_token_count")),
-    ]:
-        if (token_count := get_first_value(token_usage, keys)) is not None:
-            yield attribute_name, token_count
-    # langchain_core UsageMetadata
-    for attribute_name, details_key, keys in [  # type: ignore[assignment]
-        (GEN_AI_USAGE_INPUT_TOKENS_KEY, None, ("input_tokens",)),
-        (GEN_AI_USAGE_OUTPUT_TOKENS_KEY, None, ("output_tokens",)),
-    ]:
-        details = token_usage.get(details_key) if details_key else token_usage
-        if details is not None:
-            if (token_count := get_first_value(details, keys)) is not None:
-                yield attribute_name, token_count
+
+
+def _extra_usage_attributes(token_usage: Mapping[str, Any]) -> Iterator[tuple[str, int]]:
     # Cache token accounting (gen_ai.usage.cache_*_input_tokens).
     # Sources:
     #   - OpenAI: token_usage["prompt_tokens_details"]["cached_tokens"]
@@ -714,33 +746,24 @@ def _iter_generation_mappings(outputs: Mapping[str, Any] | None) -> Iterator[Map
     cache_read: int | None = None
     cache_creation: int | None = None
     if isinstance(input_details := token_usage.get("input_token_details"), Mapping):
-        cr = input_details.get("cache_read")
-        if isinstance(cr, int):
-            cache_read = cr
-        cc = input_details.get("cache_creation")
-        if isinstance(cc, int):
-            cache_creation = cc
+        cache_read = _as_non_negative_int(input_details.get("cache_read"))
+        cache_creation = _as_non_negative_int(input_details.get("cache_creation"))
     if cache_read is None and isinstance(prompt_details := token_usage.get("prompt_tokens_details"), Mapping):
-        cr = prompt_details.get("cached_tokens")
-        if isinstance(cr, int):
-            cache_read = cr
-    if cache_read is None and isinstance(top_cr := token_usage.get("cache_read_input_tokens"), int):
-        cache_read = top_cr
-    if cache_creation is None and isinstance(top_cc := token_usage.get("cache_creation_input_tokens"), int):
-        cache_creation = top_cc
+        cache_read = _as_non_negative_int(prompt_details.get("cached_tokens"))
+    if cache_read is None:
+        cache_read = _as_non_negative_int(token_usage.get("cache_read_input_tokens"))
+    if cache_creation is None:
+        cache_creation = _as_non_negative_int(token_usage.get("cache_creation_input_tokens"))
     if cache_read is not None:
         yield GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_KEY, cache_read
     if cache_creation is not None:
         yield GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_KEY, cache_creation
+
     reasoning_output: int | None = None
     if isinstance(output_details := token_usage.get("output_token_details"), Mapping):
-        rv = output_details.get("reasoning")
-        if isinstance(rv, int):
-            reasoning_output = rv
+        reasoning_output = _as_non_negative_int(output_details.get("reasoning"))
     if reasoning_output is None and isinstance(completion_details := token_usage.get("completion_tokens_details"), Mapping):
-        rv = completion_details.get("reasoning_tokens")
-        if isinstance(rv, int):
-            reasoning_output = rv
+        reasoning_output = _as_non_negative_int(completion_details.get("reasoning_tokens"))
     if reasoning_output is not None:
         yield GEN_AI_USAGE_REASONING_OUTPUT_TOKENS_KEY, reasoning_output
 
@@ -806,23 +829,25 @@ def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
         and (token_usage := get_first_value(llm_output, ("token_usage", "usage")))
     ):
         return token_usage
+    if outputs and hasattr(outputs, "get") and (top_usage := outputs.get("usage")):
+        return top_usage
     # Fallback for code paths (e.g. OpenAI Responses API in langchain-openai) where
     # ``llm_output["token_usage"]`` is not populated and usage lives on each
     # generation's ``message.usage_metadata`` (langchain_core ``UsageMetadata``) or
     # in ``message.response_metadata.token_usage``.
     if not isinstance(outputs, Mapping):
         return None
-    multiple_generations = outputs.get("generations")
-    if not isinstance(multiple_generations, Iterable):
-        return None
-    for first_generations in multiple_generations:
-        if not isinstance(first_generations, Iterable):
-            continue
-        for generation in first_generations:
-            if not isinstance(generation, Mapping):
-                continue
-            message_data = generation.get("message")
-            usage: Any = None
+    for generation in _iter_generation_mappings(outputs):
+        usage: Any = None
+
+        gen_info = generation.get("generation_info")
+        if isinstance(gen_info, Mapping):
+            usage = get_first_value(gen_info, ("token_usage", "usage"))
+            if usage is None:
+                usage = gen_info
+
+        message_data = generation.get("message")
+        if usage is None:
             if isinstance(message_data, BaseMessage):
                 usage = getattr(message_data, "usage_metadata", None)
                 if not usage:
@@ -837,8 +862,9 @@ def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
                         usage = get_first_value(resp_meta, ("token_usage", "usage"))
                 if not usage and isinstance(resp_meta := message_data.get("response_metadata"), Mapping):
                     usage = get_first_value(resp_meta, ("token_usage", "usage"))
-            if isinstance(usage, Mapping) and usage:
-                return usage
+
+        if usage_mapping := _as_usage_mapping(usage):
+            return usage_mapping
     return None
 
 
