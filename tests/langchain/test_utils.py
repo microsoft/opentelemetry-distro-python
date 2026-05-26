@@ -652,7 +652,7 @@ class TestExtractAgentInputMessages(TestCase):
         inputs = {"messages": [{"role": "human", "content": "What is 2+2?"}]}
         result = _extract_agent_input_messages(inputs)
         self.assertEqual(len(result), 1)
-        self.assertEqual(result[0].role, "human")
+        self.assertEqual(result[0].role, "user")
         self.assertEqual(len(result[0].parts), 1)
         self.assertEqual(result[0].parts[0].content, "What is 2+2?")
 
@@ -666,7 +666,7 @@ class TestExtractAgentInputMessages(TestCase):
         result = _extract_agent_input_messages(inputs)
         self.assertEqual(len(result), 2)
         self.assertEqual(result[0].role, "system")
-        self.assertEqual(result[1].role, "human")
+        self.assertEqual(result[1].role, "user")
 
     def test_extracts_from_nested_list(self):
         inputs = {"messages": [[{"role": "human", "content": "Hello"}]]}
@@ -686,7 +686,7 @@ class TestExtractAgentOutputMessages(TestCase):
         outputs = {"messages": [{"role": "ai", "content": "The answer is 4"}]}
         result = _extract_agent_output_messages(outputs)
         self.assertEqual(len(result), 1)
-        self.assertEqual(result[0].role, "ai")
+        self.assertEqual(result[0].role, "assistant")
         self.assertEqual(result[0].parts[0].content, "The answer is 4")
         self.assertEqual(result[0].finish_reason, "stop")
 

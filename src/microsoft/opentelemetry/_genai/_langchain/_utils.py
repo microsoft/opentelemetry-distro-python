@@ -616,7 +616,11 @@ def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
             for usage_candidate in (
                 message_data.get("usage_metadata"),
                 kwargs.get("usage_metadata") if isinstance(kwargs, Mapping) else None,
-                get_first_value(response_meta, ("token_usage", "usage")) if isinstance(response_meta, Mapping) else None,
+                (
+                    get_first_value(response_meta, ("token_usage", "usage"))
+                    if isinstance(response_meta, Mapping)
+                    else None
+                ),
                 response_meta,
             ):
                 if usage_candidate and (usage_mapping := _as_usage_mapping(usage_candidate)):
@@ -1015,6 +1019,18 @@ def _extract_structured_output_messages(
     return results
 
 
+# Mapping from LangChain-native roles to OTel GenAI semconv roles.
+_LANGCHAIN_ROLE_TO_OTEL: dict[str, str] = {
+    "human": "user",
+    "ai": "assistant",
+}
+
+
+def _normalize_role(role: str) -> str:
+    """Normalize a LangChain role to OTel GenAI semconv role."""
+    return _LANGCHAIN_ROLE_TO_OTEL.get(role, role)
+
+
 def _extract_agent_input_messages(
     inputs: Mapping[str, Any] | None,
 ) -> list[InputMessage]:
@@ -1033,7 +1049,7 @@ def _extract_agent_input_messages(
         messages = messages[0]
     results: list[InputMessage] = []
     for msg in messages:
-        role = _langchain_role(msg)
+        role = _normalize_role(_langchain_role(msg))
         parts: list[Any] = []
         content = _langchain_content(msg)
         if content:
@@ -1062,8 +1078,8 @@ def _extract_agent_output_messages(
         messages = messages[0]
     results: list[OutputMessage] = []
     for msg in reversed(messages):
-        role = _langchain_role(msg)
-        if role and role.lower() in ("ai", "assistant"):
+        role = _normalize_role(_langchain_role(msg))
+        if role and role.lower() in ("assistant",):
             parts: list[Any] = []
             content = _langchain_content(msg)
             if content and isinstance(content, str) and content.strip():

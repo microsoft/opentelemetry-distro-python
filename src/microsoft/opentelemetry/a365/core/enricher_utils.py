@@ -13,9 +13,20 @@ from __future__ import annotations
 import json
 
 
-def extract_content_as_string_list(
-    messages_json: str, role_filter: str | None = None
-) -> str:
+def _extract_text_from_message(msg: dict, role_filter: str | None) -> list[str]:
+    """Extract text content strings from a single structured message dict."""
+    role = msg.get("role", "")
+    if role_filter and role != role_filter:
+        return []
+    parts = msg.get("parts")
+    if not parts or not isinstance(parts, list):
+        return []
+    return [
+        part["content"] for part in parts if isinstance(part, dict) and part.get("type") == "text" and "content" in part
+    ]
+
+
+def extract_content_as_string_list(messages_json: str, role_filter: str | None = None) -> str:
     """Extract content values from messages JSON and return as JSON string list.
 
     Handles the OTel structured message format with ``"parts"`` arrays.
@@ -32,21 +43,13 @@ def extract_content_as_string_list(
     try:
         messages = json.loads(messages_json)
         if isinstance(messages, list):
+            # If already a plain list of strings, return as-is
+            if all(isinstance(item, str) for item in messages):
+                return messages_json
             contents = []
             for msg in messages:
                 if isinstance(msg, dict):
-                    role = msg.get("role", "")
-
-                    if role_filter and role != role_filter:
-                        continue
-
-                    parts = msg.get("parts")
-                    if parts and isinstance(parts, list):
-                        for part in parts:
-                            if isinstance(part, dict):
-                                part_type = part.get("type", "")
-                                if part_type == "text" and "content" in part:
-                                    contents.append(part["content"])
+                    contents.extend(_extract_text_from_message(msg, role_filter))
             return json.dumps(contents)
         return messages_json
     except (json.JSONDecodeError, TypeError):
