@@ -98,6 +98,7 @@ class TestEnrichLangchainSpan(unittest.TestCase):
 
         result = enrich_langchain_span(span)
 
+        assert result.attributes is not None
         self.assertEqual(result.attributes[GEN_AI_INPUT_MESSAGES_KEY], '["What is 2+2?"]')
         self.assertEqual(result.attributes[GEN_AI_OUTPUT_MESSAGES_KEY], '["4"]')
 
@@ -122,6 +123,7 @@ class TestEnrichLangchainSpan(unittest.TestCase):
 
         result = enrich_langchain_span(span)
 
+        assert result.attributes is not None
         self.assertEqual(result.attributes[GEN_AI_INPUT_MESSAGES_KEY], '["Hello"]')
         self.assertEqual(result.attributes[GEN_AI_OUTPUT_MESSAGES_KEY], '["Answer"]')
 
