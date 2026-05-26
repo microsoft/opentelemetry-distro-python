@@ -4,6 +4,7 @@
 import datetime
 import json
 from enum import Enum
+from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
 
@@ -231,6 +232,20 @@ class TestInputMessages(TestCase):
         parsed = json.loads(result[0][1])
         self.assertEqual(parsed, ["Hi", "There"])
 
+    def test_extracts_from_flat_message_list(self):
+        inputs = {"messages": [{"content": "Hi"}, {"content": "There"}]}
+        result = list(input_messages(inputs))
+        self.assertEqual(len(result), 1)
+        parsed = json.loads(result[0][1])
+        self.assertEqual(parsed, ["Hi", "There"])
+
+    def test_extracts_from_prompts_fallback(self):
+        inputs = {"prompts": ["System prompt", "User prompt"]}
+        result = list(input_messages(inputs))
+        self.assertEqual(len(result), 1)
+        parsed = json.loads(result[0][1])
+        self.assertEqual(parsed, ["System prompt", "User prompt"])
+
 
 class TestMetadata(TestCase):
     def test_extracts_session_id(self):
@@ -273,6 +288,15 @@ class TestOutputMessages(TestCase):
         }
         result = dict(output_messages(outputs))
         self.assertIn("resp-123", str(result))
+
+    def test_extracts_from_flat_generations(self):
+        outputs = {
+            "generations": [{"message": {"content": "Response", "role": "assistant"}}],
+        }
+        result = list(output_messages(outputs))
+        self.assertEqual(len(result), 1)
+        parsed = json.loads(result[0][1])
+        self.assertEqual(parsed, ["Response"])
 
 
 class TestLlmProvider(TestCase):
@@ -337,6 +361,90 @@ class TestTokenCounts(TestCase):
 
     def test_returns_empty_on_none(self):
         self.assertEqual(list(token_counts(None)), [])
+
+    def test_extracts_from_llm_output_usage_alias(self):
+        outputs = {
+            "llm_output": {
+                "usage": {
+                    "input_tokens": 4,
+                    "output_tokens": 9,
+                }
+            }
+        }
+        result = dict(token_counts(outputs))
+        self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 4)
+        self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 9)
+
+    def test_extracts_from_message_usage_metadata(self):
+        outputs = {
+            "generations": [[{"message": {"usage_metadata": {"prompt_tokens": 12, "completion_tokens": 7}}}]],
+        }
+        result = dict(token_counts(outputs))
+        self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 12)
+        self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 7)
+
+    def test_extracts_from_flat_generations_usage_metadata(self):
+        outputs = {
+            "generations": [{"message": {"usage_metadata": {"input_tokens": 5, "output_tokens": 2}}}],
+        }
+        result = dict(token_counts(outputs))
+        self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 5)
+        self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 2)
+
+    def test_extracts_from_message_response_metadata_token_usage(self):
+        outputs = {
+            "generations": [
+                [
+                    {
+                        "message": {
+                            "kwargs": {
+                                "response_metadata": {
+                                    "token_usage": {
+                                        "prompt_token_count": 16,
+                                        "candidates_token_count": 5,
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            ],
+        }
+        result = dict(token_counts(outputs))
+        self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 16)
+        self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 5)
+
+    def test_extracts_from_generation_info_usage(self):
+        outputs = {
+            "generations": [
+                [
+                    {
+                        "generation_info": {
+                            "usage": {
+                                "prompt_tokens": 20,
+                                "completion_tokens": 3,
+                            }
+                        }
+                    }
+                ]
+            ],
+        }
+        result = dict(token_counts(outputs))
+        self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 20)
+        self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 3)
+
+    def test_extracts_from_object_usage(self):
+        outputs = {
+            "llm_output": {
+                "usage": SimpleNamespace(
+                    prompt_tokens=6,
+                    completion_tokens=8,
+                )
+            }
+        }
+        result = dict(token_counts(outputs))
+        self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 6)
+        self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 8)
 
 
 class TestInvocationParameters(TestCase):

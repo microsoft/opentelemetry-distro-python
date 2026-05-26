@@ -5,7 +5,7 @@
 
 This instrumentor registers the A365-specific ``OpenAIAgentsTraceProcessor``
 with the OpenAI Agents SDK tracing system. It produces spans with the A365
-versioned message format and additional attributes (``custom.parent.span.id``,
+structured message format and additional attributes (``custom.parent.span.id``,
 per-message indexed attributes, etc.) that A365 consumers rely on.
 
 When A365 is enabled, this instrumentor is used **instead of** the upstream

@@ -4,7 +4,7 @@
 """Conversion and serialization helpers for OTEL gen-ai message format.
 
 Provides normalization from plain ``list[str]`` (backward compat) to the
-versioned wrapper format, and a non-throwing ``serialize_messages`` function.
+structured array format, and a non-throwing ``serialize_messages`` function.
 """
 
 from __future__ import annotations
@@ -16,7 +16,6 @@ from enum import Enum
 from typing import Union
 
 from microsoft.opentelemetry.a365.core.models.messages import (
-    A365_MESSAGE_SCHEMA_VERSION,
     ChatMessage,
     InputMessages,
     InputMessagesParam,
@@ -41,7 +40,7 @@ def is_string_list(
 def is_wrapped_messages(
     param: Union[InputMessagesParam, OutputMessagesParam],
 ) -> bool:
-    """Return ``True`` when *param* is a versioned wrapper."""
+    """Return ``True`` when *param* is a structured message container."""
     return isinstance(param, (InputMessages, OutputMessages))
 
 
@@ -61,12 +60,12 @@ def to_output_messages(messages: list[str]) -> list[OutputMessage]:
 
 
 # ---------------------------------------------------------------------------
-# Normalization (union -> versioned wrapper)
+# Normalization (union -> structured container)
 # ---------------------------------------------------------------------------
 
 
 def normalize_input_messages(param: InputMessagesParam) -> InputMessages:
-    """Normalize an ``InputMessagesParam`` to a versioned ``InputMessages`` wrapper.
+    """Normalize an ``InputMessagesParam`` to an ``InputMessages`` container.
 
     - ``str`` -> wrapped in a single-element list, then converted.
     - ``list[str]`` -> converted to ``ChatMessage`` list and wrapped.
@@ -80,7 +79,7 @@ def normalize_input_messages(param: InputMessagesParam) -> InputMessages:
 
 
 def normalize_output_messages(param: OutputMessagesParam) -> OutputMessages:
-    """Normalize an ``OutputMessagesParam`` to a versioned ``OutputMessages`` wrapper.
+    """Normalize an ``OutputMessagesParam`` to an ``OutputMessages`` container.
 
     - ``str`` -> wrapped in a single-element list, then converted.
     - ``list[str]`` -> converted to ``OutputMessage`` list and wrapped.
@@ -109,17 +108,20 @@ def _message_dict_factory(items: list[tuple[str, object]]) -> dict[str, object]:
 def serialize_messages(
     wrapper: Union[InputMessages, OutputMessages],
 ) -> str:
-    """Serialize a versioned message wrapper to JSON.
+    """Serialize a message container to a JSON array.
 
-    The output is the full wrapper object:
-    ``{"version":"0.1.0","messages":[...]}``.
+    The output is a plain JSON array of message objects per OTel spec:
+    ``[{"role":"user","parts":[...]}]``.
 
     The try/except ensures telemetry recording is non-throwing even when
     message parts contain non-JSON-serializable values.
     """
     try:
+        serialized_list = [
+            asdict(msg, dict_factory=_message_dict_factory) for msg in wrapper.messages
+        ]
         return json.dumps(
-            asdict(wrapper, dict_factory=_message_dict_factory),
+            serialized_list,
             default=str,
             ensure_ascii=False,
         )
@@ -128,18 +130,15 @@ def serialize_messages(
         messages = getattr(wrapper, "messages", [])
         count = len(messages) if isinstance(messages, list) else 0
         noun = "message" if count == 1 else "messages"
-        fallback = {
-            "version": A365_MESSAGE_SCHEMA_VERSION,
-            "messages": [
+        fallback_msg: dict[str, object] = {
+            "role": MessageRole.SYSTEM.value,
+            "parts": [
                 {
-                    "role": MessageRole.SYSTEM.value,
-                    "parts": [
-                        {
-                            "type": "text",
-                            "content": f"[serialization failed: {count} {noun}]",
-                        }
-                    ],
+                    "type": "text",
+                    "content": f"[serialization failed: {count} {noun}]",
                 }
             ],
         }
-        return json.dumps(fallback, ensure_ascii=False)
+        if isinstance(wrapper, OutputMessages):
+            fallback_msg["finish_reason"] = "error"
+        return json.dumps([fallback_msg], ensure_ascii=False)

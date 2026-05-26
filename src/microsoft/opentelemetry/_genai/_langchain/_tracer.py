@@ -578,6 +578,9 @@ def _update_span(span: Span, run: Run) -> LLMInvocation | None:
             dict(
                 flatten(
                     chain(
+                        prompts(run.inputs),
+                        input_messages(run.inputs),
+                        output_messages(run.outputs),
                         invocation_parameters(run),
                         function_calls(run.outputs),
                         metadata(run),

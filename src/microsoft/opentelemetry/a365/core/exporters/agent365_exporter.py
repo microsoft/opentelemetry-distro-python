@@ -46,7 +46,116 @@ DEFAULT_HTTP_TIMEOUT_SECONDS = A365_HTTP_TIMEOUT_SECONDS
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_ENDPOINT_URL = "https://agent365.svc.cloud.microsoft"
 
+# Circuit breaker defaults
+DEFAULT_CB_FAILURE_THRESHOLD = 5
+DEFAULT_CB_RECOVERY_TIMEOUT = 30.0  # seconds
+
 logger = logging.getLogger(__name__)
+
+
+class _CircuitBreaker:
+    """Lightweight circuit breaker for the A365 exporter HTTP path.
+
+    States:
+        CLOSED   – normal operation; requests flow through.
+        OPEN     – failures exceeded threshold; requests are rejected immediately.
+        HALF_OPEN – recovery window elapsed; one probe request is allowed.
+
+    Thread-safe via an internal lock.
+    """
+
+    CLOSED = "closed"
+    OPEN = "open"
+    HALF_OPEN = "half_open"
+
+    def __init__(
+        self,
+        failure_threshold: int = DEFAULT_CB_FAILURE_THRESHOLD,
+        recovery_timeout: float = DEFAULT_CB_RECOVERY_TIMEOUT,
+    ):
+        self._failure_threshold = failure_threshold
+        self._recovery_timeout = recovery_timeout
+        self._lock = threading.Lock()
+        self._state = self.CLOSED
+        self._consecutive_failures = 0
+        self._last_failure_time: float | None = None
+        self._total_rejected = 0
+        self._probe_in_flight = False
+
+    # -- query --
+
+    @property
+    def state(self) -> str:
+        with self._lock:
+            self._maybe_transition_to_half_open()
+            return self._state
+
+    @property
+    def total_rejected(self) -> int:
+        with self._lock:
+            return self._total_rejected
+
+    def allow_request(self) -> bool:
+        """Return True if a request should be attempted."""
+        with self._lock:
+            self._maybe_transition_to_half_open()
+            if self._state == self.CLOSED:
+                return True
+            if self._state == self.HALF_OPEN and not self._probe_in_flight:
+                self._probe_in_flight = True
+                return True  # allow exactly one probe
+            # OPEN or HALF_OPEN with probe already in flight
+            self._total_rejected += 1
+            return False
+
+    # -- feedback --
+
+    def record_success(self) -> None:
+        with self._lock:
+            if self._state != self.CLOSED:
+                logger.warning(
+                    "Circuit breaker CLOSED (recovered). %d requests were rejected while the circuit was open.",
+                    self._total_rejected,
+                )
+            self._state = self.CLOSED
+            self._consecutive_failures = 0
+            self._last_failure_time = None
+            self._total_rejected = 0
+            self._probe_in_flight = False
+
+    def record_failure(self) -> None:
+        with self._lock:
+            self._consecutive_failures += 1
+            self._last_failure_time = time.monotonic()
+            self._probe_in_flight = False
+            if self._state == self.HALF_OPEN:
+                # Probe failed — re-open
+                self._state = self.OPEN
+                logger.warning(
+                    "Circuit breaker re-OPENED after failed probe. Will retry after %.0fs.",
+                    self._recovery_timeout,
+                )
+            elif self._state == self.CLOSED and self._consecutive_failures >= self._failure_threshold:
+                self._state = self.OPEN
+                logger.warning(
+                    "Circuit breaker OPENED after %d consecutive failures. "
+                    "Requests will be rejected for %.0fs to avoid silent telemetry loss.",
+                    self._consecutive_failures,
+                    self._recovery_timeout,
+                )
+
+    # -- internal --
+
+    def _maybe_transition_to_half_open(self) -> None:
+        """Must be called with self._lock held."""
+        if (
+            self._state == self.OPEN
+            and self._last_failure_time is not None
+            and (time.monotonic() - self._last_failure_time) >= self._recovery_timeout
+        ):
+            self._state = self.HALF_OPEN
+            self._probe_in_flight = False
+            logger.warning("Circuit breaker entering HALF_OPEN state; allowing one probe request.")
 
 
 @final
@@ -79,6 +188,7 @@ class _Agent365Exporter(SpanExporter):
         self._use_s2s_endpoint = use_s2s_endpoint
         self._max_payload_bytes = max_payload_bytes
         self._domain_override = get_validated_domain_override()
+        self._circuit_breaker = _CircuitBreaker()
 
     # ------------- SpanExporter API -----------------
 
@@ -229,6 +339,14 @@ class _Agent365Exporter(SpanExporter):
         return text
 
     def _post_with_retries(self, url: str, body: str, headers: dict[str, str | bytes]) -> bool:
+        if not self._circuit_breaker.allow_request():
+            logger.warning(
+                "Circuit breaker is OPEN \u2014 skipping POST to %s. %d total requests rejected so far.",
+                url,
+                self._circuit_breaker.total_rejected,
+            )
+            return False
+
         for attempt in range(DEFAULT_MAX_RETRIES + 1):
             try:
                 resp = self._session.post(
@@ -248,6 +366,7 @@ class _Agent365Exporter(SpanExporter):
                         correlation_id,
                         self._truncate_text(resp.text, 200),
                     )
+                    self._circuit_breaker.record_success()
                     return True
 
                 response_text = self._truncate_text(resp.text, 500)
@@ -267,6 +386,7 @@ class _Agent365Exporter(SpanExporter):
                         correlation_id,
                         response_text,
                     )
+                    self._circuit_breaker.record_failure()
                 else:
                     logger.error(
                         "HTTP %d non-retryable error. Correlation ID: %s. Response: %s. "
@@ -284,8 +404,9 @@ class _Agent365Exporter(SpanExporter):
                     time.sleep(0.5 * (2**attempt))
                     continue
                 logger.error("Request failed after %d attempts: %s", DEFAULT_MAX_RETRIES + 1, e)
+                self._circuit_breaker.record_failure()
                 return False
-        return False
+        return False  # pragma: no cover
 
     # ------------- Payload mapping ------------------
 
