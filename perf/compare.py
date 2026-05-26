@@ -87,7 +87,9 @@ def main(argv: list[str] | None = None) -> int:
     for name in all_names:
         b = base.get(name)
         c = cand.get(name)
-        gating = bool(((c or b or {}).get("extra_info") or {}).get("gating", False))
+        b_gating = bool(((b or {}).get("extra_info") or {}).get("gating", False))
+        c_gating = bool(((c or {}).get("extra_info") or {}).get("gating", False))
+        gating = b_gating or c_gating
         b_sec = _stats_seconds(b)
         c_sec = _stats_seconds(c)
         b_ops = _ops_per_sec(b_sec)

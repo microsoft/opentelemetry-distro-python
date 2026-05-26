@@ -33,6 +33,9 @@ _FAKE_CONNECTION_STRING = (
     "LiveEndpoint=https://localhost/"
 )
 
+_AZURE_MONITOR_LOGGER_NAME = "perf.azure_monitor_log"
+_OTEL_LOGGER_NAME = "perf.otel_log"
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -52,6 +55,7 @@ def _azure_monitor_configured() -> None:
         enable_live_metrics=False,
         enable_performance_counters=False,
         disable_offline_storage=True,
+        logger_name=_AZURE_MONITOR_LOGGER_NAME,
     )
 
 
@@ -64,8 +68,11 @@ def azure_monitor_tracer(_azure_monitor_configured):
 
 @pytest.fixture
 def azure_monitor_logger(_azure_monitor_configured):
-    logger = logging.getLogger("perf.azure_monitor_log")
+    logger = logging.getLogger(_AZURE_MONITOR_LOGGER_NAME)
     logger.setLevel(logging.INFO)
+    # Don't let records propagate to the root logger, which may have handlers
+    # installed by other tests in the session.
+    logger.propagate = False
     return logger
 
 
@@ -91,8 +98,12 @@ def otel_logger():
     provider = LoggerProvider()
     provider.add_log_record_processor(BatchLogRecordProcessor(InMemoryLogExporter()))
     handler = LoggingHandler(level=logging.INFO, logger_provider=provider)
-    logger = logging.getLogger("perf.otel_log")
+    logger = logging.getLogger(_OTEL_LOGGER_NAME)
     logger.setLevel(logging.INFO)
+    # Isolate from any handlers attached to ancestor loggers (e.g. the root
+    # logger if Azure Monitor was configured earlier in the session) so this
+    # reference benchmark measures only the local handler/provider.
+    logger.propagate = False
     if not any(isinstance(h, LoggingHandler) for h in logger.handlers):
         logger.addHandler(handler)
     return logger
