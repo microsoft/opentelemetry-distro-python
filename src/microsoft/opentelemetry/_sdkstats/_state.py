@@ -15,6 +15,13 @@ Azure Monitor consumers see no behavioural change.
 import os
 import threading
 from enum import IntFlag
+from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (
+    _StatsbeatMetrics,
+)
+try:
+    import azure.monitor.opentelemetry.exporter._utils as _exporter_utils  # type: ignore[import-not-found]
+except Exception:  # pylint: disable=broad-exception-caught
+    _exporter_utils = None
 
 # ---------------------------------------------------------------------------
 # Environment variable to disable SDKStats globally
@@ -143,6 +150,19 @@ def set_sdkstats_feature(flag: SdkStatsFeature) -> None:
 def get_sdkstats_feature_flags() -> int:
     """Return the current feature bitmask."""
     return int(_SDKSTATS_STATE["FEATURE_FLAGS"])  # type: ignore[arg-type]
+
+
+def set_sdkstats_feature_bits(feature_bits: int) -> None:
+    current = _StatsbeatMetrics._FEATURE_ATTRIBUTES.get("feature") or 0
+    _StatsbeatMetrics._FEATURE_ATTRIBUTES["feature"] = current | int(feature_bits)
+
+
+
+def set_sdkstats_instrumentation_bits(instrumentation_bits: int) -> None:
+    with _exporter_utils._INSTRUMENTATIONS_BIT_MASK_LOCK:
+        _exporter_utils._INSTRUMENTATIONS_BIT_MASK |= int(instrumentation_bits)
+
+
 
 
 # ---- Instrumentation flags ----

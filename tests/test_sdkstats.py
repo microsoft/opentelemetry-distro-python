@@ -24,7 +24,9 @@ from microsoft.opentelemetry._sdkstats._state import (
     get_sdkstats_shutdown,
     is_sdkstats_enabled,
     set_sdkstats_feature,
+    set_sdkstats_feature_bits,
     set_sdkstats_instrumentation,
+    set_sdkstats_instrumentation_bits,
     set_sdkstats_instrumentation_by_name,
     set_sdkstats_shutdown,
 )
@@ -486,6 +488,45 @@ class TestBridgeSdkStatsToAzureMonitor(unittest.TestCase):
             mock_cls.return_value = mock_manager
             _initialize_sdkstats(enable_azure_monitor=False)
             mock_manager.initialize.assert_called_once()
+
+
+class TestSdkStatsBridgeSetters(unittest.TestCase):
+    """Tests for state bridge helper setters used by _distro bridge."""
+
+    def setUp(self):
+        _reset_state()
+        try:
+            from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (
+                _StatsbeatMetrics,
+            )
+            import azure.monitor.opentelemetry.exporter._utils as _exporter_utils
+
+            _StatsbeatMetrics._FEATURE_ATTRIBUTES["feature"] = None
+            with _exporter_utils._INSTRUMENTATIONS_BIT_MASK_LOCK:
+                _exporter_utils._INSTRUMENTATIONS_BIT_MASK = 0
+        except ImportError:
+            pass
+
+    def test_set_sdkstats_feature_bits_ors_into_exporter_feature_attr(self):
+        from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (
+            _StatsbeatMetrics,
+        )
+
+        _StatsbeatMetrics._FEATURE_ATTRIBUTES["feature"] = 3
+        set_sdkstats_feature_bits(int(SdkStatsFeature.OTLP_EXPORT))
+
+        self.assertEqual(_StatsbeatMetrics._FEATURE_ATTRIBUTES["feature"], 3 | 256)
+
+    def test_set_sdkstats_instrumentation_bits_ors_into_exporter_mask(self):
+        import azure.monitor.opentelemetry.exporter._utils as _exporter_utils
+
+        with _exporter_utils._INSTRUMENTATIONS_BIT_MASK_LOCK:
+            _exporter_utils._INSTRUMENTATIONS_BIT_MASK = 3
+
+        set_sdkstats_instrumentation_bits(int(SdkStatsInstrumentation.FASTAPI))
+
+        with _exporter_utils._INSTRUMENTATIONS_BIT_MASK_LOCK:
+            self.assertEqual(_exporter_utils._INSTRUMENTATIONS_BIT_MASK, 3 | int(SdkStatsInstrumentation.FASTAPI))
 
 
 if __name__ == "__main__":
