@@ -7,7 +7,7 @@ import logging
 import re
 from collections import OrderedDict
 from dataclasses import asdict
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator
 from itertools import chain
 from threading import RLock
 from contextvars import Token
@@ -64,14 +64,10 @@ from microsoft.opentelemetry._genai._langchain._utils import (
     extract_agent_metadata,
     extract_session_info,
     function_calls,
-    input_messages,
     invocation_parameters,
-    invoke_agent_input_message,
-    invoke_agent_output_message,
     llm_provider,
     metadata,
     model_name,
-    output_messages,
     prompts,
     _extract_structured_input_messages,
     _extract_structured_output_messages,

@@ -732,8 +732,6 @@ class TestInvocationParameters(TestCase):
         self.assertEqual(result[GEN_AI_OUTPUT_TYPE_KEY], "text")
 
 
-
-
 class TestFunctionCalls(TestCase):
     @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=False)
     def test_extracts_function_call(self, _mock_capture):

@@ -390,7 +390,7 @@ def output_messages(
 
 
 @stop_on_exception
-def invocation_parameters(run: Run) -> Iterator[tuple[str, AttributeValue]]:
+def invocation_parameters(run: Run) -> Iterator[tuple[str, AttributeValue]]:  # pylint: disable=too-many-statements
     if run.run_type.lower() not in ("llm", "chat_model"):
         return
     if not (extra := run.extra):
@@ -749,7 +749,9 @@ def _extra_usage_attributes(token_usage: Mapping[str, Any]) -> Iterator[tuple[st
     reasoning_output: int | None = None
     if isinstance(output_details := token_usage.get("output_token_details"), Mapping):
         reasoning_output = _as_non_negative_int(output_details.get("reasoning"))
-    if reasoning_output is None and isinstance(completion_details := token_usage.get("completion_tokens_details"), Mapping):
+    if reasoning_output is None and isinstance(
+        completion_details := token_usage.get("completion_tokens_details"), Mapping
+    ):
         reasoning_output = _as_non_negative_int(completion_details.get("reasoning_tokens"))
     if reasoning_output is not None:
         yield GEN_AI_USAGE_REASONING_OUTPUT_TOKENS_KEY, reasoning_output

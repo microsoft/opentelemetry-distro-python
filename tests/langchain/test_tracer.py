@@ -440,6 +440,7 @@ class TestUpdateSpan(TestCase):
         self.assertEqual(merged_attrs.get(GEN_AI_PROVIDER_NAME_KEY), "openai")
         self.assertEqual(merged_attrs.get(GEN_AI_REQUEST_CHOICE_COUNT_KEY), 2)
 
+
 # ---- Aggregation -------------------------------------------------------------
 
 
