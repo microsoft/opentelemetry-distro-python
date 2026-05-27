@@ -22,10 +22,6 @@ from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
     GEN_AI_AGENT_NAME,
     GEN_AI_CONVERSATION_ID,
     GEN_AI_INPUT_MESSAGES,
-    GEN_AI_OPENAI_REQUEST_RESPONSE_FORMAT,
-    GEN_AI_OPENAI_REQUEST_SERVICE_TIER,
-    GEN_AI_OPENAI_RESPONSE_SERVICE_TIER,
-    GEN_AI_OPENAI_RESPONSE_SYSTEM_FINGERPRINT,
     GEN_AI_OPERATION_NAME,
     GEN_AI_OUTPUT_MESSAGES,
     GEN_AI_OUTPUT_TYPE,
@@ -234,10 +230,6 @@ GEN_AI_AGENT_DESCRIPTION_KEY = GEN_AI_AGENT_DESCRIPTION
 GEN_AI_CONVERSATION_ID_KEY = GEN_AI_CONVERSATION_ID
 GEN_AI_REQUEST_CHOICE_COUNT_KEY = GEN_AI_REQUEST_CHOICE_COUNT
 GEN_AI_REQUEST_TOP_K_KEY = GEN_AI_REQUEST_TOP_K
-GEN_AI_OPENAI_REQUEST_RESPONSE_FORMAT_KEY = GEN_AI_OPENAI_REQUEST_RESPONSE_FORMAT
-GEN_AI_OPENAI_REQUEST_SERVICE_TIER_KEY = GEN_AI_OPENAI_REQUEST_SERVICE_TIER
-GEN_AI_OPENAI_RESPONSE_SERVICE_TIER_KEY = GEN_AI_OPENAI_RESPONSE_SERVICE_TIER
-GEN_AI_OPENAI_RESPONSE_SYSTEM_FINGERPRINT_KEY = GEN_AI_OPENAI_RESPONSE_SYSTEM_FINGERPRINT
 SERVER_ADDRESS_KEY = SERVER_ADDRESS
 SERVER_PORT_KEY = SERVER_PORT
 
@@ -482,14 +474,6 @@ def invocation_parameters(run: Run) -> Iterator[tuple[str, AttributeValue]]:
             out_type = _output_type_from_response_format(response_format)
             if out_type:
                 yield GEN_AI_OUTPUT_TYPE_KEY, out_type
-            if isinstance(response_format, Mapping):
-                yield GEN_AI_OPENAI_REQUEST_RESPONSE_FORMAT_KEY, safe_json_dumps(response_format)
-            elif isinstance(response_format, str):
-                yield GEN_AI_OPENAI_REQUEST_RESPONSE_FORMAT_KEY, response_format
-
-        # gen_ai.openai.request.service_tier
-        if service_tier := _first_param("service_tier"):
-            yield GEN_AI_OPENAI_REQUEST_SERVICE_TIER_KEY, str(service_tier)
 
 
 def _usage_mapping(token_usage: Any) -> Mapping[str, Any] | None:
@@ -663,8 +647,11 @@ def _as_usage_mapping(raw_usage: Any) -> Mapping[str, Any] | None:
 
 
 def _normalized_token_usage(outputs: Mapping[str, Any] | None) -> dict[str, int]:
-    if not (token_usage := _parse_token_usage(outputs)):
+    if not (raw_token_usage := _parse_token_usage(outputs)):
         return {}
+    # Normalize to Mapping so get_first_value works even when the usage object
+    # is a non-Mapping (e.g. SimpleNamespace or Pydantic model).
+    token_usage = _as_usage_mapping(raw_token_usage) or {}
     input_count = _as_non_negative_int(
         get_first_value(token_usage, ("prompt_tokens", "input_tokens", "prompt_token_count"))
     )
@@ -797,27 +784,6 @@ def response_metadata_attributes(outputs: Mapping[str, Any] | None) -> Iterator[
     """
     if not isinstance(outputs, Mapping):
         return
-    seen_service_tier = False
-    seen_fingerprint = False
-    llm_output = outputs.get("llm_output")
-    if isinstance(llm_output, Mapping):
-        if st := llm_output.get("service_tier"):
-            yield GEN_AI_OPENAI_RESPONSE_SERVICE_TIER_KEY, str(st)
-            seen_service_tier = True
-        if fp := llm_output.get("system_fingerprint"):
-            yield GEN_AI_OPENAI_RESPONSE_SYSTEM_FINGERPRINT_KEY, str(fp)
-            seen_fingerprint = True
-    if seen_service_tier and seen_fingerprint:
-        return
-    for meta in _iter_generation_response_metadata(outputs):
-        if not seen_service_tier and (st := meta.get("service_tier")):
-            yield GEN_AI_OPENAI_RESPONSE_SERVICE_TIER_KEY, str(st)
-            seen_service_tier = True
-        if not seen_fingerprint and (fp := meta.get("system_fingerprint")):
-            yield GEN_AI_OPENAI_RESPONSE_SYSTEM_FINGERPRINT_KEY, str(fp)
-            seen_fingerprint = True
-        if seen_service_tier and seen_fingerprint:
-            return
 
 
 def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:

@@ -21,10 +21,6 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     GEN_AI_AGENT_NAME_KEY,
     GEN_AI_CONVERSATION_ID_KEY,
     GEN_AI_INPUT_MESSAGES_KEY,
-    GEN_AI_OPENAI_REQUEST_RESPONSE_FORMAT_KEY,
-    GEN_AI_OPENAI_REQUEST_SERVICE_TIER_KEY,
-    GEN_AI_OPENAI_RESPONSE_SERVICE_TIER_KEY,
-    GEN_AI_OPENAI_RESPONSE_SYSTEM_FINGERPRINT_KEY,
     GEN_AI_OPERATION_NAME_KEY,
     GEN_AI_OUTPUT_MESSAGES_KEY,
     GEN_AI_OUTPUT_TYPE_KEY,
@@ -727,7 +723,6 @@ class TestInvocationParameters(TestCase):
         )
         result = dict(invocation_parameters(run))
         self.assertEqual(result[GEN_AI_OUTPUT_TYPE_KEY], "json")
-        self.assertIn(GEN_AI_OPENAI_REQUEST_RESPONSE_FORMAT_KEY, result)
 
     def test_extracts_response_format_text_string(self):
         run = _make_run(
@@ -736,15 +731,6 @@ class TestInvocationParameters(TestCase):
         )
         result = dict(invocation_parameters(run))
         self.assertEqual(result[GEN_AI_OUTPUT_TYPE_KEY], "text")
-        self.assertEqual(result[GEN_AI_OPENAI_REQUEST_RESPONSE_FORMAT_KEY], "text")
-
-    def test_extracts_service_tier(self):
-        run = _make_run(
-            run_type="chat_model",
-            extra={"invocation_params": {"service_tier": "scale"}},
-        )
-        result = dict(invocation_parameters(run))
-        self.assertEqual(result[GEN_AI_OPENAI_REQUEST_SERVICE_TIER_KEY], "scale")
 
 
 
@@ -757,8 +743,7 @@ class TestResponseMetadataAttributes(TestCase):
             }
         }
         result = dict(response_metadata_attributes(outputs))
-        self.assertEqual(result[GEN_AI_OPENAI_RESPONSE_SERVICE_TIER_KEY], "scale")
-        self.assertEqual(result[GEN_AI_OPENAI_RESPONSE_SYSTEM_FINGERPRINT_KEY], "fp_abc123")
+        self.assertEqual(list(result), [])
 
     def test_extracts_from_generation_response_metadata(self):
         outputs = {
@@ -778,8 +763,7 @@ class TestResponseMetadataAttributes(TestCase):
             ]
         }
         result = dict(response_metadata_attributes(outputs))
-        self.assertEqual(result[GEN_AI_OPENAI_RESPONSE_SERVICE_TIER_KEY], "default")
-        self.assertEqual(result[GEN_AI_OPENAI_RESPONSE_SYSTEM_FINGERPRINT_KEY], "fp_xyz")
+        self.assertEqual(list(result), [])
 
     def test_returns_empty_when_absent(self):
         self.assertEqual(list(response_metadata_attributes({"llm_output": {}})), [])

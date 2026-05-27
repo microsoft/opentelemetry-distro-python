@@ -605,8 +605,6 @@ def _update_span(span: Span, run: Run) -> LLMInvocation | None:
                 flatten(
                     chain(
                         prompts(run.inputs),
-                        input_messages(run.inputs),
-                        output_messages(run.outputs),
                         invocation_parameters(run),
                         function_calls(run.outputs),
                         response_metadata_attributes(run.outputs),
