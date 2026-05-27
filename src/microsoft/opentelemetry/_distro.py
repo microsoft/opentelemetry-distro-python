@@ -74,6 +74,8 @@ from microsoft.opentelemetry._sdkstats._state import (
     get_sdkstats_feature_flags,
     get_sdkstats_instrumentation_flags,
     is_sdkstats_enabled,
+    set_sdkstats_feature_bits,
+    set_sdkstats_instrumentation_bits,
     set_sdkstats_feature,
     set_sdkstats_instrumentation_by_name,
 )
@@ -86,12 +88,6 @@ from microsoft.opentelemetry._utils import (
 from microsoft.opentelemetry._version import VERSION
 
 os.environ.setdefault(MICROSOFT_OPENTELEMETRY_VERSION_ENV, VERSION)
-
-# pylint: disable=wrong-import-position
-import azure.monitor.opentelemetry.exporter._utils as _exporter_utils
-from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (
-    _StatsbeatMetrics,
-)
 
 _logger = getLogger(__name__)
 
@@ -201,7 +197,6 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
     :rtype: None
     """
 
-    os.environ[MICROSOFT_OPENTELEMETRY_VERSION_ENV] = VERSION
     enable_azure_monitor: bool = bool(kwargs.pop(ENABLE_AZURE_MONITOR_ARG, False))
     enable_console: bool = bool(kwargs.pop(ENABLE_CONSOLE_ARG, False))
     enable_a365: bool = bool(kwargs.pop(ENABLE_A365_ARG, False))
@@ -393,15 +388,13 @@ def _bridge_sdkstats_to_azure_monitor() -> None:
     # exporter's _get_feature_metric callback reads each cycle.
     feature_flags = get_sdkstats_feature_flags()
     if feature_flags:
-        current = _StatsbeatMetrics._FEATURE_ATTRIBUTES.get("feature") or 0
-        _StatsbeatMetrics._FEATURE_ATTRIBUTES["feature"] = current | feature_flags
+        set_sdkstats_feature_bits(feature_flags)
 
     # Instrumentation bits — OR directly into the exporter's module-
     # level bitmask (thread-safe via their lock).
     instrumentation_flags = get_sdkstats_instrumentation_flags()
     if instrumentation_flags:
-        with _exporter_utils._INSTRUMENTATIONS_BIT_MASK_LOCK:
-            _exporter_utils._INSTRUMENTATIONS_BIT_MASK |= instrumentation_flags
+        set_sdkstats_instrumentation_bits(instrumentation_flags)
 
 
 def _append_a365_components(
