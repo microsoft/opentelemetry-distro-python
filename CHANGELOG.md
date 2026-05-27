@@ -1,5 +1,33 @@
 # Release History
 
+## 1.3.0 (2026-05-27)
+
+### Features Added
+- Add circuit breaker to A365 exporter to prevent silent telemetry loss
+  ([#153](https://github.com/microsoft/opentelemetry-distro-python/pull/153))
+- Add token usage extraction for LangChain tracer
+  ([#161](https://github.com/microsoft/opentelemetry-distro-python/pull/161))
+- Align message format to OTel spec: remove version envelope
+  ([#162](https://github.com/microsoft/opentelemetry-distro-python/pull/162))
+
+### Bugs Fixed
+- Use `get_span_context()` instead of `.context` to support `NonRecordingSpan`
+  ([#168](https://github.com/microsoft/opentelemetry-distro-python/pull/168))
+- Emit OTel-spec structured messages on `invoke_agent` spans
+  ([#164](https://github.com/microsoft/opentelemetry-distro-python/pull/164))
+- Prevent OOM from unbounded dicts in LangChain tracer
+  ([#154](https://github.com/microsoft/opentelemetry-distro-python/pull/154))
+- Bump `agent-framework>=1.4.0` to resolve dependency conflict
+  ([#155](https://github.com/microsoft/opentelemetry-distro-python/pull/155))
+- Add 30s timeout to FIC token resolver MSAL calls
+  ([#150](https://github.com/microsoft/opentelemetry-distro-python/pull/150))
+
+### Other Changes
+- Add pytest-benchmark suite and PR regression gate
+  ([#165](https://github.com/microsoft/opentelemetry-distro-python/pull/165))
+- Bump `mem0ai` from 1.0.11 to 2.0.0b2
+  ([#163](https://github.com/microsoft/opentelemetry-distro-python/pull/163))
+
 ## 1.2.0 (2026-05-18)
 
 ### Features Added
