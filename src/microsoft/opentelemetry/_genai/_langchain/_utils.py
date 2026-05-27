@@ -774,18 +774,6 @@ def _iter_generation_response_metadata(outputs: Mapping[str, Any] | None) -> Ite
             yield meta
 
 
-@stop_on_exception
-def response_metadata_attributes(outputs: Mapping[str, Any] | None) -> Iterator[tuple[str, str]]:
-    """Extract OpenAI-specific response metadata into ``gen_ai.openai.response.*`` attributes.
-
-    Yields ``gen_ai.openai.response.service_tier`` and
-    ``gen_ai.openai.response.system_fingerprint`` when present on either
-    ``llm_output`` or on per-generation ``response_metadata``.
-    """
-    if not isinstance(outputs, Mapping):
-        return
-
-
 def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
     if (
         outputs
@@ -1112,22 +1100,30 @@ def build_llm_invocation(run: Run) -> LLMInvocation:  # pylint: disable=too-many
 def _langchain_role(message: Any) -> str:
     """Extract role from a LangChain message (BaseMessage or dict)."""
     if isinstance(message, BaseMessage):
-        return str(getattr(message, "type", "unknown"))
+        msg_type = str(getattr(message, "type", "unknown"))
+        return "assistant" if msg_type == "ai" else msg_type
     if hasattr(message, "get"):
         if role := message.get("role"):
             return str(role)
-        if msg_type := message.get("type"):
-            return str(msg_type)
+        # LangChain serializes messages with the "lc envelope":
+        # {"lc": 1, "type": "constructor", "id": [..., "AIMessage"], "kwargs": {...}}
+        # The "constructor" string is a serialization marker, not the role —
+        # fall through to id-field parsing in that case.
+        msg_type = message.get("type")
+        if msg_type and msg_type != "constructor":
+            return "assistant" if msg_type == "ai" else str(msg_type)
         # Fallback: parse role from serialized id field (e.g. ["langchain", "schema", "HumanMessage"])
         if id_field := message.get("id"):
             if isinstance(id_field, list) and len(id_field) > 0:
                 type_name = id_field[-1]
                 if "Human" in type_name:
-                    return "human"
+                    return "user"
                 if "AI" in type_name or "Assistant" in type_name:
-                    return "ai"
+                    return "assistant"
                 if "System" in type_name:
                     return "system"
+                if "Tool" in type_name:
+                    return "tool"
     return "unknown"
 
 

@@ -61,7 +61,6 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     model_name,
     output_messages,
     prompts,
-    response_metadata_attributes,
     safe_json_dumps,
     stop_on_exception,
     token_counts,
@@ -734,44 +733,10 @@ class TestInvocationParameters(TestCase):
 
 
 
-class TestResponseMetadataAttributes(TestCase):
-    def test_extracts_from_llm_output(self):
-        outputs = {
-            "llm_output": {
-                "service_tier": "scale",
-                "system_fingerprint": "fp_abc123",
-            }
-        }
-        result = dict(response_metadata_attributes(outputs))
-        self.assertEqual(list(result), [])
-
-    def test_extracts_from_generation_response_metadata(self):
-        outputs = {
-            "generations": [
-                [
-                    {
-                        "message": {
-                            "kwargs": {
-                                "response_metadata": {
-                                    "service_tier": "default",
-                                    "system_fingerprint": "fp_xyz",
-                                }
-                            }
-                        }
-                    }
-                ]
-            ]
-        }
-        result = dict(response_metadata_attributes(outputs))
-        self.assertEqual(list(result), [])
-
-    def test_returns_empty_when_absent(self):
-        self.assertEqual(list(response_metadata_attributes({"llm_output": {}})), [])
-        self.assertEqual(list(response_metadata_attributes(None)), [])
-
 
 class TestFunctionCalls(TestCase):
-    def test_extracts_function_call(self):
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=False)
+    def test_extracts_function_call(self, _mock_capture):
         outputs = {
             "generations": [
                 [
@@ -826,7 +791,8 @@ class TestFunctionCalls(TestCase):
 
 
 class TestTools(TestCase):
-    def test_extracts_tool_info(self):
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=False)
+    def test_extracts_tool_info(self, _mock_capture):
         run = _make_run(
             run_type="tool",
             serialized={"name": "calculator", "description": "Does math"},
@@ -862,7 +828,8 @@ class TestTools(TestCase):
 
 
 class TestChainNodeMessages(TestCase):
-    def test_skips_messages_when_content_capture_disabled(self):
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=False)
+    def test_skips_messages_when_content_capture_disabled(self, _mock_capture):
         data = {"messages": [{"content": "Hello", "role": "human"}]}
         self.assertEqual(list(chain_node_messages(data, GEN_AI_INPUT_MESSAGES_KEY)), [])
 
