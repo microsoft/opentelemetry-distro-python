@@ -1,5 +1,10 @@
 # Release History
 
+# 1.3.1 (Unreleased)
+
+- Add setter functions for feature and instrumentation bits
+  ([#157](https://github.com/microsoft/opentelemetry-distro-python/pull/157))
+
 ## 1.3.0 (2026-05-27)
 
 ### Features Added
