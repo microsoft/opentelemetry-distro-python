@@ -142,6 +142,7 @@ def _make_span(
     ctx.trace_id = trace_id
     ctx.span_id = span_id
     span.context = ctx
+    span.get_span_context.return_value = ctx
 
     span.parent = None
     span.kind = SpanKind.INTERNAL

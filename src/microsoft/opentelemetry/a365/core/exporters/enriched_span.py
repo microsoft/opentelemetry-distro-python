@@ -55,7 +55,7 @@ class EnrichedReadableSpan(ReadableSpan):
 
     @property
     def context(self):  # type: ignore[override]
-        return self._span.context
+        return self._span.get_span_context()
 
     @property
     def parent(self):  # type: ignore[override]
