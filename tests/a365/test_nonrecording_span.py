@@ -95,26 +95,44 @@ class TestEnrichedReadableSpanNonRecordingSpan(unittest.TestCase):
 
     def test_context_property_uses_get_span_context(self):
         """EnrichedReadableSpan.context must call get_span_context(), not .context."""
-        mock_span = MagicMock()
         expected_ctx = SpanContext(
             trace_id=0xFF,
             span_id=0xAA,
             is_remote=False,
             trace_flags=TraceFlags(0),
         )
+        mock_span = MagicMock(
+            spec_set=["get_span_context", "attributes", "name"],
+        )
         mock_span.get_span_context.return_value = expected_ctx
-        # Ensure .context attribute is NOT used
-        del mock_span.context
 
         enriched = EnrichedReadableSpan(mock_span, extra_attributes={"key": "val"})
 
         result = enriched.context
         self.assertIs(result, expected_ctx)
         mock_span.get_span_context.assert_called_once()
+        # Verify .context would fail on the mock (proving we don't use it)
+        with self.assertRaises(AttributeError):
+            _ = mock_span.context
 
     def test_to_json_with_non_recording_span_context(self):
         """to_json() must not crash when wrapped span uses get_span_context()."""
-        mock_span = MagicMock()
+        mock_span = MagicMock(
+            spec_set=[
+                "get_span_context",
+                "name",
+                "attributes",
+                "kind",
+                "parent",
+                "start_time",
+                "end_time",
+                "status",
+                "events",
+                "links",
+                "resource",
+                "instrumentation_scope",
+            ],
+        )
         mock_span.name = "test"
         mock_span.get_span_context.return_value = SpanContext(
             trace_id=0x1234,
@@ -122,7 +140,6 @@ class TestEnrichedReadableSpanNonRecordingSpan(unittest.TestCase):
             is_remote=False,
             trace_flags=TraceFlags(0),
         )
-        del mock_span.context
         mock_span.attributes = {"key": "value"}
         mock_span.kind = "INTERNAL"
         mock_span.parent = None
@@ -153,7 +170,21 @@ class TestAgent365ExporterMapSpanGetSpanContext(unittest.TestCase):
 
         exporter = _Agent365Exporter(token_resolver=lambda a, t: "token")
 
-        span = MagicMock()
+        span = MagicMock(
+            spec_set=[
+                "get_span_context",
+                "name",
+                "attributes",
+                "parent",
+                "kind",
+                "start_time",
+                "end_time",
+                "status",
+                "events",
+                "links",
+                "instrumentation_scope",
+            ],
+        )
         span.name = "test_span"
         span.attributes = {"gen_ai.operation.name": "invoke_agent"}
 
@@ -164,8 +195,6 @@ class TestAgent365ExporterMapSpanGetSpanContext(unittest.TestCase):
             trace_flags=TraceFlags(0),
         )
         span.get_span_context.return_value = expected_ctx
-        # Remove .context so it would fail if accessed
-        del span.context
 
         span.parent = None
         span.kind = MagicMock()
