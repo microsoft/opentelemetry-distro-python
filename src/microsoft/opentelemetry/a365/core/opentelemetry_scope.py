@@ -163,7 +163,8 @@ class OpenTelemetryScope:
 
             # Log span creation
             if self._span:
-                span_id = f"{self._span.context.span_id:016x}" if self._span.context else "unknown"
+                sc = self._span.get_span_context()
+                span_id = f"{sc.span_id:016x}" if sc else "unknown"
                 logger.info("Span started: '%s' (%s)", activity_name, span_id)
             else:
                 logger.error("Failed to create span: '%s' - tracer returned None", activity_name)
@@ -269,8 +270,10 @@ class OpenTelemetryScope:
         """End the span and record metrics."""
         if self._span and self._is_telemetry_enabled() and not self._has_ended:
             self._has_ended = True
-            span_id = f"{self._span.context.span_id:016x}" if self._span.context else "unknown"
-            logger.info("Span ended: '%s' (%s)", self._span.name, span_id)
+            sc = self._span.get_span_context()
+            span_id = f"{sc.span_id:016x}" if sc else "unknown"
+            span_name = getattr(self._span, "name", "unknown")
+            logger.info("Span ended: '%s' (%s)", span_name, span_id)
 
             # Convert custom end time to OTel-compatible format (nanoseconds since epoch)
             otel_end_time = self._datetime_to_ns(self._custom_end_time)
