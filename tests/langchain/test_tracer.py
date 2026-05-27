@@ -464,7 +464,10 @@ class TestAggregateIntoParent(TestCase):
         tracer._aggregate_into_parent(tool_run)
 
         content = tracer._agent_content[agent_run.id]
-        self.assertIn("42", content["output_messages"])
+        self.assertEqual(len(content["output_messages"]), 1)
+        tool_msg = content["output_messages"][0]
+        self.assertEqual(tool_msg.role, "tool")
+        self.assertEqual(tool_msg.parts[0].content, "42")
 
     @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
     def test_aggregates_tokens_from_generation_info_usage(self, mock_ctx):
