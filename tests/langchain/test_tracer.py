@@ -2,10 +2,10 @@
 # Licensed under the MIT License.
 
 import datetime
-from collections import OrderedDict
+from types import SimpleNamespace
 from unittest import TestCase
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -62,16 +62,34 @@ def _make_tracer(**kwargs):
 # ---- Static helpers ----------------------------------------------------------
 
 
-class TestCapOrderedDict(TestCase):
-    def test_caps_size(self):
-        d = OrderedDict()
-        for i in range(10):
-            d[i] = f"val-{i}"
-        LangChainTracer._cap_ordered_dict(d, 5)
-        self.assertEqual(len(d), 5)
-        # Oldest entries removed
-        self.assertNotIn(0, d)
-        self.assertIn(9, d)
+class TestEvictTrackedRuns(TestCase):
+    def test_evicts_oldest_entries_from_all_dicts(self):
+        tracer, _, _ = _make_tracer()
+        tracer._MAX_TRACKED_RUNS = 5
+        uuids = [UUID(int=i) for i in range(10)]
+        for uid in uuids:
+            tracer._spans_by_run[uid] = f"span-{uid}"
+            tracer._agent_run_ids.add(uid)
+            tracer._agent_content[uid] = {"model": None}
+            tracer._agent_wrapper_spans[uid] = f"wrapper-{uid}"
+            tracer._context_tokens[uid] = []
+            tracer.run_map[str(uid)] = f"run-{uid}"
+        tracer._evict_tracked_runs()
+        # Only 5 newest entries remain
+        self.assertEqual(len(tracer._spans_by_run), 5)
+        self.assertNotIn(uuids[0], tracer._spans_by_run)
+        self.assertIn(uuids[9], tracer._spans_by_run)
+        # Related dicts also cleaned up
+        for uid in uuids[:5]:
+            self.assertNotIn(uid, tracer._agent_run_ids)
+            self.assertNotIn(uid, tracer._agent_content)
+            self.assertNotIn(uid, tracer._agent_wrapper_spans)
+            self.assertNotIn(uid, tracer._context_tokens)
+            self.assertNotIn(str(uid), tracer.run_map)
+        for uid in uuids[5:]:
+            self.assertIn(uid, tracer._agent_run_ids)
+            self.assertIn(uid, tracer._agent_content)
+            self.assertIn(uid, tracer._agent_wrapper_spans)
 
 
 # ---- Agent detection ---------------------------------------------------------
@@ -446,7 +464,77 @@ class TestAggregateIntoParent(TestCase):
         tracer._aggregate_into_parent(tool_run)
 
         content = tracer._agent_content[agent_run.id]
-        self.assertIn("42", content["output_messages"])
+        self.assertEqual(len(content["output_messages"]), 1)
+        tool_msg = content["output_messages"][0]
+        self.assertEqual(tool_msg.role, "tool")
+        self.assertEqual(tool_msg.parts[0].content, "42")
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_aggregates_tokens_from_generation_info_usage(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        wrapper = MagicMock()
+        inner = MagicMock()
+        otel_tracer.start_span.side_effect = [wrapper, inner]
+
+        agent_run = _make_run(run_type="chain", name="LangGraph")
+        tracer._start_trace(agent_run)
+
+        llm_run = _make_run(
+            run_type="llm",
+            name="gpt-4o",
+            parent_run_id=agent_run.id,
+            outputs={
+                "generations": [[{"generation_info": {"usage": {"prompt_tokens": 11, "completion_tokens": 4}}}]],
+            },
+            extra=None,
+            inputs=None,
+        )
+        tracer.run_map[str(llm_run.id)] = llm_run
+        tracer._aggregate_into_parent(llm_run)
+
+        content = tracer._agent_content[agent_run.id]
+        self.assertEqual(content["input_tokens"], 11)
+        self.assertEqual(content["output_tokens"], 4)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_aggregates_tokens_from_message_usage_metadata_object(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        wrapper = MagicMock()
+        inner = MagicMock()
+        otel_tracer.start_span.side_effect = [wrapper, inner]
+
+        agent_run = _make_run(run_type="chain", name="LangGraph")
+        tracer._start_trace(agent_run)
+
+        llm_run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o-mini",
+            parent_run_id=agent_run.id,
+            outputs={
+                "generations": [
+                    [
+                        {
+                            "message": {
+                                "usage_metadata": SimpleNamespace(
+                                    input_tokens=9,
+                                    output_tokens=3,
+                                )
+                            }
+                        }
+                    ]
+                ]
+            },
+            extra=None,
+            inputs=None,
+        )
+        tracer.run_map[str(llm_run.id)] = llm_run
+        tracer._aggregate_into_parent(llm_run)
+
+        content = tracer._agent_content[agent_run.id]
+        self.assertEqual(content["input_tokens"], 9)
+        self.assertEqual(content["output_tokens"], 3)
 
 
 class TestFindAgentAncestor(TestCase):
@@ -486,3 +574,125 @@ class TestGetAttributesFromContext(TestCase):
     def test_yields_nothing_when_empty(self, mock_get_value):
         result = list(get_attributes_from_context())
         self.assertEqual(result, [])
+
+
+# ---- Runtime-context attach/detach (HTTP child-span parenting) ---------------
+
+
+class TestRunInlineFlag(TestCase):
+    """LangChain's async callback manager honors ``run_inline = True`` to
+    invoke sync handlers on the asyncio task instead of dispatching to a
+    thread-pool worker. This is required for our ``context_api.attach`` call
+    in ``_start_trace`` to mutate the contextvars of the awaiting LLM call so
+    that openai/httpx child spans correctly parent under our LLM span."""
+
+    def test_run_inline_is_true(self):
+        self.assertTrue(LangChainTracer.run_inline)
+
+
+class TestContextAttachDetach(TestCase):
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_attaches_inner_span_to_runtime_context(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        mock_ctx.attach.return_value = "token-1"
+        tracer, otel_tracer, mock_span = _make_tracer()
+        run = _make_run(run_type="chain", name="RunnableSequence")
+        tracer._start_trace(run)
+        mock_ctx.attach.assert_called_once()
+        self.assertEqual(tracer._context_tokens[run.id], ["token-1"])
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_detaches_on_end(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        mock_ctx.attach.return_value = "token-1"
+        # Fake _RUNTIME_CONTEXT exposed on the patched module
+        runtime = MagicMock()
+        mock_ctx._RUNTIME_CONTEXT = runtime
+        tracer, otel_tracer, mock_span = _make_tracer()
+        run = _make_run(run_type="chain", name="RunnableSequence")
+        tracer._start_trace(run)
+        tracer._end_trace(run)
+        runtime.detach.assert_called_once_with("token-1")
+        self.assertNotIn(run.id, tracer._context_tokens)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_skips_attach_when_separate_trace(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer(separate_trace=True)
+        run = _make_run(run_type="chain", name="RunnableSequence")
+        tracer._start_trace(run)
+        mock_ctx.attach.assert_not_called()
+        self.assertNotIn(run.id, tracer._context_tokens)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_detach_swallows_cross_context_error(self, mock_ctx):
+        """Token created in a different Context raises ValueError on detach.
+        The handler must swallow it (asyncio task contextvars are discarded
+        when the task ends) without propagating or logging at error level."""
+        mock_ctx.get_value.return_value = None
+        mock_ctx.attach.return_value = "token-1"
+        runtime = MagicMock()
+        runtime.detach.side_effect = ValueError("Token created in different Context")
+        mock_ctx._RUNTIME_CONTEXT = runtime
+        tracer, otel_tracer, _ = _make_tracer()
+        run = _make_run(run_type="chain", name="RunnableSequence")
+        tracer._start_trace(run)
+        # Must not raise.
+        tracer._end_trace(run)
+        runtime.detach.assert_called_once_with("token-1")
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_detach_falls_back_to_context_api_when_runtime_missing(self, mock_ctx):
+        """If ``_RUNTIME_CONTEXT`` private attribute is unavailable, fall back
+        to the public ``context_api.detach`` wrapper."""
+        mock_ctx.get_value.return_value = None
+        mock_ctx.attach.return_value = "token-1"
+        # Simulate missing private attribute.
+        if hasattr(mock_ctx, "_RUNTIME_CONTEXT"):
+            del mock_ctx._RUNTIME_CONTEXT
+        # ``getattr`` in tracer with default ``None`` triggers fallback.
+        type(mock_ctx)._RUNTIME_CONTEXT = property(lambda self: None)  # type: ignore[attr-defined]
+        try:
+            tracer, otel_tracer, _ = _make_tracer()
+            run = _make_run(run_type="chain", name="RunnableSequence")
+            tracer._start_trace(run)
+            tracer._end_trace(run)
+            mock_ctx.detach.assert_called_once_with("token-1")
+        finally:
+            del type(mock_ctx)._RUNTIME_CONTEXT  # type: ignore[attr-defined]
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_no_token_stored_when_suppressed(self, mock_ctx):
+        # SUPPRESS_INSTRUMENTATION skips the entire _start_trace body.
+        mock_ctx.get_value.return_value = True
+        tracer, otel_tracer, _ = _make_tracer()
+        run = _make_run(run_type="chain", name="RunnableSequence")
+        tracer._start_trace(run)
+        mock_ctx.attach.assert_not_called()
+        self.assertEqual(tracer._context_tokens, {})
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_attach_uses_inner_span_for_agent(self, mock_ctx):
+        """For a two-span agent, the attached span must be the INNER span
+        (so child LLM/tool runs parent under the framework span, and HTTP
+        spans parent under the LLM span when its own _start_trace runs)."""
+        mock_ctx.get_value.return_value = None
+        mock_ctx.attach.return_value = "token-1"
+        tracer, otel_tracer, _ = _make_tracer()
+        wrapper_span = MagicMock(name="wrapper")
+        inner_span = MagicMock(name="inner")
+        otel_tracer.start_span.side_effect = [wrapper_span, inner_span]
+        run = _make_run(
+            run_type="chain",
+            name="Travel_Assistant",
+            extra={"metadata": {"lc_agent_name": "Travel_Assistant"}},
+        )
+        # Patch set_span_in_context to record the span passed in.
+        with patch("microsoft.opentelemetry._genai._langchain._tracer.trace_api.set_span_in_context") as mock_sic:
+            tracer._start_trace(run)
+            # set_span_in_context is called twice during agent _start_trace:
+            # 1. To re-parent the inner span under the wrapper (parent_context).
+            # 2. To attach the inner span to the runtime context.
+            attach_call_args = mock_sic.call_args_list[-1]
+            self.assertIs(attach_call_args[0][0], inner_span)
+        mock_ctx.attach.assert_called_once()

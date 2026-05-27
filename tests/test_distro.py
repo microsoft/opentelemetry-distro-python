@@ -323,7 +323,9 @@ class TestAllConfigOptions(unittest.TestCase):
         self.assertEqual(otel_kwargs["views"], ["v1"])
         self.assertEqual(otel_kwargs["logger_name"], "mylogger")
         self.assertEqual(otel_kwargs["logging_formatter"], formatter)
-        self.assertEqual(otel_kwargs["instrumentation_options"], {"flask": {"enabled": False}})
+        self.assertEqual(
+            otel_kwargs["instrumentation_options"], {"flask": {"enabled": False}, "openai": {"enabled": False}}
+        )
         self.assertEqual(otel_kwargs["enable_trace_based_sampling_for_logs"], True)
         self.assertEqual(otel_kwargs["sampling_ratio"], 0.25)
 
@@ -1080,6 +1082,74 @@ class TestA365DisablesWebInstrumentations(unittest.TestCase):
                 _is_instrumentation_enabled(otel_kwargs, lib),
                 f"{lib} should remain enabled when both a365 and azure_monitor are on",
             )
+
+
+class TestDisableOpenAIV2Instrumentation(unittest.TestCase):
+    """``_disable_openai_v2_instrumentation`` must respect explicit user preferences."""
+
+    @staticmethod
+    def _patch_find_spec(present):
+        """Patch ``find_spec`` so only modules in ``present`` appear installed."""
+        return patch(
+            "microsoft.opentelemetry._utils.find_spec",
+            side_effect=lambda name: MagicMock() if name in present else None,
+        )
+
+    def test_user_explicit_enabled_true_not_overridden(self):
+        """User setting openai.enabled=True must not be overridden, even with overlapping libs present."""
+        from microsoft.opentelemetry._utils import _disable_openai_v2_instrumentation
+
+        otel_kwargs = {"instrumentation_options": {"openai": {"enabled": True}}}
+        with self._patch_find_spec({"langchain_core", "agent_framework"}):
+            _disable_openai_v2_instrumentation(otel_kwargs)
+        self.assertEqual(otel_kwargs["instrumentation_options"], {"openai": {"enabled": True}})
+
+    def test_user_explicit_enabled_false_not_overridden(self):
+        """User setting openai.enabled=False must be preserved."""
+        from microsoft.opentelemetry._utils import _disable_openai_v2_instrumentation
+
+        otel_kwargs = {"instrumentation_options": {"openai": {"enabled": False}}}
+        _disable_openai_v2_instrumentation(otel_kwargs)
+        self.assertEqual(otel_kwargs["instrumentation_options"], {"openai": {"enabled": False}})
+
+    def test_no_overlapping_libs_no_change(self):
+        """When neither langchain_core nor agent_framework is installed, kwargs are untouched."""
+        from microsoft.opentelemetry._utils import _disable_openai_v2_instrumentation
+
+        otel_kwargs: dict = {}
+        with self._patch_find_spec(set()):
+            _disable_openai_v2_instrumentation(otel_kwargs)
+        self.assertEqual(otel_kwargs, {})
+
+    def test_disables_openai_when_overlapping_lib_present(self):
+        """Without an explicit user preference, openai is auto-disabled when an overlapping lib is present."""
+        from microsoft.opentelemetry._utils import _disable_openai_v2_instrumentation
+
+        otel_kwargs: dict = {}
+        with self._patch_find_spec({"langchain_core"}):
+            _disable_openai_v2_instrumentation(otel_kwargs)
+        self.assertEqual(otel_kwargs["instrumentation_options"], {"openai": {"enabled": False}})
+
+    def test_preserves_other_libs_when_disabling_openai(self):
+        """Other libs in instrumentation_options must be preserved when openai is auto-disabled."""
+        from microsoft.opentelemetry._utils import _disable_openai_v2_instrumentation
+
+        otel_kwargs = {"instrumentation_options": {"flask": {"enabled": False}}}
+        with self._patch_find_spec({"agent_framework"}):
+            _disable_openai_v2_instrumentation(otel_kwargs)
+        self.assertEqual(
+            otel_kwargs["instrumentation_options"],
+            {"flask": {"enabled": False}, "openai": {"enabled": False}},
+        )
+
+    def test_non_dict_openai_value_is_replaced(self):
+        """A non-dict ``openai`` value (e.g., None) must not raise and is replaced with a fresh dict."""
+        from microsoft.opentelemetry._utils import _disable_openai_v2_instrumentation
+
+        otel_kwargs = {"instrumentation_options": {"openai": None}}
+        with self._patch_find_spec({"langchain_core"}):
+            _disable_openai_v2_instrumentation(otel_kwargs)
+        self.assertEqual(otel_kwargs["instrumentation_options"], {"openai": {"enabled": False}})
 
 
 class TestGenAIMainAgentProcessorRegistration(unittest.TestCase):

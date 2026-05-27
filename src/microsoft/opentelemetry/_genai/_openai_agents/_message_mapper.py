@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 # pylint: disable=too-many-nested-blocks
 
-"""Maps OpenAI span tag messages to A365 versioned message format.
+"""Maps OpenAI span tag messages to A365 structured message format.
 
 Handles three input shapes produced by the OpenAI trace processor:
 
@@ -359,7 +359,7 @@ def _map_response_output(response: dict[str, Any]) -> str | None:
 
 
 def _wrap_plain_input(text: str) -> str | None:
-    """Wrap a plain text string as a versioned InputMessages."""
+    """Wrap a plain text string as an InputMessages array."""
     if not text or not text.strip():
         return None
     return serialize_messages(
@@ -368,7 +368,7 @@ def _wrap_plain_input(text: str) -> str | None:
 
 
 def _wrap_plain_output(text: str) -> str | None:
-    """Wrap a plain text string as a versioned OutputMessages."""
+    """Wrap a plain text string as an OutputMessages array."""
     if not text or not text.strip():
         return None
     return serialize_messages(

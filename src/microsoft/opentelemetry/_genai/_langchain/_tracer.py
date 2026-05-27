@@ -6,9 +6,11 @@
 import logging
 import re
 from collections import OrderedDict
+from dataclasses import asdict
 from collections.abc import Iterator, Mapping
 from itertools import chain
 from threading import RLock
+from contextvars import Token
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -30,7 +32,7 @@ from opentelemetry.util.genai.span_utils import (
     _apply_llm_finish_attributes,
     _maybe_emit_llm_event,
 )
-from opentelemetry.util.genai.types import Error, LLMInvocation
+from opentelemetry.util.genai.types import Error, LLMInvocation, OutputMessage as OTelOutputMessage, Text as OTelText
 from opentelemetry.util.types import AttributeValue
 
 from microsoft.opentelemetry._genai._langchain._utils import (
@@ -63,12 +65,14 @@ from microsoft.opentelemetry._genai._langchain._utils import (
     function_calls,
     input_messages,
     invocation_parameters,
-    invoke_agent_input_message,
-    invoke_agent_output_message,
     metadata,
     model_name,
     output_messages,
     prompts,
+    _extract_structured_input_messages,
+    _extract_structured_output_messages,
+    _extract_agent_input_messages,
+    _extract_agent_output_messages,
     _should_capture_content_on_spans,
     token_counts,
     tools,
@@ -93,6 +97,8 @@ CONTEXT_ATTRIBUTES = (
 class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-many-instance-attributes
     _MAX_TRACKED_RUNS = 10000
 
+    run_inline = True
+
     __slots__ = (
         "_tracer",
         "_separate_trace_from_runtime_context",
@@ -102,6 +108,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         "_agent_wrapper_spans",
         "_spans_by_run",
         "_event_logger",
+        "_context_tokens",
     )
 
     def __init__(
@@ -125,16 +132,31 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         self._agent_wrapper_spans: dict[UUID, Span] = {}
         self._spans_by_run: OrderedDict[UUID, Span] = OrderedDict()
         self._event_logger = event_logger
+        self._context_tokens: dict[UUID, list[Token]] = {}
         self._lock = RLock()  # type: ignore[misc]
 
     def get_span(self, run_id: UUID) -> Span | None:
         with self._lock:
             return self._spans_by_run.get(run_id)
 
-    @staticmethod
-    def _cap_ordered_dict(d: OrderedDict, max_size: int) -> None:
-        while len(d) > max_size:
-            d.popitem(last=False)
+    def _evict_tracked_runs(self) -> None:
+        """Evict oldest entries from _spans_by_run and clean up all related state.
+
+        This prevents unbounded memory growth in long-running agents by ensuring
+        that when spans are evicted from the primary tracking dict, corresponding
+        entries in all auxiliary dictionaries are also removed.
+
+        Acquires ``self._lock`` internally so eviction is always atomic
+        regardless of call site.
+        """
+        with self._lock:
+            while len(self._spans_by_run) > self._MAX_TRACKED_RUNS:
+                evicted_id, _ = self._spans_by_run.popitem(last=False)
+                self._agent_run_ids.discard(evicted_id)
+                self._agent_content.pop(evicted_id, None)
+                self._agent_wrapper_spans.pop(evicted_id, None)
+                self._context_tokens.pop(evicted_id, None)
+                self.run_map.pop(str(evicted_id), None)
 
     def _start_trace(self, run: Run) -> None:
         self.run_map[str(run.id)] = run
@@ -193,6 +215,11 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             kind=span_kind,
         )
 
+        if not self._separate_trace_from_runtime_context:
+            token = context_api.attach(trace_api.set_span_in_context(span))
+            with self._lock:
+                self._context_tokens[run.id] = [token]
+
         # For agent spans, set immediate attributes and init content aggregation
         if is_agent:
             # Use wrapper span (if present) as the agent span for attributes
@@ -232,7 +259,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
 
         with self._lock:
             self._spans_by_run[run.id] = span
-            self._cap_ordered_dict(self._spans_by_run, self._MAX_TRACKED_RUNS)
+        self._evict_tracked_runs()
 
     def _end_trace(self, run: Run) -> None:
         self.run_map.pop(str(run.id), None)
@@ -248,6 +275,18 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         with self._lock:
             span = self._spans_by_run.pop(run.id, None)
             wrapper_span = self._agent_wrapper_spans.pop(run.id, None) if is_agent else None
+            tokens = self._context_tokens.pop(run.id, None)
+
+        if tokens:
+            runtime_ctx = getattr(context_api, "_RUNTIME_CONTEXT", None)
+            for token in reversed(tokens):
+                try:
+                    if runtime_ctx is not None:
+                        runtime_ctx.detach(token)
+                    else:
+                        context_api.detach(token)
+                except ValueError:
+                    logger.debug("Failed to detach LangChain run context.", exc_info=True)
 
         end_time_utc_nano = as_utc_nano(run.end_time) if run.end_time else None
 
@@ -427,22 +466,15 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             # Capture input messages from LLM runs (first LLM child wins)
             if run_type in ("llm", "chat_model") and not content["input_messages"]:
                 if run.inputs:
-                    for _, val in input_messages(run.inputs):
-                        content["input_messages"].append(val)
-                        break
-                    if not content["input_messages"]:
-                        for _, val in prompts(run.inputs):
-                            if isinstance(val, list) and val:
-                                content["input_messages"].append(str(val[0]))
-                            elif isinstance(val, str):
-                                content["input_messages"].append(val)
-                            break
+                    structured = _extract_structured_input_messages(run.inputs)
+                    if structured:
+                        content["input_messages"] = structured
 
             # Capture output messages from LLM runs (last LLM child wins)
             if run_type in ("llm", "chat_model") and run.outputs:
-                for _, val in output_messages(run.outputs):
-                    content["output_messages"] = [val]  # overwrite with latest
-                    break
+                out_structured = _extract_structured_output_messages(run.outputs)
+                if out_structured:
+                    content["output_messages"] = out_structured  # type: ignore[assignment]
 
             # Capture tool results
             if run_type == "tool" and run.outputs and hasattr(run.outputs, "get"):
@@ -450,7 +482,9 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                 output = run.outputs.get("output", _sentinel)
                 if output is not _sentinel:
                     result_str = output if isinstance(output, str) else safe_json_dumps(output)
-                    content["output_messages"].append(result_str)
+                    content["output_messages"].append(
+                        OTelOutputMessage(role="tool", parts=[OTelText(content=result_str)], finish_reason="stop")
+                    )
 
     def _find_agent_ancestor(self, run: Run) -> UUID | None:
         """Walk up the run tree to find the nearest agent ancestor run_id."""
@@ -491,18 +525,30 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         # Set aggregated input/output messages only when content capture is enabled
         if _should_capture_content_on_spans():
             if msgs := content.get("input_messages"):
-                span.set_attribute(GEN_AI_INPUT_MESSAGES_KEY, safe_json_dumps(msgs))
+                span.set_attribute(
+                    GEN_AI_INPUT_MESSAGES_KEY,
+                    safe_json_dumps([asdict(m) for m in msgs]),
+                )
             else:
-                for _, val in invoke_agent_input_message(run.inputs):
-                    span.set_attribute(GEN_AI_INPUT_MESSAGES_KEY, val)
-                    break
+                agent_msgs = _extract_agent_input_messages(run.inputs)
+                if agent_msgs:
+                    span.set_attribute(
+                        GEN_AI_INPUT_MESSAGES_KEY,
+                        safe_json_dumps([asdict(m) for m in agent_msgs]),
+                    )
 
-            if msgs := content.get("output_messages"):
-                span.set_attribute(GEN_AI_OUTPUT_MESSAGES_KEY, safe_json_dumps(msgs))
+            if out_msgs := content.get("output_messages"):
+                span.set_attribute(
+                    GEN_AI_OUTPUT_MESSAGES_KEY,
+                    safe_json_dumps([asdict(m) for m in out_msgs]),
+                )
             else:
-                for _, val in invoke_agent_output_message(run.outputs):
-                    span.set_attribute(GEN_AI_OUTPUT_MESSAGES_KEY, val)
-                    break
+                agent_out_msgs = _extract_agent_output_messages(run.outputs)
+                if agent_out_msgs:
+                    span.set_attribute(
+                        GEN_AI_OUTPUT_MESSAGES_KEY,
+                        safe_json_dumps([asdict(m) for m in agent_out_msgs]),
+                    )
 
         # Set metadata (session_id, etc.)
         span.set_attributes(dict(flatten(metadata(run))))
@@ -542,6 +588,9 @@ def _update_span(span: Span, run: Run) -> LLMInvocation | None:
             dict(
                 flatten(
                     chain(
+                        prompts(run.inputs),
+                        input_messages(run.inputs),
+                        output_messages(run.outputs),
                         invocation_parameters(run),
                         function_calls(run.outputs),
                         metadata(run),

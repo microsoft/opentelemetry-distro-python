@@ -1,0 +1,122 @@
+name: Performance
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: perf-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  benchmark:
+    name: Benchmark distro overhead
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      PERF_REGRESSION_THRESHOLD: "15"
+
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          path: pr
+          fetch-depth: 0
+
+      - name: Check out base branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha || github.event.repository.default_branch }}
+          path: base
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # ------------------------------------------------------------------
+      # Candidate (PR) run
+      # ------------------------------------------------------------------
+      - name: Install candidate (PR) distro
+        working-directory: pr
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install .
+          python -m pip install "pytest>=8.0" "pytest-benchmark>=4.0"
+
+      - name: Run candidate benchmarks
+        working-directory: pr
+        run: |
+          python -m pytest tests/perf \
+            --benchmark-only \
+            --benchmark-min-rounds=5 \
+            --benchmark-warmup=on \
+            --benchmark-json="$GITHUB_WORKSPACE/pr.json"
+
+      # ------------------------------------------------------------------
+      # Baseline (base branch) run.
+      # We always invoke the PR copy of the perf tests (tests/perf may not
+      # exist on base) but install the *base* distro into the same env first
+      # so the `microsoft.opentelemetry` import resolves to baseline code.
+      # ------------------------------------------------------------------
+      - name: Install baseline distro
+        working-directory: base
+        run: |
+          python -m pip install --force-reinstall --no-deps .
+          python -m pip install "pytest>=8.0" "pytest-benchmark>=4.0"
+
+      - name: Run baseline benchmarks
+        working-directory: pr
+        run: |
+          python -m pytest tests/perf \
+            --benchmark-only \
+            --benchmark-min-rounds=5 \
+            --benchmark-warmup=on \
+            --benchmark-json="$GITHUB_WORKSPACE/base.json"
+
+      # ------------------------------------------------------------------
+      # Compare + report
+      # ------------------------------------------------------------------
+      - name: Compare results
+        id: compare
+        working-directory: pr
+        run: |
+          set +e
+          python -m perf.compare \
+            --baseline "$GITHUB_WORKSPACE/base.json" \
+            --candidate "$GITHUB_WORKSPACE/pr.json" \
+            --threshold "$PERF_REGRESSION_THRESHOLD" \
+            --output "$GITHUB_WORKSPACE/report.md"
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: perf-results
+          path: |
+            pr.json
+            base.json
+            report.md
+
+      - name: Post sticky PR comment
+        # Skip for PRs from forks — the default GITHUB_TOKEN has read-only
+        # access in that case and the comment API will reject the call. The
+        # JSON artifacts and the workflow log still contain the comparison.
+        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
+        continue-on-error: true
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: perf-comparison
+          path: report.md
+
+      - name: Fail on regression
+        if: steps.compare.outputs.exit_code != '0'
+        run: |
+          echo "Gating perf scenario regressed beyond ${PERF_REGRESSION_THRESHOLD}%"
+          exit 1

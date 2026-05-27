@@ -193,8 +193,8 @@ below are available via `from microsoft.opentelemetry.a365.core import ...`.
 | `MessagePart` | type alias | Union of all part types. |
 | `ChatMessage` | dataclass | Input message: `role`, `content` (list of parts). |
 | `OutputMessage` | dataclass | Output message: extends `ChatMessage` with `finish_reason`. |
-| `InputMessages` | dataclass | Versioned wrapper for input messages. |
-| `OutputMessages` | dataclass | Versioned wrapper for output messages. |
+| `InputMessages` | dataclass | Container for input messages (serializes as plain JSON array). |
+| `OutputMessages` | dataclass | Container for output messages (serializes as plain JSON array). |
 | `InputMessagesParam` | type alias | Accepted types for input messages (`str`, `InputMessages`). |
 | `OutputMessagesParam` | type alias | Accepted types for output messages (`str`, `OutputMessages`). |
 

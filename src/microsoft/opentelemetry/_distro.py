@@ -81,6 +81,7 @@ from microsoft.opentelemetry._utils import (
     _append_azure_monitor_components,
     _append_console_components,
     _append_otlp_components,
+    _disable_openai_v2_instrumentation,
 )
 from microsoft.opentelemetry._version import VERSION
 
@@ -699,9 +700,19 @@ def _is_instrumentation_enabled(otel_kwargs: Dict[str, Any], lib_name: str) -> b
     return lib_options["enabled"] is True
 
 
+def _get_instrumentation_kwargs(otel_kwargs: Dict[str, Any], lib_name: str) -> Dict[str, Any]:
+    """Extract per-library kwargs from instrumentation_options (everything except 'enabled')."""
+    options = otel_kwargs.get(INSTRUMENTATION_OPTIONS_ARG)
+    if not options or lib_name not in options:
+        return {}
+    lib_options = options[lib_name]
+    return {k: v for k, v in lib_options.items() if k != "enabled"}
+
+
 def _setup_instrumentations(otel_kwargs: Dict[str, Any], **kwargs: Any) -> None:
     """Discover and activate OTel instrumentations for supported libraries."""
     enable_a365: bool = kwargs.pop("enable_a365", False)
+    _disable_openai_v2_instrumentation(otel_kwargs)
     entry_point_finder = _EntryPointDistFinder()
     for entry_point in entry_points(group="opentelemetry_instrumentor"):
         lib_name = entry_point.name
@@ -712,7 +723,7 @@ def _setup_instrumentations(otel_kwargs: Dict[str, Any], **kwargs: Any) -> None:
             continue
         # When A365 is enabled, use the A365-specific OpenAI Agents
         # instrumentation instead of the upstream entry point so that
-        # spans carry the versioned message format A365 consumers expect.
+        # spans carry the structured message format A365 consumers expect.
         if lib_name == "openai_agents" and enable_a365:
             _setup_a365_openai_agents_instrumentation()
             continue
@@ -726,8 +737,10 @@ def _setup_instrumentations(otel_kwargs: Dict[str, Any], **kwargs: Any) -> None:
                     conflict,
                 )
                 continue
+            lib_kwargs = _get_instrumentation_kwargs(otel_kwargs, lib_name)
+            merged_kwargs = {**kwargs, **lib_kwargs}
             instrumentor: Any = entry_point.load()
-            instrumentor().instrument(skip_dep_check=True, **kwargs)
+            instrumentor().instrument(skip_dep_check=True, **merged_kwargs)
             set_sdkstats_instrumentation_by_name(lib_name)
         except Exception as ex:  # pylint: disable=broad-except
             _logger.warning(

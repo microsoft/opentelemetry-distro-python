@@ -11,7 +11,7 @@ matching the real A365 export path without sending data to a real endpoint.
 
 Currently LangChain emits gen_ai.input.messages / gen_ai.output.messages
 as plain JSON string arrays (e.g. '["Hello"]'). These tests document that
-raw format and will verify the A365 versioned format once the mapper is added.
+raw format and will verify the A365 structured array format once the mapper is added.
 """
 
 import json
@@ -98,20 +98,25 @@ class TestLangChainMessageFormat:
         print(f"\n=== gen_ai.input.messages ===\n{raw_input}")
         input_data = json.loads(raw_input)
 
-        # Verify structure (currently plain string list or versioned format)
-        if isinstance(input_data, dict) and "version" in input_data:
-            # Versioned A365 format (after mapper is added)
-            assert input_data["version"] == "0.1.0"
+        # Verify structure (plain array format per OTel spec)
+        if isinstance(input_data, list) and len(input_data) > 0 and isinstance(input_data[0], dict):
+            # Structured A365 array format (list of message dicts)
+            for msg in input_data:
+                assert "role" in msg
+                assert "parts" in msg
+            print("\n  ✓ Structured A365 array format detected")
+            messages_list = input_data
+        elif isinstance(input_data, dict) and "messages" in input_data:
             messages_list = input_data["messages"]
             for msg in messages_list:
                 assert "role" in msg
                 assert "parts" in msg
-            print("\n  ✓ Versioned A365 format detected")
-        elif isinstance(input_data, list):
-            assert len(input_data) > 0
-            # Accept either plain strings or structured OTel messages (dicts with role/parts)
+            print("\n  ✓ Structured A365 format detected")
+        else:
+            # Plain string list or other raw format (pre-mapper)
+            messages_list = input_data
             flat_text = ""
-            for item in input_data:
+            for item in input_data if isinstance(input_data, list) else []:
                 if isinstance(item, str):
                     flat_text += item.lower()
                 elif isinstance(item, dict):
@@ -129,14 +134,19 @@ class TestLangChainMessageFormat:
         print(f"\n=== gen_ai.output.messages ===\n{raw_output}")
         output_data = json.loads(raw_output)
 
-        if isinstance(output_data, dict) and "version" in output_data:
-            assert output_data["version"] == "0.1.0"
+        if isinstance(output_data, list) and len(output_data) > 0 and isinstance(output_data[0], dict):
+            for msg in output_data:
+                assert msg["role"] == "assistant"
+                assert any(p["type"] == "text" for p in msg["parts"])
+            print("\n  ✓ Structured A365 array format detected")
+        elif isinstance(output_data, dict) and "messages" in output_data:
             for msg in output_data["messages"]:
                 assert msg["role"] == "assistant"
                 assert any(p["type"] == "text" for p in msg["parts"])
-            print("\n  ✓ Versioned A365 format detected")
-        elif isinstance(output_data, list):
-            assert len(output_data) > 0
+            print("\n  ✓ Structured A365 format detected")
+        elif isinstance(output_data, list) and len(output_data) > 0:
+            # Plain string list (pre-mapper)
+            assert all(isinstance(item, str) for item in output_data)
             print("\n  → Raw string list format (pre-mapper)")
 
     @pytest.mark.asyncio
