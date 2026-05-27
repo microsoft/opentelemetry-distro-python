@@ -28,7 +28,6 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     GEN_AI_REQUEST_CHOICE_COUNT_KEY,
     GEN_AI_REQUEST_MODEL_KEY,
     GEN_AI_REQUEST_TOP_K_KEY,
-    GEN_AI_RESPONSE_FINISH_REASONS_KEY,
     GEN_AI_SYSTEM_INSTRUCTIONS_KEY,
     GEN_AI_TOOL_ARGS_KEY,
     GEN_AI_TOOL_CALL_ID_KEY,
