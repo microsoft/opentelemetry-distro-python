@@ -198,6 +198,30 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                 start_time=start_time_utc_nano,
                 kind=SpanKind.INTERNAL,
             )
+            # Set agent attributes on wrapper span BEFORE creating the inner
+            # span so that GenAIMainAgentSpanProcessor.on_start can read them
+            # from the parent when the inner span is created.
+            wrapper_span.set_attribute(GEN_AI_OPERATION_NAME_KEY, INVOKE_AGENT_OPERATION_NAME)
+            if agent_name:
+                wrapper_span.set_attribute(GEN_AI_AGENT_NAME_KEY, agent_name)
+            agent_id = self._agent_config.get("agent_id")
+            if agent_id:
+                wrapper_span.set_attribute(GEN_AI_AGENT_ID_KEY, agent_id)
+            agent_desc = self._agent_config.get("agent_description")
+            if agent_desc:
+                wrapper_span.set_attribute(GEN_AI_AGENT_DESCRIPTION_KEY, agent_desc)
+            agent_version = self._agent_config.get("agent_version")
+            if agent_version:
+                wrapper_span.set_attribute(GEN_AI_AGENT_VERSION_KEY, agent_version)
+            wrapper_span.set_attributes(dict(flatten(extract_agent_metadata(run))))
+            server_addr = self._agent_config.get("server_address")
+            if server_addr:
+                wrapper_span.set_attribute(SERVER_ADDRESS_KEY, server_addr)
+            server_port = self._agent_config.get("server_port")
+            if server_port:
+                wrapper_span.set_attribute(SERVER_PORT_KEY, server_port)
+            wrapper_span.set_attributes(dict(flatten(extract_session_info(run))))
+
             parent_context = trace_api.set_span_in_context(wrapper_span)
             # Resolve framework name for the inner span (e.g. "LangGraph")
             framework_name = self._resolve_framework_name(run)
@@ -220,10 +244,8 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             with self._lock:
                 self._context_tokens[run.id] = [token]
 
-        # For agent spans, set immediate attributes and init content aggregation
+        # For agent spans, init content aggregation tracking
         if is_agent:
-            # Use wrapper span (if present) as the agent span for attributes
-            agent_span = wrapper_span or span
             with self._lock:
                 self._agent_run_ids.add(run.id)
                 self._agent_content[run.id] = {
@@ -237,26 +259,6 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                 }
                 if wrapper_span is not None:
                     self._agent_wrapper_spans[run.id] = wrapper_span
-            agent_span.set_attribute(GEN_AI_OPERATION_NAME_KEY, INVOKE_AGENT_OPERATION_NAME)
-            if agent_name:
-                agent_span.set_attribute(GEN_AI_AGENT_NAME_KEY, agent_name)
-            agent_id = self._agent_config.get("agent_id")
-            if agent_id:
-                agent_span.set_attribute(GEN_AI_AGENT_ID_KEY, agent_id)
-            agent_desc = self._agent_config.get("agent_description")
-            if agent_desc:
-                agent_span.set_attribute(GEN_AI_AGENT_DESCRIPTION_KEY, agent_desc)
-            agent_version = self._agent_config.get("agent_version")
-            if agent_version:
-                agent_span.set_attribute(GEN_AI_AGENT_VERSION_KEY, agent_version)
-            agent_span.set_attributes(dict(flatten(extract_agent_metadata(run))))
-            server_addr = self._agent_config.get("server_address")
-            if server_addr:
-                agent_span.set_attribute(SERVER_ADDRESS_KEY, server_addr)
-            server_port = self._agent_config.get("server_port")
-            if server_port:
-                agent_span.set_attribute(SERVER_PORT_KEY, server_port)
-            agent_span.set_attributes(dict(flatten(extract_session_info(run))))
 
         with self._lock:
             self._spans_by_run[run.id] = span
