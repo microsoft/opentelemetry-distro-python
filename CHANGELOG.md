@@ -7,12 +7,16 @@
   ([#153](https://github.com/microsoft/opentelemetry-distro-python/pull/153))
 - Add token usage extraction for LangChain tracer
   ([#161](https://github.com/microsoft/opentelemetry-distro-python/pull/161))
+- Add more GenAI attributes to LangChain tracer
+  ([#156](https://github.com/microsoft/opentelemetry-distro-python/pull/156))
 - Align message format to OTel spec: remove version envelope
   ([#162](https://github.com/microsoft/opentelemetry-distro-python/pull/162))
 
 ### Bugs Fixed
 - Use `get_span_context()` instead of `.context` to support `NonRecordingSpan`
   ([#168](https://github.com/microsoft/opentelemetry-distro-python/pull/168))
+- Use standard `gen_ai.conversation.id` instead of `microsoft.sessionid` in LangChain tracer
+  ([#152](https://github.com/microsoft/opentelemetry-distro-python/pull/152))
 - Emit OTel-spec structured messages on `invoke_agent` spans
   ([#164](https://github.com/microsoft/opentelemetry-distro-python/pull/164))
 - Prevent OOM from unbounded dicts in LangChain tracer
@@ -23,6 +27,8 @@
   ([#150](https://github.com/microsoft/opentelemetry-distro-python/pull/150))
 
 ### Other Changes
+- Add project URLs to PyPI and fix broken relative links
+  ([#169](https://github.com/microsoft/opentelemetry-distro-python/pull/169))
 - Add pytest-benchmark suite and PR regression gate
   ([#165](https://github.com/microsoft/opentelemetry-distro-python/pull/165))
 - Bump `mem0ai` from 1.0.11 to 2.0.0b2
