@@ -8,8 +8,12 @@ import unittest
 from unittest.mock import Mock
 
 from microsoft.opentelemetry.a365.core.constants import (
+    GEN_AI_CONVERSATION_ID_KEY,
     GEN_AI_INPUT_MESSAGES_KEY,
     GEN_AI_OUTPUT_MESSAGES_KEY,
+    GEN_AI_TOOL_ARGS_KEY,
+    GEN_AI_TOOL_CALL_RESULT_KEY,
+    SESSION_ID_KEY,
 )
 from microsoft.opentelemetry.a365.core.enricher_utils import (
     extract_content_as_string_list,
@@ -80,6 +84,32 @@ class TestExtractContentAsStringList(unittest.TestCase):
 class TestEnrichLangchainSpan(unittest.TestCase):
     """Tests for enrich_langchain_span."""
 
+    def test_maps_conversation_id_to_session_id(self):
+        """gen_ai.conversation.id is mapped to microsoft.session.id."""
+        span = Mock()
+        span.name = "chat gpt-4o"
+        span.attributes = {
+            GEN_AI_CONVERSATION_ID_KEY: "conv-123",
+        }
+
+        result = enrich_langchain_span(span)
+
+        assert result.attributes is not None
+        self.assertEqual(result.attributes[SESSION_ID_KEY], "conv-123")
+
+    def test_does_not_overwrite_existing_session_id(self):
+        """If microsoft.session.id is already present, don't overwrite."""
+        span = Mock()
+        span.name = "chat gpt-4o"
+        span.attributes = {
+            GEN_AI_CONVERSATION_ID_KEY: "conv-123",
+            SESSION_ID_KEY: "existing-session",
+        }
+
+        result = enrich_langchain_span(span)
+        # Should return original span unchanged
+        self.assertIs(result, span)
+
     def test_invoke_agent_converts_structured_to_plain(self):
         span = Mock()
         span.name = "invoke_agent my_agent"
@@ -127,7 +157,41 @@ class TestEnrichLangchainSpan(unittest.TestCase):
         self.assertEqual(result.attributes[GEN_AI_INPUT_MESSAGES_KEY], '["Hello"]')
         self.assertEqual(result.attributes[GEN_AI_OUTPUT_MESSAGES_KEY], '["Answer"]')
 
-    def test_non_invoke_agent_span_unchanged(self):
+    def test_invoke_agent_with_conversation_id(self):
+        """invoke_agent spans get both session_id mapping and message enrichment."""
+        span = Mock()
+        span.name = "invoke_agent MyAgent"
+        span.attributes = {
+            GEN_AI_CONVERSATION_ID_KEY: "conv-456",
+            GEN_AI_INPUT_MESSAGES_KEY: json.dumps(
+                [
+                    {"role": "user", "parts": [{"type": "text", "content": "Hello"}]},
+                ]
+            ),
+        }
+
+        result = enrich_langchain_span(span)
+
+        assert result.attributes is not None
+        self.assertEqual(result.attributes[SESSION_ID_KEY], "conv-456")
+        self.assertEqual(result.attributes[GEN_AI_INPUT_MESSAGES_KEY], '["Hello"]')
+
+    def test_execute_tool_span_enrichment(self):
+        """execute_tool spans map tool arguments and results."""
+        span = Mock()
+        span.name = "execute_tool get_weather"
+        span.attributes = {
+            GEN_AI_TOOL_ARGS_KEY: '{"city": "Barcelona"}',
+            GEN_AI_TOOL_CALL_RESULT_KEY: "Sunny, 25C",
+        }
+
+        result = enrich_langchain_span(span)
+
+        assert result.attributes is not None
+        self.assertEqual(result.attributes[GEN_AI_TOOL_ARGS_KEY], '{"city": "Barcelona"}')
+        self.assertEqual(result.attributes[GEN_AI_TOOL_CALL_RESULT_KEY], "Sunny, 25C")
+
+    def test_non_matching_span_without_conversation_id_returns_original(self):
         span = Mock()
         span.name = "chat gpt-4"
         span.attributes = {

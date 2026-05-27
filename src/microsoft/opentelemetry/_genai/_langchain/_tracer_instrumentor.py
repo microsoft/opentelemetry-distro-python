@@ -60,9 +60,7 @@ class LangChainInstrumentor(BaseInstrumentor):
 
     def _instrument(self, **kwargs: Any) -> None:
         if not langchain_available:
-            logger.debug(
-                "Skipping LangChain instrumentation: langchain-core is not available."
-            )
+            logger.debug("Skipping LangChain instrumentation: langchain-core is not available.")
             return
         tracer_provider = kwargs.get("tracer_provider")
         tracer = trace_api.get_tracer(

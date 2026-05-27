@@ -36,7 +36,6 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     GEN_AI_TOOL_TYPE_KEY,
     GEN_AI_USAGE_INPUT_TOKENS_KEY,
     GEN_AI_USAGE_OUTPUT_TOKENS_KEY,
-    SESSION_ID_KEY,
     add_operation_type,
     as_utc_nano,
     build_llm_invocation,
@@ -253,17 +252,17 @@ class TestMetadata(TestCase):
     def test_extracts_session_id(self):
         run = _make_run(extra={"metadata": {"session_id": "sess-123"}})
         result = list(metadata(run))
-        self.assertEqual(result, [(SESSION_ID_KEY, "sess-123")])
+        self.assertEqual(result, [(GEN_AI_CONVERSATION_ID_KEY, "sess-123")])
 
     def test_extracts_conversation_id(self):
         run = _make_run(extra={"metadata": {"conversation_id": "conv-456"}})
         result = list(metadata(run))
-        self.assertEqual(result, [(SESSION_ID_KEY, "conv-456")])
+        self.assertEqual(result, [(GEN_AI_CONVERSATION_ID_KEY, "conv-456")])
 
     def test_extracts_thread_id(self):
         run = _make_run(extra={"metadata": {"thread_id": "thread-789"}})
         result = list(metadata(run))
-        self.assertEqual(result, [(SESSION_ID_KEY, "thread-789")])
+        self.assertEqual(result, [(GEN_AI_CONVERSATION_ID_KEY, "thread-789")])
 
     def test_returns_empty_on_no_extra(self):
         run = _make_run(extra=None)
@@ -748,7 +747,7 @@ class TestExtractSessionInfo(TestCase):
     def test_extracts_session_id(self):
         run = _make_run(extra={"metadata": {"session_id": "s-1"}})
         result = dict(extract_session_info(run))
-        self.assertEqual(result[SESSION_ID_KEY], "s-1")
+        self.assertEqual(result[GEN_AI_CONVERSATION_ID_KEY], "s-1")
 
     def test_extracts_conversation_id(self):
         run = _make_run(extra={"metadata": {"conversation_id": "c-1"}})
