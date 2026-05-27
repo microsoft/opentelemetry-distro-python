@@ -25,6 +25,20 @@ _logger = getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# SDKStats helper functions
+# ---------------------------------------------------------------------------
+
+
+def update_global_state_feature_bits(feature_bits: int) -> None:
+    from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (  # type: ignore[import-not-found]
+        _StatsbeatMetrics,
+    )
+
+    current = _StatsbeatMetrics._FEATURE_ATTRIBUTES.get("feature") or 0
+    _StatsbeatMetrics._FEATURE_ATTRIBUTES["feature"] = current | int(feature_bits)
+
+
+# ---------------------------------------------------------------------------
 # OTLP helper functions
 # ---------------------------------------------------------------------------
 

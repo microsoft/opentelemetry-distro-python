@@ -16,9 +16,7 @@ import os
 import threading
 from enum import IntFlag
 from typing import Any
-from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (  # type: ignore[import-not-found]
-    _StatsbeatMetrics,
-)
+from microsoft.opentelemetry._utils import update_global_state_feature_bits
 
 _exporter_utils: Any = None
 try:
@@ -156,9 +154,7 @@ def get_sdkstats_feature_flags() -> int:
 
 
 def set_sdkstats_feature_bits(feature_bits: int) -> None:
-    current = _StatsbeatMetrics._FEATURE_ATTRIBUTES.get("feature") or 0
-    _StatsbeatMetrics._FEATURE_ATTRIBUTES["feature"] = current | int(feature_bits)
-
+    update_global_state_feature_bits(feature_bits)
 
 
 def set_sdkstats_instrumentation_bits(instrumentation_bits: int) -> None:
