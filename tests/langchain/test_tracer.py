@@ -18,6 +18,8 @@ from microsoft.opentelemetry._genai._langchain._tracer import (  # noqa: E402  #
 )
 from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # pylint: disable=wrong-import-position
     EXECUTE_TOOL_OPERATION_NAME,
+    GEN_AI_PROVIDER_NAME_KEY,
+    GEN_AI_REQUEST_CHOICE_COUNT_KEY,
     INVOKE_AGENT_OPERATION_NAME,
 )
 
@@ -413,6 +415,31 @@ class TestUpdateSpan(TestCase):
         _update_span(span, run)
         span.set_attributes.assert_called()
 
+    def test_chat_span_sets_provider_and_choice_count(self):
+        span = MagicMock()
+        run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            extra={"invocation_params": {"use_responses_api": True, "model": "gpt-4o"}},
+            outputs={
+                "generations": [
+                    {"message": {"content": "a"}},
+                    {"message": {"content": "b"}},
+                ]
+            },
+            inputs=None,
+        )
+
+        _update_span(span, run)
+
+        merged_attrs = {}
+        for call in span.set_attributes.call_args_list:
+            if call.args and isinstance(call.args[0], dict):
+                merged_attrs.update(call.args[0])
+
+        self.assertEqual(merged_attrs.get(GEN_AI_PROVIDER_NAME_KEY), "openai")
+        self.assertEqual(merged_attrs.get(GEN_AI_REQUEST_CHOICE_COUNT_KEY), 2)
+
 
 # ---- Aggregation -------------------------------------------------------------
 
@@ -535,6 +562,37 @@ class TestAggregateIntoParent(TestCase):
         content = tracer._agent_content[agent_run.id]
         self.assertEqual(content["input_tokens"], 9)
         self.assertEqual(content["output_tokens"], 3)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_aggregates_provider_and_choice_count(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        wrapper = MagicMock()
+        inner = MagicMock()
+        otel_tracer.start_span.side_effect = [wrapper, inner]
+
+        agent_run = _make_run(run_type="chain", name="LangGraph")
+        tracer._start_trace(agent_run)
+
+        llm_run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            parent_run_id=agent_run.id,
+            extra={"invocation_params": {"use_responses_api": True, "model": "gpt-4o"}},
+            outputs={
+                "generations": [
+                    {"message": {"content": "a"}},
+                    {"message": {"content": "b"}},
+                ]
+            },
+            inputs=None,
+        )
+        tracer.run_map[str(llm_run.id)] = llm_run
+        tracer._aggregate_into_parent(llm_run)
+
+        content = tracer._agent_content[agent_run.id]
+        self.assertEqual(content["provider"], "openai")
+        self.assertEqual(content["request_choice_count"], 2)
 
 
 class TestFindAgentAncestor(TestCase):

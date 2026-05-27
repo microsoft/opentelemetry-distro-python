@@ -23,9 +23,11 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     GEN_AI_INPUT_MESSAGES_KEY,
     GEN_AI_OPERATION_NAME_KEY,
     GEN_AI_OUTPUT_MESSAGES_KEY,
+    GEN_AI_OUTPUT_TYPE_KEY,
     GEN_AI_PROVIDER_NAME_KEY,
+    GEN_AI_REQUEST_CHOICE_COUNT_KEY,
     GEN_AI_REQUEST_MODEL_KEY,
-    GEN_AI_RESPONSE_FINISH_REASONS_KEY,
+    GEN_AI_REQUEST_TOP_K_KEY,
     GEN_AI_SYSTEM_INSTRUCTIONS_KEY,
     GEN_AI_TOOL_ARGS_KEY,
     GEN_AI_TOOL_CALL_ID_KEY,
@@ -34,8 +36,12 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     GEN_AI_TOOL_DESCRIPTION_KEY,
     GEN_AI_TOOL_NAME_KEY,
     GEN_AI_TOOL_TYPE_KEY,
+    GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_KEY,
+    GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_KEY,
     GEN_AI_USAGE_INPUT_TOKENS_KEY,
     GEN_AI_USAGE_OUTPUT_TOKENS_KEY,
+    GEN_AI_USAGE_REASONING_OUTPUT_TOKENS_KEY,
+    SESSION_ID_KEY,
     add_operation_type,
     as_utc_nano,
     build_llm_invocation,
@@ -309,6 +315,16 @@ class TestLlmProvider(TestCase):
     def test_returns_empty_on_none(self):
         self.assertEqual(list(llm_provider(None)), [])
 
+    def test_falls_back_to_openai_for_responses_api(self):
+        extra = {"invocation_params": {"use_responses_api": True, "model": "gpt-4.1"}}
+        result = list(llm_provider(extra))
+        self.assertEqual(result, [(GEN_AI_PROVIDER_NAME_KEY, "openai")])
+
+    def test_falls_back_to_openai_from_base_url(self):
+        extra = {"invocation_params": {"base_url": "https://example.test/openai/v1/"}}
+        result = list(llm_provider(extra))
+        self.assertEqual(result, [(GEN_AI_PROVIDER_NAME_KEY, "openai")])
+
 
 class TestModelName(TestCase):
     def test_from_llm_output(self):
@@ -358,7 +374,7 @@ class TestTokenCounts(TestCase):
         result = dict(token_counts(outputs))
         self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 10)
         self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 20)
-        self.assertNotIn(GEN_AI_RESPONSE_FINISH_REASONS_KEY, result)
+        self.assertEqual(result[GEN_AI_USAGE_REASONING_OUTPUT_TOKENS_KEY], 5)
 
     def test_returns_empty_on_none(self):
         self.assertEqual(list(token_counts(None)), [])
@@ -391,6 +407,25 @@ class TestTokenCounts(TestCase):
         result = dict(token_counts(outputs))
         self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 5)
         self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 2)
+
+    def test_extracts_from_flat_generations_kwargs_usage_metadata(self):
+        outputs = {
+            "generations": [
+                {
+                    "message": {
+                        "kwargs": {
+                            "usage_metadata": {
+                                "input_tokens": 12,
+                                "output_tokens": 4,
+                            }
+                        }
+                    }
+                }
+            ],
+        }
+        result = dict(token_counts(outputs))
+        self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 12)
+        self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 4)
 
     def test_extracts_from_message_response_metadata_token_usage(self):
         outputs = {
@@ -448,6 +483,141 @@ class TestTokenCounts(TestCase):
         self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 8)
 
 
+class TestTokenCountsCache(TestCase):
+    def test_extracts_cache_read_and_creation_from_input_token_details(self):
+        outputs = {
+            "llm_output": {
+                "token_usage": {
+                    "input_tokens": 100,
+                    "output_tokens": 20,
+                    "input_token_details": {"cache_read": 80, "cache_creation": 10},
+                }
+            }
+        }
+        result = dict(token_counts(outputs))
+        self.assertEqual(result[GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_KEY], 80)
+        self.assertEqual(result[GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_KEY], 10)
+
+    def test_extracts_cache_read_from_openai_prompt_tokens_details(self):
+        outputs = {
+            "llm_output": {
+                "token_usage": {
+                    "prompt_tokens": 100,
+                    "completion_tokens": 20,
+                    "prompt_tokens_details": {"cached_tokens": 75},
+                }
+            }
+        }
+        result = dict(token_counts(outputs))
+        self.assertEqual(result[GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_KEY], 75)
+        self.assertNotIn(GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_KEY, result)
+
+    def test_extracts_anthropic_top_level_cache_keys(self):
+        outputs = {
+            "llm_output": {
+                "token_usage": {
+                    "input_tokens": 100,
+                    "output_tokens": 20,
+                    "cache_read_input_tokens": 60,
+                    "cache_creation_input_tokens": 40,
+                }
+            }
+        }
+        result = dict(token_counts(outputs))
+        self.assertEqual(result[GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_KEY], 60)
+        self.assertEqual(result[GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_KEY], 40)
+
+
+class TestTokenCountsResponsesApi(TestCase):
+    """OpenAI Responses API path: tokens live on per-generation message.usage_metadata.
+
+    ``llm_output["token_usage"]`` is absent / empty; the langchain-openai
+    Responses API output_version puts usage on the AIMessage instead.
+    """
+
+    def test_extracts_from_serialized_message_usage_metadata(self):
+        outputs = {
+            "llm_output": {},  # empty / no token_usage
+            "generations": [
+                [
+                    {
+                        "message": {
+                            "kwargs": {
+                                "usage_metadata": {
+                                    "input_tokens": 115,
+                                    "output_tokens": 2584,
+                                    "total_tokens": 2699,
+                                }
+                            }
+                        }
+                    }
+                ]
+            ],
+        }
+        result = dict(token_counts(outputs))
+        self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 115)
+        self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 2584)
+
+    def test_extracts_from_message_usage_metadata_top_level(self):
+        outputs = {
+            "llm_output": None,
+            "generations": [
+                [
+                    {
+                        "message": {
+                            "usage_metadata": {
+                                "input_tokens": 7,
+                                "output_tokens": 11,
+                            }
+                        }
+                    }
+                ]
+            ],
+        }
+        result = dict(token_counts(outputs))
+        self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 7)
+        self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 11)
+
+    def test_extracts_from_basemessage_usage_metadata(self):
+        from langchain_core.messages import AIMessage
+
+        msg = AIMessage(
+            content="hi",
+            usage_metadata={"input_tokens": 50, "output_tokens": 8, "total_tokens": 58},
+        )
+        outputs = {
+            "llm_output": {},
+            "generations": [[{"message": msg}]],
+        }
+        result = dict(token_counts(outputs))
+        self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 50)
+        self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 8)
+
+    def test_extracts_cache_from_responses_api_input_token_details(self):
+        outputs = {
+            "llm_output": {},
+            "generations": [
+                [
+                    {
+                        "message": {
+                            "kwargs": {
+                                "usage_metadata": {
+                                    "input_tokens": 100,
+                                    "output_tokens": 20,
+                                    "input_token_details": {"cache_read": 80},
+                                }
+                            }
+                        }
+                    }
+                ]
+            ],
+        }
+        result = dict(token_counts(outputs))
+        self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 100)
+        self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 20)
+        self.assertEqual(result[GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_KEY], 80)
+
+
 class TestInvocationParameters(TestCase):
     def test_extracts_tools(self):
         run = _make_run(
@@ -471,9 +641,99 @@ class TestInvocationParameters(TestCase):
         run = _make_run(run_type="chain", extra={"invocation_params": {"tools": []}})
         self.assertEqual(list(invocation_parameters(run)), [])
 
+    def test_extracts_choice_count(self):
+        run = _make_run(
+            run_type="llm",
+            extra={"invocation_params": {"n": 3}},
+        )
+        result = dict(invocation_parameters(run))
+        self.assertEqual(result[GEN_AI_REQUEST_CHOICE_COUNT_KEY], 3)
+
+    def test_extracts_choice_count_when_one(self):
+        run = _make_run(
+            run_type="llm",
+            extra={"invocation_params": {"n": 1}},
+        )
+        result = dict(invocation_parameters(run))
+        self.assertEqual(result[GEN_AI_REQUEST_CHOICE_COUNT_KEY], 1)
+
+    def test_extracts_choice_count_from_model_kwargs(self):
+        run = _make_run(
+            run_type="llm",
+            extra={"invocation_params": {"model_kwargs": {"n": 1}}},
+        )
+        result = dict(invocation_parameters(run))
+        self.assertEqual(result[GEN_AI_REQUEST_CHOICE_COUNT_KEY], 1)
+
+    def test_extracts_choice_count_from_invocation_kwargs(self):
+        run = _make_run(
+            run_type="chat_model",
+            extra={"invocation_params": {"kwargs": {"n": 2}, "use_responses_api": True}},
+            outputs={"generations": [{"message": {"content": "only one"}}]},
+        )
+        result = dict(invocation_parameters(run))
+        self.assertEqual(result[GEN_AI_REQUEST_CHOICE_COUNT_KEY], 2)
+
+    def test_extracts_choice_count_from_model_kwargs_extra_body(self):
+        run = _make_run(
+            run_type="chat_model",
+            extra={
+                "invocation_params": {
+                    "model_kwargs": {"extra_body": {"n": 2}},
+                    "use_responses_api": True,
+                }
+            },
+            outputs={"generations": [{"message": {"content": "only one"}}]},
+        )
+        result = dict(invocation_parameters(run))
+        self.assertEqual(result[GEN_AI_REQUEST_CHOICE_COUNT_KEY], 2)
+
+    def test_infers_choice_count_from_flat_generations_when_n_missing(self):
+        run = _make_run(
+            run_type="chat_model",
+            extra={"invocation_params": {"model": "gpt-4.1", "use_responses_api": True}},
+            outputs={"generations": [{"message": {"content": "a"}}, {"message": {"content": "b"}}]},
+        )
+        result = dict(invocation_parameters(run))
+        self.assertEqual(result[GEN_AI_REQUEST_CHOICE_COUNT_KEY], 2)
+
+    def test_infers_choice_count_from_nested_generations_when_n_missing(self):
+        run = _make_run(
+            run_type="llm",
+            extra={"invocation_params": {"model": "gpt-4.1", "use_responses_api": True}},
+            outputs={"generations": [[{"message": {"content": "a"}}, {"message": {"content": "b"}}]]},
+        )
+        result = dict(invocation_parameters(run))
+        self.assertEqual(result[GEN_AI_REQUEST_CHOICE_COUNT_KEY], 2)
+
+    def test_extracts_top_k(self):
+        run = _make_run(
+            run_type="chat_model",
+            extra={"invocation_params": {"top_k": 40}},
+        )
+        result = dict(invocation_parameters(run))
+        self.assertEqual(result[GEN_AI_REQUEST_TOP_K_KEY], 40.0)
+
+    def test_extracts_response_format_json_object(self):
+        run = _make_run(
+            run_type="chat_model",
+            extra={"invocation_params": {"response_format": {"type": "json_object"}}},
+        )
+        result = dict(invocation_parameters(run))
+        self.assertEqual(result[GEN_AI_OUTPUT_TYPE_KEY], "json")
+
+    def test_extracts_response_format_text_string(self):
+        run = _make_run(
+            run_type="chat_model",
+            extra={"invocation_params": {"response_format": "text"}},
+        )
+        result = dict(invocation_parameters(run))
+        self.assertEqual(result[GEN_AI_OUTPUT_TYPE_KEY], "text")
+
 
 class TestFunctionCalls(TestCase):
-    def test_extracts_function_call(self):
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=False)
+    def test_extracts_function_call(self, _mock_capture):
         outputs = {
             "generations": [
                 [
@@ -528,7 +788,8 @@ class TestFunctionCalls(TestCase):
 
 
 class TestTools(TestCase):
-    def test_extracts_tool_info(self):
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=False)
+    def test_extracts_tool_info(self, _mock_capture):
         run = _make_run(
             run_type="tool",
             serialized={"name": "calculator", "description": "Does math"},
@@ -564,7 +825,8 @@ class TestTools(TestCase):
 
 
 class TestChainNodeMessages(TestCase):
-    def test_skips_messages_when_content_capture_disabled(self):
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=False)
+    def test_skips_messages_when_content_capture_disabled(self, _mock_capture):
         data = {"messages": [{"content": "Hello", "role": "human"}]}
         self.assertEqual(list(chain_node_messages(data, GEN_AI_INPUT_MESSAGES_KEY)), [])
 
@@ -754,6 +1016,13 @@ class TestExtractSessionInfo(TestCase):
         result = dict(extract_session_info(run))
         self.assertIn(GEN_AI_CONVERSATION_ID_KEY, result)
         self.assertEqual(result[GEN_AI_CONVERSATION_ID_KEY], "c-1")
+        self.assertEqual(result[SESSION_ID_KEY], "c-1")
+
+    def test_extracts_thread_id(self):
+        run = _make_run(extra={"metadata": {"thread_id": "t-1"}})
+        result = dict(extract_session_info(run))
+        self.assertEqual(result[SESSION_ID_KEY], "t-1")
+        self.assertEqual(result[GEN_AI_CONVERSATION_ID_KEY], "t-1")
 
     def test_returns_empty_on_no_metadata(self):
         run = _make_run(extra=None)
@@ -820,9 +1089,47 @@ class TestBuildLlmInvocation(TestCase):
         self.assertEqual(inv.presence_penalty, 0.2)
         self.assertEqual(inv.seed, 7)
         self.assertEqual(inv.stop_sequences, ["END"])
-        self.assertEqual(inv.server_address, "https://example.test")
+        self.assertEqual(inv.server_address, "example.test")
         self.assertEqual(inv.response_model_name, "gpt-4o")
         self.assertEqual(inv.response_id, "resp-1")
+
+    def test_builds_invocation_with_model_kwargs_and_alt_endpoint_keys(self):
+        run = _make_run(
+            run_type="llm",
+            outputs={"llm_output": {"model_name": "gpt-4o", "id": "resp-2"}},
+            extra={
+                "invocation_params": {
+                    "openai_api_base": "https://api.contoso.test/v1",
+                    "model_kwargs": {
+                        "temperature": "0.3",
+                        "top_p": "0.8",
+                        "max_output_tokens": "128",
+                        "frequency_penalty": "0.4",
+                        "presence_penalty": "0.6",
+                        "stop_sequences": ["STOP"],
+                    },
+                }
+            },
+            inputs=None,
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(inv.temperature, 0.3)
+        self.assertEqual(inv.top_p, 0.8)
+        self.assertEqual(inv.max_tokens, 128)
+        self.assertEqual(inv.frequency_penalty, 0.4)
+        self.assertEqual(inv.presence_penalty, 0.6)
+        self.assertEqual(inv.stop_sequences, ["STOP"])
+        self.assertEqual(inv.server_address, "api.contoso.test")
+
+    def test_builds_invocation_server_address_from_metadata(self):
+        run = _make_run(
+            run_type="llm",
+            outputs={"llm_output": {}},
+            extra={"metadata": {"ls_server_address": "https://meta.contoso.test/"}},
+            inputs=None,
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(inv.server_address, "meta.contoso.test")
 
     def test_response_model_from_generation_metadata(self):
         # Simulates LangChain AzureChatOpenAI streaming / httpx pipeline:

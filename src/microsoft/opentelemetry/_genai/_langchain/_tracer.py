@@ -7,7 +7,7 @@ import logging
 import re
 from collections import OrderedDict
 from dataclasses import asdict
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator
 from itertools import chain
 from threading import RLock
 from contextvars import Token
@@ -53,6 +53,7 @@ from microsoft.opentelemetry._genai._langchain._utils import (
     GEN_AI_OPERATION_NAME_KEY,
     GEN_AI_OUTPUT_MESSAGES_KEY,
     GEN_AI_PROVIDER_NAME_KEY,
+    GEN_AI_REQUEST_CHOICE_COUNT_KEY,
     GEN_AI_REQUEST_MODEL_KEY,
     GEN_AI_USAGE_INPUT_TOKENS_KEY,
     GEN_AI_USAGE_OUTPUT_TOKENS_KEY,
@@ -63,11 +64,10 @@ from microsoft.opentelemetry._genai._langchain._utils import (
     extract_agent_metadata,
     extract_session_info,
     function_calls,
-    input_messages,
     invocation_parameters,
+    llm_provider,
     metadata,
     model_name,
-    output_messages,
     prompts,
     _extract_structured_input_messages,
     _extract_structured_output_messages,
@@ -231,6 +231,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                     "output_messages": [],
                     "model": None,
                     "provider": None,
+                    "request_choice_count": None,
                     "input_tokens": 0,
                     "output_tokens": 0,
                 }
@@ -451,10 +452,17 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                     break
 
             if run_type in ("llm", "chat_model") and not content.get("provider"):
-                if run.extra and isinstance(run.extra, Mapping):
-                    meta = run.extra.get("metadata")
-                    if isinstance(meta, Mapping) and (ls_provider := meta.get("ls_provider")):
-                        content["provider"] = str(ls_provider).lower()
+                for _, provider in llm_provider(run.extra):
+                    content["provider"] = provider
+                    break
+
+            if run_type in ("llm", "chat_model"):
+                for key, val in invocation_parameters(run):
+                    if key == GEN_AI_REQUEST_CHOICE_COUNT_KEY and isinstance(val, int) and val > 0:
+                        previous = content.get("request_choice_count")
+                        if not isinstance(previous, int) or val > previous:
+                            content["request_choice_count"] = val
+                        break
 
             if run_type in ("llm", "chat_model") and run.outputs:
                 for key, val in token_counts(run.outputs):
@@ -516,6 +524,9 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
 
         if provider := content.get("provider"):
             span.set_attribute(GEN_AI_PROVIDER_NAME_KEY, provider)
+
+        if (choice_count := content.get("request_choice_count")) and choice_count > 0:
+            span.set_attribute(GEN_AI_REQUEST_CHOICE_COUNT_KEY, choice_count)
 
         if (input_tokens := content.get("input_tokens")) and input_tokens > 0:
             span.set_attribute(GEN_AI_USAGE_INPUT_TOKENS_KEY, input_tokens)
@@ -589,8 +600,6 @@ def _update_span(span: Span, run: Run) -> LLMInvocation | None:
                 flatten(
                     chain(
                         prompts(run.inputs),
-                        input_messages(run.inputs),
-                        output_messages(run.outputs),
                         invocation_parameters(run),
                         function_calls(run.outputs),
                         metadata(run),

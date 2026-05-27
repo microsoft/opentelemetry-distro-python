@@ -9,7 +9,16 @@ LangChain calls Azure OpenAI because ``model`` is not in the call kwargs
 uninstrumenting OpenAI v2 for LangChain tests.
 """
 
+import os
+
 import pytest
+
+# Opt in to experimental GenAI semantic conventions and enable on-span
+# message-content capture so the OTel util writes ``gen_ai.input.messages``
+# and ``gen_ai.output.messages`` on chat spans. These tests assert on those
+# attributes; without the opt-in the util short-circuits and emits nothing.
+os.environ.setdefault("OTEL_SEMCONV_STABILITY_OPT_IN", "gen_ai_latest_experimental")
+os.environ.setdefault("OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT", "SPAN_ONLY")
 
 
 @pytest.fixture(autouse=True, scope="session")
