@@ -15,14 +15,10 @@ Azure Monitor consumers see no behavioural change.
 import os
 import threading
 from enum import IntFlag
-from typing import Any
-from microsoft.opentelemetry._utils import update_global_state_feature_bits
-
-_exporter_utils: Any = None
-try:
-    import azure.monitor.opentelemetry.exporter._utils as _exporter_utils  # type: ignore[import-not-found]
-except Exception:  # pylint: disable=broad-exception-caught
-    pass
+from microsoft.opentelemetry._utils import (
+    update_global_state_feature_bits,
+    update_global_state_instrumentation_bits,
+)
 
 # ---------------------------------------------------------------------------
 # Environment variable to disable SDKStats globally
@@ -158,8 +154,7 @@ def set_sdkstats_feature_bits(feature_bits: int) -> None:
 
 
 def set_sdkstats_instrumentation_bits(instrumentation_bits: int) -> None:
-    with _exporter_utils._INSTRUMENTATIONS_BIT_MASK_LOCK:
-        _exporter_utils._INSTRUMENTATIONS_BIT_MASK |= int(instrumentation_bits)
+    update_global_state_instrumentation_bits(instrumentation_bits)
 
 
 
