@@ -292,7 +292,7 @@ remain enabled by default.
 
 ## Documentation
 
-- [Agent 365 Observability guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/docs/A365_DOCUMENTATION.md)
+- [Agent 365 Observability guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md)
 - [Fabric Getting Started](https://github.com/microsoft/opentelemetry-distro-python/blob/main/docs/fabric-getting-started.md) — Send telemetry to Microsoft Fabric / Azure Data Explorer via OTLP + OTel Collector
 
 ## Troubleshooting
