@@ -70,7 +70,7 @@ use_microsoft_opentelemetry(
 )
 ```
 
-See the [A365 guide](A365_DOCUMENTATION.md) for A365-specific configuration.
+See the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md) for A365-specific configuration.
 
 ---
 
@@ -117,7 +117,7 @@ See the [A365 guide](A365_DOCUMENTATION.md) for A365-specific configuration.
 | `a365_exporter_timeout_ms` | `int` | `30000` | Timeout for a single A365 export operation (ms). |
 | `a365_max_export_batch_size` | `int` | `512` | Maximum batch size for a single A365 export operation. |
 
-> For A365 token resolver patterns, baggage, and scope classes, see the [A365 guide](A365_DOCUMENTATION.md).
+> For A365 token resolver patterns, baggage, and scope classes, see the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md).
 
 ### Sampling
 
@@ -218,7 +218,7 @@ Microsoft OpenTelemetry automatically instruments the following libraries when i
 | `agent_framework` | GenAI |
 | `azure_sdk` | Azure (enabled when Azure Monitor is active) |
 
-> **OpenAI Agents SDK:** The distro includes two instrumentors for `openai_agents`. When `enable_a365=True`, a bundled A365-specific instrumentor (`A365OpenAIAgentsInstrumentor`) is used, producing spans with the A365 versioned envelope format. When A365 is not enabled, the upstream `opentelemetry-instrumentation-openai-agents-v2` instrumentor is used with standard OTel semantic conventions. See [A365_DOCUMENTATION.md](A365_DOCUMENTATION.md) for details.
+> **OpenAI Agents SDK:** The distro includes two instrumentors for `openai_agents`. When `enable_a365=True`, a bundled A365-specific instrumentor (`A365OpenAIAgentsInstrumentor`) is used, producing spans with the A365 versioned envelope format. When A365 is not enabled, the upstream `opentelemetry-instrumentation-openai-agents-v2` instrumentor is used with standard OTel semantic conventions. See [A365_DOCUMENTATION.md](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md) for details.
 
 Toggle individual instrumentations:
 
@@ -278,22 +278,22 @@ remain enabled by default.
 
 | Sample | Scenario | Description |
 |---|---|---|
-| [samples/a365/exporter.py](samples/a365/exporter.py) | A365 | LangChain with A365 auto-instrumentation |
-| [samples/a365/manual_telemetry.py](samples/a365/manual_telemetry.py) | A365 | Manual instrumentation using all scope classes |
-| [samples/distro/tracing.py](samples/distro/tracing.py) | Azure Monitor | Basic tracing |
-| [samples/distro/metrics.py](samples/distro/metrics.py) | Azure Monitor | Metrics collection |
-| [samples/distro/logging_sample.py](samples/distro/logging_sample.py) | Azure Monitor | Log export |
-| [samples/distro/custom_events.py](samples/distro/custom_events.py) | Azure Monitor | Custom event logging |
-| [samples/distro/fastapi_app.py](samples/distro/fastapi_app.py) | Azure Monitor | FastAPI web app |
-| [samples/openai/](samples/openai/) | GenAI | OpenAI chat + Agents SDK |
-| [samples/langchain/](samples/langchain/) | GenAI | LangChain auto-instrumentation |
-| [samples/otlp/](samples/otlp/) | OTLP | Export to a local collector |
-| [samples/fabric/](samples/fabric/) | Fabric / ADX | Export to Fabric via OTel Collector |
+| [samples/a365/exporter.py](https://github.com/microsoft/opentelemetry-distro-python/blob/main/samples/a365/exporter.py) | A365 | LangChain with A365 auto-instrumentation |
+| [samples/a365/manual_telemetry.py](https://github.com/microsoft/opentelemetry-distro-python/blob/main/samples/a365/manual_telemetry.py) | A365 | Manual instrumentation using all scope classes |
+| [samples/distro/tracing.py](https://github.com/microsoft/opentelemetry-distro-python/blob/main/samples/distro/tracing.py) | Azure Monitor | Basic tracing |
+| [samples/distro/metrics.py](https://github.com/microsoft/opentelemetry-distro-python/blob/main/samples/distro/metrics.py) | Azure Monitor | Metrics collection |
+| [samples/distro/logging_sample.py](https://github.com/microsoft/opentelemetry-distro-python/blob/main/samples/distro/logging_sample.py) | Azure Monitor | Log export |
+| [samples/distro/custom_events.py](https://github.com/microsoft/opentelemetry-distro-python/blob/main/samples/distro/custom_events.py) | Azure Monitor | Custom event logging |
+| [samples/distro/fastapi_app.py](https://github.com/microsoft/opentelemetry-distro-python/blob/main/samples/distro/fastapi_app.py) | Azure Monitor | FastAPI web app |
+| [samples/openai/](https://github.com/microsoft/opentelemetry-distro-python/tree/main/samples/openai/) | GenAI | OpenAI chat + Agents SDK |
+| [samples/langchain/](https://github.com/microsoft/opentelemetry-distro-python/tree/main/samples/langchain/) | GenAI | LangChain auto-instrumentation |
+| [samples/otlp/](https://github.com/microsoft/opentelemetry-distro-python/tree/main/samples/otlp/) | OTLP | Export to a local collector |
+| [samples/fabric/](https://github.com/microsoft/opentelemetry-distro-python/tree/main/samples/fabric/) | Fabric / ADX | Export to Fabric via OTel Collector |
 
 ## Documentation
 
-- [Agent 365 Observability guide](docs/A365_DOCUMENTATION.md)
-- [Fabric Getting Started](docs/fabric-getting-started.md) — Send telemetry to Microsoft Fabric / Azure Data Explorer via OTLP + OTel Collector
+- [Agent 365 Observability guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/docs/A365_DOCUMENTATION.md)
+- [Fabric Getting Started](https://github.com/microsoft/opentelemetry-distro-python/blob/main/docs/fabric-getting-started.md) — Send telemetry to Microsoft Fabric / Azure Data Explorer via OTLP + OTel Collector
 
 ## Troubleshooting
 
@@ -304,16 +304,16 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 ```
 
-For A365-specific issues, see the [A365 guide](A365_DOCUMENTATION.md) and the [official troubleshooting docs](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/troubleshooting).
+For A365-specific issues, see the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md) and the [official troubleshooting docs](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/troubleshooting).
 
 
 ## Next Steps
 
-- [Agent 365 Observability guide](A365_DOCUMENTATION.md)
+- [Agent 365 Observability guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md)
 - [Azure Monitor](https://learn.microsoft.com/en-us/azure/azure-monitor/fundamentals/overview)
 - [Microsoft OpenTelemetry SDK docs](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/microsoft-opentelemetry?tabs=python)
 - [OpenTelemetry Python docs](https://opentelemetry.io/docs/instrumentation/python/)
-- [Samples](./samples/)
+- [Samples](https://github.com/microsoft/opentelemetry-distro-python/tree/main/samples/)
 
 ## Contributing
 
@@ -323,7 +323,7 @@ When you submit a pull request, a CLA-bot will automatically determine whether y
 
 This project has adopted the [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more information see the [Code of Conduct FAQ](https://opensource.microsoft.com/codeofconduct/faq/) or contact [opencode@microsoft.com](mailto:opencode@microsoft.com) with any additional questions or comments.
 
-Read our [contributing guide](./CONTRIBUTING.md) to learn about our development process, how to propose bugfixes and improvements, and how to build and test your changes to this distribution.
+Read our [contributing guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/CONTRIBUTING.md) to learn about our development process, how to propose bugfixes and improvements, and how to build and test your changes to this distribution.
 
 This project has adopted the
 [Microsoft Open Source Code of Conduct](https://opensource.microsoft.com/codeofconduct/). For more
@@ -348,8 +348,8 @@ This project may contain trademarks or logos for projects, products, or services
 
 ## Reporting Security Issues
 
-See [SECURITY.md](./SECURITY.md) for information on reporting vulnerabilities.
+See [SECURITY.md](https://github.com/microsoft/opentelemetry-distro-python/blob/main/SECURITY.md) for information on reporting vulnerabilities.
 
 ## License
 
-[MIT](LICENSE)
+[MIT](https://github.com/microsoft/opentelemetry-distro-python/blob/main/LICENSE)
