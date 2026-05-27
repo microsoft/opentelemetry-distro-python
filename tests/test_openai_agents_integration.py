@@ -106,10 +106,18 @@ class TestA365OpenAIAgentsInstrumentor(unittest.TestCase):
         )
 
         self.instrumentor_cls = A365OpenAIAgentsInstrumentor
+        # BaseInstrumentor is a singleton (__new__ returns the same instance),
+        # so we must clear instance-level attributes to avoid stale state.
+        inst = A365OpenAIAgentsInstrumentor()
+        inst._processor = None
+        inst._is_instrumented_by_opentelemetry = False
         A365OpenAIAgentsInstrumentor._processor = None
         A365OpenAIAgentsInstrumentor._is_instrumented_by_opentelemetry = False
 
     def tearDown(self):
+        inst = self.instrumentor_cls()
+        inst._processor = None
+        inst._is_instrumented_by_opentelemetry = False
         self.instrumentor_cls._processor = None
         self.instrumentor_cls._is_instrumented_by_opentelemetry = False
 
