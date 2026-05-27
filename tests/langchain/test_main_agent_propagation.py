@@ -23,13 +23,14 @@ import pytest
 
 pytest.importorskip("langchain_core")
 
-from opentelemetry import trace as trace_api  # noqa: E402  # pylint: disable=wrong-import-position
-from opentelemetry.sdk.trace import TracerProvider  # noqa: E402  # pylint: disable=wrong-import-position
-from opentelemetry.sdk.trace.export import SimpleSpanProcessor  # noqa: E402  # pylint: disable=wrong-import-position
-from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter  # noqa: E402  # pylint: disable=wrong-import-position
+# pylint: disable=wrong-import-position
+from opentelemetry import trace as trace_api  # noqa: E402
+from opentelemetry.sdk.trace import TracerProvider  # noqa: E402
+from opentelemetry.sdk.trace.export import SimpleSpanProcessor  # noqa: E402
+from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter  # noqa: E402
 
 # LangChain tracer attribute keys (from OTel semconv re-exports)
-from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # pylint: disable=wrong-import-position
+from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402
     GEN_AI_AGENT_ID_KEY,
     GEN_AI_AGENT_NAME_KEY,
     GEN_AI_AGENT_VERSION_KEY,
@@ -39,13 +40,13 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
 )
 
 # Main agent constants
-from microsoft.opentelemetry._constants import (  # noqa: E402  # pylint: disable=wrong-import-position
+from microsoft.opentelemetry._constants import (  # noqa: E402
     GEN_AI_MAIN_AGENT_ID_KEY,
     GEN_AI_MAIN_AGENT_NAME_KEY,
 )
 
 # a365 constants used by the processor
-from microsoft.opentelemetry.a365.core.constants import (  # noqa: E402  # pylint: disable=wrong-import-position
+from microsoft.opentelemetry.a365.core.constants import (  # noqa: E402
     GEN_AI_AGENT_ID_KEY as A365_AGENT_ID_KEY,
     GEN_AI_AGENT_NAME_KEY as A365_AGENT_NAME_KEY,
     GEN_AI_AGENT_VERSION_KEY as A365_AGENT_VERSION_KEY,
@@ -54,9 +55,11 @@ from microsoft.opentelemetry.a365.core.constants import (  # noqa: E402  # pylin
     INVOKE_AGENT_OPERATION_NAME as A365_INVOKE_AGENT,
 )
 
-from microsoft.opentelemetry._genai.main_agent._processor import (  # noqa: E402  # pylint: disable=wrong-import-position
+from microsoft.opentelemetry._genai.main_agent._processor import (  # noqa: E402
     GenAIMainAgentSpanProcessor,
 )
+
+# pylint: enable=wrong-import-position
 
 
 # ---------------------------------------------------------------------------
