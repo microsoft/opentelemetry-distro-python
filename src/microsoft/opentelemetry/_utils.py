@@ -18,6 +18,7 @@ from microsoft.opentelemetry._constants import (
     METRIC_READERS_ARG,
     SPAN_PROCESSORS_ARG,
 )
+from microsoft.opentelemetry._otlp import is_otlp_enabled, create_otlp_components
 from microsoft.opentelemetry._console import create_console_components
 
 _logger = getLogger(__name__)
@@ -55,10 +56,6 @@ def _append_otlp_components(otel_kwargs: Dict[str, Any]) -> None:
     Respects per-signal disable flags so that disabled pipelines do not
     get unnecessary exporters.
     """
-    # Lazy import to avoid a cyclic import: _otlp -> _otlp.handler ->
-    # _sdkstats -> _sdkstats._state -> _utils.
-    from microsoft.opentelemetry._otlp import is_otlp_enabled, create_otlp_components
-
     if not is_otlp_enabled():
         return
 
