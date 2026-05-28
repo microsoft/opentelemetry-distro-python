@@ -129,20 +129,20 @@ class TestInstrumentationKwargsForwarding(unittest.TestCase):
         self.assertEqual(call_kwargs["request_hook"], "my_hook")
         self.assertNotIn("enabled", call_kwargs)
 
-    @patch("microsoft.opentelemetry._distro._SUPPORTED_INSTRUMENTED_LIBRARIES", ("test_lib",))
+    @patch("microsoft.opentelemetry._distro._ENABLE_SENSITIVE_DATA_SUPPORTED_LIBRARIES", ("agent_framework",))
     @patch("microsoft.opentelemetry._distro._is_instrumentation_enabled", return_value=True)
     @patch("microsoft.opentelemetry._distro.get_dist_dependency_conflicts", return_value=None)
     @patch("microsoft.opentelemetry._distro.entry_points")
     def test_shared_kwargs_merged_with_per_lib(self, ep_iter_mock, _dep, _enabled):
         ep_mock = MagicMock()
-        ep_mock.name = "test_lib"
+        ep_mock.name = "agent_framework"
         instrumentor_instance = MagicMock()
         ep_mock.load.return_value = lambda: instrumentor_instance
         ep_iter_mock.return_value = [ep_mock]
 
         otel_kwargs = {
             "instrumentation_options": {
-                "test_lib": {"agent_id": "bot-1"},
+                "agent_framework": {"agent_id": "bot-1"},
             }
         }
         _setup_instrumentations(otel_kwargs, enable_sensitive_data=True)
@@ -165,25 +165,57 @@ class TestInstrumentationKwargsForwarding(unittest.TestCase):
         call_kwargs = instrumentor_instance.instrument.call_args[1]
         self.assertEqual(call_kwargs, {"skip_dep_check": True})
 
-    @patch("microsoft.opentelemetry._distro._SUPPORTED_INSTRUMENTED_LIBRARIES", ("test_lib",))
+    @patch("microsoft.opentelemetry._distro._SUPPORTED_INSTRUMENTED_LIBRARIES", ("agent_framework",))
     @patch("microsoft.opentelemetry._distro._is_instrumentation_enabled", return_value=True)
     @patch("microsoft.opentelemetry._distro.get_dist_dependency_conflicts", return_value=None)
     @patch("microsoft.opentelemetry._distro.entry_points")
     def test_per_lib_kwargs_override_shared_kwargs(self, ep_iter_mock, _dep, _enabled):
         ep_mock = MagicMock()
-        ep_mock.name = "test_lib"
+        ep_mock.name = "agent_framework"
         instrumentor_instance = MagicMock()
         ep_mock.load.return_value = lambda: instrumentor_instance
         ep_iter_mock.return_value = [ep_mock]
 
         otel_kwargs = {
             "instrumentation_options": {
-                "test_lib": {"enable_sensitive_data": True},
+                "agent_framework": {"enable_sensitive_data": True},
             }
         }
         _setup_instrumentations(otel_kwargs, enable_sensitive_data=False)
         call_kwargs = instrumentor_instance.instrument.call_args[1]
         self.assertTrue(call_kwargs["enable_sensitive_data"])
+
+    @patch("microsoft.opentelemetry._distro._SUPPORTED_INSTRUMENTED_LIBRARIES", ("fastapi", "requests", "django"))
+    @patch("microsoft.opentelemetry._distro._is_instrumentation_enabled", return_value=True)
+    @patch("microsoft.opentelemetry._distro.get_dist_dependency_conflicts", return_value=None)
+    @patch("microsoft.opentelemetry._distro.entry_points")
+    def test_enable_sensitive_data_not_forwarded_to_unsupported_libs(
+        self, ep_iter_mock, _dep, _enabled
+    ):
+        """Libraries not in _ENABLE_SENSITIVE_DATA_SUPPORTED_LIBRARIES must
+        not receive ``enable_sensitive_data`` — forwarding it to e.g. fastapi
+        raises ``TypeError`` from ``FastAPIInstrumentor.instrument_app``.
+        """
+        instances = {}
+        eps = []
+        for name in ("fastapi", "requests", "django"):
+            ep = MagicMock()
+            ep.name = name
+            inst = MagicMock()
+            instances[name] = inst
+            ep.load.return_value = lambda inst=inst: inst
+            eps.append(ep)
+        ep_iter_mock.return_value = eps
+
+        _setup_instrumentations({}, enable_sensitive_data=True)
+
+        for name, inst in instances.items():
+            call_kwargs = inst.instrument.call_args[1]
+            self.assertNotIn(
+                "enable_sensitive_data",
+                call_kwargs,
+                f"enable_sensitive_data should not be forwarded to '{name}'",
+            )
 
 
 # ---------------------------------------------------------------------------

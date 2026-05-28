@@ -56,6 +56,7 @@ from microsoft.opentelemetry._constants import (
     VIEWS_ARG,
     _A365_DISABLED_INSTRUMENTATIONS,
     _AZURE_MONITOR_KWARG_MAP,
+    _ENABLE_SENSITIVE_DATA_SUPPORTED_LIBRARIES,
     _SUPPORTED_INSTRUMENTED_LIBRARIES,
     _SPECTRA_DEFAULT_GRPC_ENDPOINT,
     _SPECTRA_DEFAULT_HTTP_ENDPOINT,
@@ -705,6 +706,7 @@ def _get_instrumentation_kwargs(otel_kwargs: Dict[str, Any], lib_name: str) -> D
 def _setup_instrumentations(otel_kwargs: Dict[str, Any], **kwargs: Any) -> None:
     """Discover and activate OTel instrumentations for supported libraries."""
     enable_a365: bool = kwargs.pop("enable_a365", False)
+    enable_sensitive_data: bool = kwargs.pop(ENABLE_SENSITIVE_DATA_ARG, False)
     _disable_openai_v2_instrumentation(otel_kwargs)
     entry_point_finder = _EntryPointDistFinder()
     for entry_point in entry_points(group="opentelemetry_instrumentor"):
@@ -732,6 +734,11 @@ def _setup_instrumentations(otel_kwargs: Dict[str, Any], **kwargs: Any) -> None:
                 continue
             lib_kwargs = _get_instrumentation_kwargs(otel_kwargs, lib_name)
             merged_kwargs = {**kwargs, **lib_kwargs}
+            if (
+                lib_name in _ENABLE_SENSITIVE_DATA_SUPPORTED_LIBRARIES
+                and ENABLE_SENSITIVE_DATA_ARG not in merged_kwargs
+            ):
+                merged_kwargs[ENABLE_SENSITIVE_DATA_ARG] = enable_sensitive_data
             instrumentor: Any = entry_point.load()
             instrumentor().instrument(skip_dep_check=True, **merged_kwargs)
             set_sdkstats_instrumentation_by_name(lib_name)

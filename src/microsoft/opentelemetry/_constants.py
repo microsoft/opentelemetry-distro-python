@@ -90,6 +90,11 @@ _AZURE_MONITOR_KWARG_MAP = {
 
 ENABLE_SENSITIVE_DATA_ARG = "enable_sensitive_data"
 
+# Only forward this kwarg to instrumentations which support it
+_ENABLE_SENSITIVE_DATA_SUPPORTED_LIBRARIES = (
+    "agent_framework",
+)
+
 ENABLE_SPECTRA_ARG = "enable_spectra"
 SPECTRA_ENDPOINT_ARG = "spectra_endpoint"
 SPECTRA_PROTOCOL_ARG = "spectra_protocol"
