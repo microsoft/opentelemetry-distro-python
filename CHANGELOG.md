@@ -1,7 +1,22 @@
 # Release History
 
-# 1.3.1 (Unreleased)
+# 1.3.1 (2026-05-28)
 
+### Features Added
+- Add `ApplyGuardrailScope` for security guardrail evaluations
+  ([#173](https://github.com/microsoft/opentelemetry-distro-python/pull/173))
+
+### Bugs Fixed
+- Fix `enable_sensitive_data` leaking to all instrumentors
+  ([#176](https://github.com/microsoft/opentelemetry-distro-python/pull/176))
+- Fix LangChain tracer main-agent attribute propagation timing
+  ([#171](https://github.com/microsoft/opentelemetry-distro-python/pull/171))
+
+### Other Changes
+- Invoke-agent wrapper span now populates tool-call turns and `gen_ai.tool.definitions`
+  ([#174](https://github.com/microsoft/opentelemetry-distro-python/pull/174))
+- Add wheel build and artifact upload to PR validation
+  ([#177](https://github.com/microsoft/opentelemetry-distro-python/pull/177))
 - Add setter functions for feature and instrumentation bits
   ([#157](https://github.com/microsoft/opentelemetry-distro-python/pull/157))
 
