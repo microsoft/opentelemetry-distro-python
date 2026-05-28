@@ -57,7 +57,6 @@ from microsoft.opentelemetry.a365.core.guardrail_target_type import GuardrailTar
 from microsoft.opentelemetry.a365.core.models.user_details import UserDetails
 from microsoft.opentelemetry.a365.core.opentelemetry_scope import OpenTelemetryScope
 from microsoft.opentelemetry.a365.core.request import Request
-from microsoft.opentelemetry.a365.core.span_details import SpanDetails
 
 
 @patch.dict(os.environ, {"ENABLE_OBSERVABILITY": "true"})
