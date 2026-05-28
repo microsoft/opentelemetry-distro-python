@@ -85,6 +85,43 @@ jobs:
       - name: Run tests
         run: tox -e ${{ matrix.tox-env }}
 
+  build:
+    name: Build wheel
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Detect minimum Python version
+        id: python-version
+        run: |
+          version=$(python3 -c "
+          import tomllib, re
+          with open('pyproject.toml', 'rb') as f:
+              data = tomllib.load(f)
+          req = data['project']['requires-python']
+          print(re.search(r'[\d.]+', req).group())
+          ")
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ steps.python-version.outputs.version }}
+
+      - name: Install build
+        run: python -m pip install --upgrade pip build
+
+      - name: Build wheel and sdist
+        run: python -m build
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
   integration-tests:
     name: Integration Tests
     runs-on: ubuntu-latest
