@@ -233,6 +233,27 @@ class TestApplyGuardrailScope(unittest.TestCase):
         finally:
             scope.dispose()
 
+    def test_record_content_input_structured_messages(self):
+        """record_content_input serializes structured InputMessages to JSON string."""
+        from microsoft.opentelemetry.a365.core.models.messages import (
+            ChatMessage,
+            InputMessages,
+            MessageRole,
+            TextPart,
+        )
+
+        details = self._make_guardrail_details()
+        scope = ApplyGuardrailScope.start(details, self._make_agent_details())
+        try:
+            messages = InputMessages(messages=[ChatMessage(role=MessageRole.USER, parts=[TextPart(content="Hello")])])
+            scope.record_content_input(messages)
+            attrs = dict(scope._span.attributes)
+            value = attrs[GEN_AI_SECURITY_CONTENT_INPUT_VALUE_KEY]
+            self.assertIsInstance(value, str)
+            self.assertIn("Hello", value)
+        finally:
+            scope.dispose()
+
     def test_record_finding_adds_event(self):
         """record_finding adds a security finding event to the span."""
         details = self._make_guardrail_details()

@@ -43,6 +43,8 @@ from microsoft.opentelemetry.a365.core.constants import (
 )
 from microsoft.opentelemetry.a365.core.guardrail_details import GuardrailDetails
 from microsoft.opentelemetry.a365.core.guardrail_finding import GuardrailFinding
+from microsoft.opentelemetry.a365.core.message_utils import normalize_input_messages, serialize_messages
+from microsoft.opentelemetry.a365.core.models.messages import InputMessagesParam
 from microsoft.opentelemetry.a365.core.models.user_details import UserDetails
 from microsoft.opentelemetry.a365.core.opentelemetry_scope import OpenTelemetryScope
 from microsoft.opentelemetry.a365.core.request import Request
@@ -206,16 +208,24 @@ class ApplyGuardrailScope(OpenTelemetryScope):
         """
         self.set_tag_maybe(GEN_AI_SECURITY_CONTENT_OUTPUT_VALUE_KEY, output_value)
 
-    def record_content_input(self, input_value: str) -> None:
+    def record_content_input(self, input_value: InputMessagesParam | str) -> None:
         """Record the input content being evaluated (opt-in).
 
         This is an opt-in field for recording input content sent to the
         guardrail. Only set this when content capture is explicitly enabled.
 
+        Accepts plain strings or structured ``InputMessages`` containers.
+        Structured messages are normalized and serialized to a JSON string
+        before being set as an attribute.
+
         Args:
-            input_value: The input content string.
+            input_value: The input content as a string or InputMessagesParam.
         """
-        self.set_tag_maybe(GEN_AI_SECURITY_CONTENT_INPUT_VALUE_KEY, input_value)
+        if isinstance(input_value, str):
+            self.set_tag_maybe(GEN_AI_SECURITY_CONTENT_INPUT_VALUE_KEY, input_value)
+        else:
+            wrapper = normalize_input_messages(input_value)
+            self.set_tag_maybe(GEN_AI_SECURITY_CONTENT_INPUT_VALUE_KEY, serialize_messages(wrapper))
 
     def record_finding(self, finding: GuardrailFinding) -> None:
         """Record a security finding as a span event.
