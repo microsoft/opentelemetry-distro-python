@@ -14,6 +14,33 @@ from typing import Dict, Tuple
 from microsoft.opentelemetry._sdkstats._constants import REQUEST_SUCCESS_NAME
 
 # ===========================================================================
+# Global state helpers (Azure Monitor exporter statsbeat bridge)
+# ===========================================================================
+#
+# These helpers OR distro-side feature/instrumentation bits into the
+# Azure Monitor exporter's statsbeat global state so the exporter emits
+# accurate feature/instrumentation statsbeat metrics on our behalf.
+
+
+def update_global_state_feature_bits(feature_bits: int) -> None:
+    """OR ``feature_bits`` into the exporter statsbeat feature mask."""
+    from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (  # type: ignore[import-not-found]
+        _StatsbeatMetrics,
+    )
+
+    current = _StatsbeatMetrics._FEATURE_ATTRIBUTES.get("feature") or 0
+    _StatsbeatMetrics._FEATURE_ATTRIBUTES["feature"] = current | int(feature_bits)
+
+
+def update_global_state_instrumentation_bits(instrumentation_bits: int) -> None:
+    """OR ``instrumentation_bits`` into the exporter instrumentation mask."""
+    import azure.monitor.opentelemetry.exporter._utils as _exporter_utils  # type: ignore[import-not-found]
+
+    with _exporter_utils._INSTRUMENTATIONS_BIT_MASK_LOCK:
+        _exporter_utils._INSTRUMENTATIONS_BIT_MASK |= int(instrumentation_bits)
+
+
+# ===========================================================================
 # Network sdkstats
 # ===========================================================================
 #
