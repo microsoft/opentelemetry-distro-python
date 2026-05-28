@@ -57,7 +57,7 @@ class SdkStatsMetrics:
     def __init__(
         self,
         meter_provider: MeterProvider,
-        *,
+        enable_azure_monitor: bool = False,
         distro_version: str = "",
     ) -> None:
         self._meter = meter_provider.get_meter("microsoft.opentelemetry.sdkstats")
@@ -73,21 +73,27 @@ class SdkStatsMetrics:
             "version": self._distro_version,
         }
 
-        # Feature gauge
-        self._meter.create_observable_gauge(
-            _FEATURE_METRIC_NAME,
-            callbacks=[self._observe_features],
-            unit="",
-            description="SDKStats metric tracking enabled features",
-        )
+        # Feature/instrumentation gauges are only registered when Azure
+        # Monitor is NOT enabled.  When it is, the distro's bridging
+        # logic ORs our feature/instrumentation bits into the exporter
+        # package's StatsbeatManager state, which emits those metrics
+        # on our behalf; we only need to register the network gauge here.
+        if not enable_azure_monitor:
+            # Feature gauge
+            self._meter.create_observable_gauge(
+                _FEATURE_METRIC_NAME,
+                callbacks=[self._observe_features],
+                unit="",
+                description="SDKStats metric tracking enabled features",
+            )
 
-        # Instrumentation gauge
-        self._meter.create_observable_gauge(
-            _FEATURE_METRIC_NAME,
-            callbacks=[self._observe_instrumentations],
-            unit="",
-            description="SDKStats metric tracking enabled instrumentations",
-        )
+            # Instrumentation gauge
+            self._meter.create_observable_gauge(
+                _FEATURE_METRIC_NAME,
+                callbacks=[self._observe_instrumentations],
+                unit="",
+                description="SDKStats metric tracking enabled instrumentations",
+            )
 
         # Network: request success count.
         self._meter.create_observable_gauge(

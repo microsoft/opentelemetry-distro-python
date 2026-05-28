@@ -265,6 +265,25 @@ class TestSdkStatsMetrics(unittest.TestCase):
         finally:
             mp.shutdown()
 
+    def test_enable_azure_monitor_skips_feature_and_instrumentation_gauges(self):
+        from microsoft.opentelemetry._sdkstats._metrics import SdkStatsMetrics
+
+        meter_mock = MagicMock()
+        meter_provider_mock = MagicMock()
+        meter_provider_mock.get_meter.return_value = meter_mock
+
+        SdkStatsMetrics(meter_provider_mock, enable_azure_monitor=True)
+
+        callbacks = []
+        for call in meter_mock.create_observable_gauge.call_args_list:
+            callback_list = call.kwargs.get("callbacks", [])
+            callbacks.extend(callback_list)
+
+        callback_names = {cb.__name__ for cb in callbacks}
+        self.assertNotIn("_observe_features", callback_names)
+        self.assertNotIn("_observe_instrumentations", callback_names)
+        self.assertIn("_observe_request_success_count", callback_names)
+
 
 class TestSdkStatsManager(unittest.TestCase):
     """Tests for the SdkStatsManager singleton."""
@@ -366,6 +385,16 @@ class TestSdkStatsManager(unittest.TestCase):
             is_sdkstats=True,
         )
 
+    def test_initialize_forwards_enable_azure_monitor_flag(self):
+        from microsoft.opentelemetry._sdkstats._manager import SdkStatsManager
+
+        manager = SdkStatsManager()
+        with patch.object(manager, "_do_initialize", return_value=True) as do_initialize_mock:
+            result = manager.initialize(enable_azure_monitor=True)
+
+        self.assertTrue(result)
+        do_initialize_mock.assert_called_once_with(True)
+
     def test_metrics_collected_after_initialize(self):
         from opentelemetry.sdk.metrics.export import InMemoryMetricReader
         from microsoft.opentelemetry._sdkstats._manager import SdkStatsManager
@@ -411,7 +440,7 @@ class TestInitializeSdkStats(unittest.TestCase):
             mock_manager = MagicMock()
             mock_cls.return_value = mock_manager
             _initialize_sdkstats(enable_azure_monitor=True)
-            mock_manager.initialize.assert_called_once()
+            mock_manager.initialize.assert_called_once_with(True)
 
     def test_initialize_sdkstats_uses_manager_when_azure_monitor_disabled(self):
         """_initialize_sdkstats creates SdkStatsManager when Azure Monitor is off."""
@@ -423,7 +452,7 @@ class TestInitializeSdkStats(unittest.TestCase):
             mock_manager = MagicMock()
             mock_cls.return_value = mock_manager
             _initialize_sdkstats(enable_azure_monitor=False)
-            mock_manager.initialize.assert_called_once()
+            mock_manager.initialize.assert_called_once_with(False)
 
 
 class TestSdkStatsBridgeSetters(unittest.TestCase):
@@ -460,6 +489,7 @@ class TestSdkStatsBridgeSetters(unittest.TestCase):
             _exporter_utils._INSTRUMENTATIONS_BIT_MASK = 3
 
         set_sdkstats_instrumentation_bits(int(SdkStatsInstrumentation.FASTAPI))
+
 
 class TestRequestSuccessCallback(unittest.TestCase):
     """Tests for SdkStatsMetrics._observe_request_success_count."""

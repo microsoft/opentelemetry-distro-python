@@ -379,7 +379,7 @@ def _initialize_sdkstats(enable_azure_monitor: bool) -> None:
     from microsoft.opentelemetry._sdkstats._manager import SdkStatsManager
 
     manager = SdkStatsManager()
-    manager.initialize()
+    manager.initialize(enable_azure_monitor)
 
 
 def _bridge_sdkstats_to_azure_monitor() -> None:
