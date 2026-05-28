@@ -4,7 +4,13 @@
 # Microsoft Agent 365 Python SDK for OpenTelemetry tracing.
 
 from microsoft.opentelemetry.a365.core.agent_details import AgentDetails
+from microsoft.opentelemetry.a365.core.apply_guardrail_scope import ApplyGuardrailScope
 from microsoft.opentelemetry.a365.core.execute_tool_scope import ExecuteToolScope
+from microsoft.opentelemetry.a365.core.guardrail_decision_type import GuardrailDecisionType
+from microsoft.opentelemetry.a365.core.guardrail_details import GuardrailDetails
+from microsoft.opentelemetry.a365.core.guardrail_finding import GuardrailFinding
+from microsoft.opentelemetry.a365.core.guardrail_risk_severity import GuardrailRiskSeverity
+from microsoft.opentelemetry.a365.core.guardrail_target_type import GuardrailTargetType
 from microsoft.opentelemetry.a365.core.inference_call_details import InferenceCallDetails
 from microsoft.opentelemetry.a365.core.models.service_endpoint import ServiceEndpoint
 from microsoft.opentelemetry.a365.core.inference_operation_type import InferenceOperationType
@@ -49,10 +55,17 @@ __all__ = [
     # Base scope class
     "OpenTelemetryScope",
     # Specific scope classes
+    "ApplyGuardrailScope",
     "ExecuteToolScope",
     "InvokeAgentScope",
     "InferenceScope",
     "OutputScope",
+    # Guardrail data classes and constants
+    "GuardrailDecisionType",
+    "GuardrailDetails",
+    "GuardrailFinding",
+    "GuardrailRiskSeverity",
+    "GuardrailTargetType",
     # Middleware
     "BaggageBuilder",
     # Data classes
