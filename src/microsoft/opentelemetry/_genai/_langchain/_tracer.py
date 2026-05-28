@@ -32,7 +32,7 @@ from opentelemetry.util.genai.span_utils import (
     _apply_llm_finish_attributes,
     _maybe_emit_llm_event,
 )
-from opentelemetry.util.genai.types import Error, LLMInvocation, OutputMessage as OTelOutputMessage, Text as OTelText
+from opentelemetry.util.genai.types import Error, LLMInvocation
 from opentelemetry.util.types import AttributeValue
 
 from microsoft.opentelemetry._genai._langchain._utils import (
@@ -55,6 +55,7 @@ from microsoft.opentelemetry._genai._langchain._utils import (
     GEN_AI_PROVIDER_NAME_KEY,
     GEN_AI_REQUEST_CHOICE_COUNT_KEY,
     GEN_AI_REQUEST_MODEL_KEY,
+    GEN_AI_TOOL_DEFINITIONS_KEY,
     GEN_AI_USAGE_INPUT_TOKENS_KEY,
     GEN_AI_USAGE_OUTPUT_TOKENS_KEY,
     SERVER_ADDRESS_KEY,
@@ -69,11 +70,13 @@ from microsoft.opentelemetry._genai._langchain._utils import (
     metadata,
     model_name,
     prompts,
-    _extract_structured_input_messages,
     _extract_structured_output_messages,
     _extract_agent_input_messages,
     _extract_agent_output_messages,
+    _output_message_to_input,
+    _seed_initial_messages,
     _should_capture_content_on_spans,
+    _tool_run_to_input_message,
     token_counts,
     tools,
 )
@@ -251,6 +254,8 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                 self._agent_content[run.id] = {
                     "input_messages": [],
                     "output_messages": [],
+                    "pending_assistant": None,
+                    "seeded_initial": False,
                     "model": None,
                     "provider": None,
                     "request_choice_count": None,
@@ -464,7 +469,10 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                         previous = content.get("request_choice_count")
                         if not isinstance(previous, int) or val > previous:
                             content["request_choice_count"] = val
-                        break
+                    elif key == GEN_AI_TOOL_DEFINITIONS_KEY and val and not content.get("tool_definitions"):
+                        # First LLM child with tool defs wins; downstream calls
+                        # in an agent loop expose the same tool set.
+                        content["tool_definitions"] = val
 
             if run_type in ("llm", "chat_model") and run.outputs:
                 for key, val in token_counts(run.outputs):
@@ -473,28 +481,50 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                     elif key == GEN_AI_USAGE_OUTPUT_TOKENS_KEY and isinstance(val, int):
                         content["output_tokens"] = content.get("output_tokens", 0) + val
 
-            # Capture input messages from LLM runs (first LLM child wins)
-            if run_type in ("llm", "chat_model") and not content["input_messages"]:
-                if run.inputs:
-                    structured = _extract_structured_input_messages(run.inputs)
-                    if structured:
-                        content["input_messages"] = structured
+            # Build gen_ai.input.messages incrementally from agent children
+            # so it matches the OTel GenAI semconv: ordered list of user /
+            # assistant(tool_call) / tool(tool_call_response) turns. We can't
+            # rely on the LLM child's own ``run.inputs`` because LangChain
+            # often hands the model a pre-serialised prompt string, losing
+            # the structured per-turn shape (see issue #172).
+            if run_type in ("llm", "chat_model"):
+                # Seed system/user messages from the agent's top-level inputs
+                # on the first LLM call.
+                if not content.get("seeded_initial"):
+                    agent_run = self.run_map.get(str(agent_id))
+                    if agent_run is not None:
+                        seeded = _seed_initial_messages(getattr(agent_run, "inputs", None))
+                        if seeded:
+                            content["input_messages"].extend(seeded)
+                    content["seeded_initial"] = True
+                # Promote previous assistant turn into the history before this
+                # LLM's own output becomes the new ``pending_assistant``.
+                pending = content.get("pending_assistant")
+                if pending:
+                    # n>1 produces multiple choices; only one assistant turn
+                    # actually fed back into the loop, so take the first.
+                    content["input_messages"].append(_output_message_to_input(pending[0]))
+                if run.outputs:
+                    out_structured = _extract_structured_output_messages(run.outputs)
+                    if out_structured:
+                        content["pending_assistant"] = out_structured
 
-            # Capture output messages from LLM runs (last LLM child wins)
-            if run_type in ("llm", "chat_model") and run.outputs:
-                out_structured = _extract_structured_output_messages(run.outputs)
-                if out_structured:
-                    content["output_messages"] = out_structured  # type: ignore[assignment]
+            # Tool children: append a ``tool``-role message with a
+            # ToolCallResponse part. The preceding pending assistant (which
+            # requested this tool call) must be promoted into the history
+            # FIRST so ordering is correct.
+            if run_type == "tool":
+                pending = content.get("pending_assistant")
+                if pending:
+                    content["input_messages"].append(_output_message_to_input(pending[0]))
+                    content["pending_assistant"] = None
+                tool_msg = _tool_run_to_input_message(run)
+                if tool_msg is not None:
+                    content["input_messages"].append(tool_msg)
 
-            # Capture tool results
-            if run_type == "tool" and run.outputs and hasattr(run.outputs, "get"):
-                _sentinel = object()
-                output = run.outputs.get("output", _sentinel)
-                if output is not _sentinel:
-                    result_str = output if isinstance(output, str) else safe_json_dumps(output)
-                    content["output_messages"].append(
-                        OTelOutputMessage(role="tool", parts=[OTelText(content=result_str)], finish_reason="stop")
-                    )
+            # NOTE: ``output_messages`` is populated from ``pending_assistant``
+            # in ``_finalize_agent_span`` -- it represents the FINAL assistant
+            # choice(s) only, per the GenAI semconv.
 
     def _find_agent_ancestor(self, run: Run) -> UUID | None:
         """Walk up the run tree to find the nearest agent ancestor run_id."""
@@ -520,6 +550,24 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         with self._lock:
             content = self._agent_content.get(run.id) or {}
 
+        # The final ``pending_assistant`` (the last LLM child's output) is the
+        # agent's final response -- promote it to ``output_messages``.
+        pending = content.get("pending_assistant")
+        if pending:
+            content["output_messages"] = pending
+
+        # Defensive: if the incremental builder never seeded the initial
+        # user/system turn (e.g. agent_run.inputs was not yet populated when
+        # the first LLM child ended, or used an unusual shape), recover by
+        # prepending them from agent_run.inputs at finalize-time. This is
+        # idempotent: only happens when those roles are absent from the
+        # already-built history.
+        built = content.get("input_messages") or []
+        if not any(getattr(m, "role", "") in ("user", "system") for m in built):
+            seeded = _seed_initial_messages(getattr(run, "inputs", None))
+            if seeded:
+                content["input_messages"] = list(seeded) + list(built)
+
         # Set aggregated model
         if model := content.get("model"):
             span.set_attribute(GEN_AI_REQUEST_MODEL_KEY, model)
@@ -537,6 +585,8 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
 
         # Set aggregated input/output messages only when content capture is enabled
         if _should_capture_content_on_spans():
+            if tool_defs := content.get("tool_definitions"):
+                span.set_attribute(GEN_AI_TOOL_DEFINITIONS_KEY, tool_defs)
             if msgs := content.get("input_messages"):
                 span.set_attribute(
                     GEN_AI_INPUT_MESSAGES_KEY,
