@@ -1022,7 +1022,7 @@ class TestFinalizeAgentSpanAttributes(TestCase):
 
         # Collect every (key, value) pair set on the wrapper span.
         attrs: dict[str, object] = {}
-        for call in wrapper.set_attribute.call_args_list:
+        for call in wrapper.set_attribute.call_args_list:  # pylint: disable=no-member
             attrs[call.args[0]] = call.args[1]
 
         self.assertIn(GEN_AI_INPUT_MESSAGES_KEY, attrs)
