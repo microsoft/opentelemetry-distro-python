@@ -1198,3 +1198,78 @@ class TestBuildLlmInvocation(TestCase):
         inv = build_llm_invocation(run)
         self.assertEqual(inv.response_model_name, "gpt-4o-2024-11-20")
         self.assertEqual(inv.response_id, "chatcmpl-kwargs")
+
+# ---- Spec-compliant input.messages (issue #172) ------------------------------
+
+
+class TestExtractStructuredInputMessagesSpecCompliance(TestCase):
+    """Verify input/output message extraction satisfies the OTel GenAI semconv
+    for invoke_agent spans (issue #172)."""
+
+    def test_normalizes_human_role_to_user(self):
+        from langchain_core.messages import HumanMessage
+
+        from microsoft.opentelemetry._genai._langchain._utils import (
+            _extract_structured_input_messages,
+        )
+
+        result = _extract_structured_input_messages({"messages": [[HumanMessage(content="hi")]]})
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].role, "user")
+        self.assertEqual(result[0].parts[0].content, "hi")
+
+    def test_assistant_role_for_ai_message(self):
+        from langchain_core.messages import AIMessage
+
+        from microsoft.opentelemetry._genai._langchain._utils import (
+            _extract_structured_input_messages,
+        )
+
+        result = _extract_structured_input_messages({"messages": [[AIMessage(content="ok")]]})
+        self.assertEqual(result[0].role, "assistant")
+
+    def test_emits_tool_call_response_for_tool_message(self):
+        from langchain_core.messages import ToolMessage
+
+        from microsoft.opentelemetry._genai._langchain._utils import (
+            _extract_structured_input_messages,
+        )
+
+        tool_msg = ToolMessage(content="rainy, 57F", tool_call_id="call_123")
+        result = _extract_structured_input_messages({"messages": [[tool_msg]]})
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0].role, "tool")
+        self.assertEqual(len(result[0].parts), 1)
+        part = result[0].parts[0]
+        self.assertEqual(part.type, "tool_call_response")
+        self.assertEqual(part.id, "call_123")
+        self.assertEqual(part.response, "rainy, 57F")
+
+    def test_full_react_agent_history(self):
+        """user -> assistant(tool_call) -> tool(tool_call_response) -> assistant"""
+        from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+        from microsoft.opentelemetry._genai._langchain._utils import (
+            _extract_structured_input_messages,
+        )
+
+        history = [
+            HumanMessage(content="Weather in Paris?"),
+            AIMessage(
+                content="",
+                tool_calls=[{"name": "get_weather", "args": {"location": "Paris"}, "id": "call_1"}],
+            ),
+            ToolMessage(content="rainy, 57F", tool_call_id="call_1"),
+        ]
+        result = _extract_structured_input_messages({"messages": [history]})
+        self.assertEqual([m.role for m in result], ["user", "assistant", "tool"])
+        # assistant should carry a tool_call part
+        assistant_parts = result[1].parts
+        self.assertEqual(assistant_parts[0].type, "tool_call")
+        self.assertEqual(assistant_parts[0].name, "get_weather")
+        self.assertEqual(assistant_parts[0].id, "call_1")
+        # tool message should carry tool_call_response, not Text
+        tool_parts = result[2].parts
+        self.assertEqual(tool_parts[0].type, "tool_call_response")
+        self.assertEqual(tool_parts[0].id, "call_1")
+        self.assertEqual(tool_parts[0].response, "rainy, 57F")

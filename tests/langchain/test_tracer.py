@@ -471,7 +471,11 @@ class TestAggregateIntoParent(TestCase):
         self.assertEqual(content["model"], "gpt-4")
 
     @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
-    def test_aggregates_tool_output(self, mock_ctx):
+    def test_tool_run_does_not_pollute_output_messages(self, mock_ctx):
+        """Per GenAI semconv, the wrapper invoke_agent span's
+        gen_ai.output.messages must reflect only the final assistant
+        choice(s). Tool results belong on gen_ai.input.messages via the
+        cumulative chat history captured from the last LLM child."""
         mock_ctx.get_value.return_value = None
         tracer, otel_tracer, _ = _make_tracer()
         wrapper = MagicMock()
@@ -491,10 +495,8 @@ class TestAggregateIntoParent(TestCase):
         tracer._aggregate_into_parent(tool_run)
 
         content = tracer._agent_content[agent_run.id]
-        self.assertEqual(len(content["output_messages"]), 1)
-        tool_msg = content["output_messages"][0]
-        self.assertEqual(tool_msg.role, "tool")
-        self.assertEqual(tool_msg.parts[0].content, "42")
+        # Tool output is no longer appended to the agent's output_messages.
+        self.assertEqual(content["output_messages"], [])
 
     @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
     def test_aggregates_tokens_from_generation_info_usage(self, mock_ctx):
@@ -754,3 +756,149 @@ class TestContextAttachDetach(TestCase):
             attach_call_args = mock_sic.call_args_list[-1]
             self.assertIs(attach_call_args[0][0], inner_span)
         mock_ctx.attach.assert_called_once()
+
+# ---- invoke_agent aggregation fixes (issue #172) -----------------------------
+
+
+class TestAggregateInputMessagesLastWins(TestCase):
+    """The wrapper invoke_agent span needs the full ordered chat history.
+    Build it incrementally from the agent's own inputs + each child's
+    outputs so we don't depend on LangChain handing the LLM a structured
+    ``messages`` list (it often serialises to a prompt string instead --
+    see issue #172)."""
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_last_llm_input_overrides_first(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        wrapper = MagicMock()
+        inner = MagicMock()
+        otel_tracer.start_span.side_effect = [wrapper, inner]
+
+        agent_run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            inputs={"messages": [{"role": "user", "content": "Weather in Paris?"}]},
+        )
+        tracer.run_map[str(agent_run.id)] = agent_run
+        tracer._start_trace(agent_run)
+
+        # First LLM call: model emits an assistant message with a tool_call.
+        first_llm = _make_run(
+            run_type="chat_model",
+            name="gpt-4o-mini",
+            parent_run_id=agent_run.id,
+            inputs={"prompts": ["Human: Weather in Paris?"]},
+            outputs={
+                "generations": [
+                    [
+                        {
+                            "text": "",
+                            "message": {
+                                "id": ["langchain", "schema", "messages", "AIMessage"],
+                                "kwargs": {
+                                    "content": "",
+                                    "tool_calls": [
+                                        {
+                                            "name": "get_weather",
+                                            "args": {"location": "Paris"},
+                                            "id": "c1",
+                                        }
+                                    ],
+                                    "type": "ai",
+                                },
+                            },
+                        }
+                    ]
+                ]
+            },
+            extra=None,
+        )
+        tracer.run_map[str(first_llm.id)] = first_llm
+        tracer._aggregate_into_parent(first_llm)
+
+        # Tool run produces the tool_call_response.
+        tool_run = _make_run(
+            run_type="tool",
+            name="get_weather",
+            parent_run_id=agent_run.id,
+            inputs={"tool_call_id": "c1", "location": "Paris"},
+            outputs={"output": "rainy"},
+            extra=None,
+        )
+        tracer.run_map[str(tool_run.id)] = tool_run
+        tracer._aggregate_into_parent(tool_run)
+
+        # Second LLM call: final assistant reply.
+        second_llm = _make_run(
+            run_type="chat_model",
+            name="gpt-4o-mini",
+            parent_run_id=agent_run.id,
+            inputs={"prompts": ["...serialized buffer..."]},
+            outputs={
+                "generations": [
+                    [
+                        {
+                            "text": "It's rainy in Paris.",
+                            "message": {
+                                "id": ["langchain", "schema", "messages", "AIMessage"],
+                                "kwargs": {
+                                    "content": "It's rainy in Paris.",
+                                    "type": "ai",
+                                },
+                            },
+                        }
+                    ]
+                ]
+            },
+            extra=None,
+        )
+        tracer.run_map[str(second_llm.id)] = second_llm
+        tracer._aggregate_into_parent(second_llm)
+
+        content = tracer._agent_content[agent_run.id]
+        roles = [m.role for m in content["input_messages"]]
+        self.assertEqual(roles, ["user", "assistant", "tool"])
+        # Final assistant is held as pending_assistant until finalize.
+        self.assertIsNotNone(content["pending_assistant"])
+        self.assertEqual(content["pending_assistant"][0].role, "assistant")
+
+
+class TestAggregateToolDefinitions(TestCase):
+    """Aggregate gen_ai.tool.definitions from LLM children onto the wrapper."""
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_captures_tool_definitions_from_invocation_params(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        wrapper = MagicMock()
+        inner = MagicMock()
+        otel_tracer.start_span.side_effect = [wrapper, inner]
+
+        agent_run = _make_run(run_type="chain", name="LangGraph")
+        tracer._start_trace(agent_run)
+
+        tool_defs = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "description": "Get weather",
+                    "parameters": {"type": "object", "properties": {"location": {"type": "string"}}},
+                },
+            }
+        ]
+        llm_run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            parent_run_id=agent_run.id,
+            extra={"invocation_params": {"model": "gpt-4o", "tools": tool_defs}},
+            outputs={"generations": []},
+            inputs=None,
+        )
+        tracer.run_map[str(llm_run.id)] = llm_run
+        tracer._aggregate_into_parent(llm_run)
+
+        content = tracer._agent_content[agent_run.id]
+        self.assertIn("tool_definitions", content)
+        self.assertIn("get_weather", content["tool_definitions"])

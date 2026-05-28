@@ -64,6 +64,11 @@ try:
 except ImportError:
     from opentelemetry.util.genai.types import ToolCall  # type: ignore[no-redef,attr-defined]  # 0.3b0
 
+try:
+    from opentelemetry.util.genai.types import ToolCallResponse  # type: ignore[attr-defined]
+except ImportError:  # pragma: no cover - older util-genai versions
+    ToolCallResponse = None  # type: ignore[assignment,misc]
+
 from opentelemetry.util.types import AttributeValue
 from wrapt import ObjectProxy
 
@@ -1177,6 +1182,50 @@ def _langchain_tool_calls(message: Any) -> list[ToolCall]:
     return calls
 
 
+def _langchain_tool_responses(message: Any) -> list[Any]:
+    """Extract a ``ToolCallResponse`` part from a LangChain ``ToolMessage``.
+
+    Returns a list (possibly empty) of ``ToolCallResponse`` parts. Falls back
+    to an empty list when the optional dataclass isn't available in the
+    installed ``opentelemetry-util-genai`` version.
+    """
+    if ToolCallResponse is None:
+        return []
+    tool_call_id: Any = None
+    response: Any = None
+    if isinstance(message, BaseMessage):
+        msg_type = str(getattr(message, "type", ""))
+        if msg_type != "tool":
+            return []
+        tool_call_id = getattr(message, "tool_call_id", None)
+        response = getattr(message, "content", None)
+    elif hasattr(message, "get"):
+        # Serialized form (dict). Could be {"type": "tool", ...} or lc envelope.
+        msg_type = message.get("type")
+        kwargs = message.get("kwargs") if hasattr(message.get("kwargs"), "get") else None
+        id_field = message.get("id")
+        is_tool = msg_type == "tool"
+        if not is_tool and isinstance(id_field, list) and id_field and "Tool" in str(id_field[-1]):
+            is_tool = True
+        if not is_tool and message.get("role") == "tool":
+            is_tool = True
+        if not is_tool:
+            return []
+        tool_call_id = message.get("tool_call_id")
+        if tool_call_id is None and kwargs is not None:
+            tool_call_id = kwargs.get("tool_call_id")
+        response = message.get("content")
+        if response is None and kwargs is not None:
+            response = kwargs.get("content")
+    else:
+        return []
+    if response is None and tool_call_id is None:
+        return []
+    if response is not None and not isinstance(response, str):
+        response = safe_json_dumps(response)
+    return [ToolCallResponse(response=response or "", id=tool_call_id)]
+
+
 def _extract_system_instruction(inputs: Mapping[str, Any] | None) -> list[Text]:
     """Extract system instruction / prompts as structured Text parts."""
     if not inputs or not isinstance(inputs, Mapping):
@@ -1204,11 +1253,17 @@ def _extract_structured_input_messages(
                 first_messages = [first_messages]
             results: list[InputMessage] = []
             for msg in first_messages:
-                role = _langchain_role(msg)
+                role = _normalize_role(_langchain_role(msg))
                 parts: list[Any] = []
-                content = _langchain_content(msg)
-                if content:
-                    parts.append(Text(content=content))
+                tool_responses = _langchain_tool_responses(msg)
+                if tool_responses:
+                    # tool-role messages carry their result as a ToolCallResponse
+                    # part rather than as plain Text content.
+                    parts.extend(tool_responses)
+                else:
+                    content = _langchain_content(msg)
+                    if content:
+                        parts.append(Text(content=content))
                 parts.extend(_langchain_tool_calls(msg))
                 if parts:
                     results.append(InputMessage(role=role, parts=parts))
@@ -1252,7 +1307,7 @@ def _extract_structured_output_messages(
             if text := generation.get("text"):
                 results.append(OutputMessage(role="assistant", parts=[Text(content=str(text))], finish_reason="stop"))
             continue
-        role = _langchain_role(message_data)
+        role = _normalize_role(_langchain_role(message_data))
         parts: list[Any] = []
         content = _langchain_content(message_data)
         if content:
@@ -1298,6 +1353,11 @@ def _extract_agent_input_messages(
         messages = messages[0]
     results: list[InputMessage] = []
     for msg in messages:
+        # LangChain accepts a ``(role, content)`` 2-tuple shorthand for
+        # messages (e.g. ``[("human", "hi")]``); normalise it to a dict so
+        # the role/content extractors see a familiar shape.
+        if isinstance(msg, tuple) and len(msg) == 2:
+            msg = {"role": msg[0], "content": msg[1]}
         role = _normalize_role(_langchain_role(msg))
         parts: list[Any] = []
         content = _langchain_content(msg)
@@ -1338,6 +1398,81 @@ def _extract_agent_output_messages(
                 results.append(OutputMessage(role=role, parts=parts, finish_reason="stop"))
                 break
     return results
+
+
+# ---- Agent input-history builders (issue #172) -------------------------------
+
+
+def _seed_initial_messages(inputs: Mapping[str, Any] | None) -> list[InputMessage]:
+    """Return the initial system/user messages from an agent's top-level inputs.
+
+    Used to seed ``gen_ai.input.messages`` on the wrapper invoke_agent span
+    with the user prompt(s) before any LLM/tool turns are appended.
+    """
+    seeded = _extract_agent_input_messages(inputs)
+    if seeded:
+        return seeded
+    structured = _extract_structured_input_messages(inputs)
+    return structured or []
+
+
+def _extract_tool_call_id(tool_run: Run) -> str | None:
+    """Best-effort lookup of ``tool_call_id`` for a LangChain tool run."""
+    sources: list[Any] = []
+    if tool_run.inputs is not None:
+        sources.append(tool_run.inputs)
+    if tool_run.extra is not None:
+        sources.append(tool_run.extra)
+        if isinstance(tool_run.extra, Mapping):
+            meta = tool_run.extra.get("metadata")
+            if meta is not None:
+                sources.append(meta)
+    for src in sources:
+        if isinstance(src, Mapping):
+            for key in ("tool_call_id", "id"):
+                if val := src.get(key):
+                    return str(val)
+    return None
+
+
+def _tool_run_to_input_message(tool_run: Run) -> InputMessage | None:
+    """Build a ``tool``-role InputMessage with a ``ToolCallResponse`` part."""
+    if ToolCallResponse is None:
+        return None
+    outputs = tool_run.outputs
+    output: Any = None
+    if isinstance(outputs, Mapping):
+        sentinel = object()
+        output = outputs.get("output", sentinel)
+        if output is sentinel:
+            output = outputs
+    elif outputs is not None:
+        output = outputs
+    if output is None:
+        return None
+    # If the tool returned a LangChain ``ToolMessage`` (or any BaseMessage),
+    # use its ``content`` (and prefer its ``tool_call_id`` when present).
+    # Otherwise ``str(ToolMessage)`` yields an unhelpful repr like
+    # ``content='...' name='...' tool_call_id='...'``.
+    tool_call_id = _extract_tool_call_id(tool_run)
+    if isinstance(output, BaseMessage):
+        if not tool_call_id:
+            tool_call_id = getattr(output, "tool_call_id", None)
+        msg_content = getattr(output, "content", None)
+        output = msg_content if msg_content is not None else ""
+    if not isinstance(output, str):
+        output = safe_json_dumps(output)
+    return InputMessage(
+        role="tool",
+        parts=[ToolCallResponse(response=output, id=tool_call_id)],
+    )
+
+
+def _output_message_to_input(out_msg: OutputMessage) -> InputMessage:
+    """Convert an ``OutputMessage`` (assistant) to an ``InputMessage`` so it
+    can be appended to ``gen_ai.input.messages`` as a history turn."""
+    return InputMessage(role=out_msg.role, parts=list(out_msg.parts))
+
 
 
 @stop_on_exception
