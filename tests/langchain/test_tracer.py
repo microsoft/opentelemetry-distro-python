@@ -18,8 +18,11 @@ from microsoft.opentelemetry._genai._langchain._tracer import (  # noqa: E402  #
 )
 from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # pylint: disable=wrong-import-position
     EXECUTE_TOOL_OPERATION_NAME,
+    GEN_AI_INPUT_MESSAGES_KEY,
+    GEN_AI_OUTPUT_MESSAGES_KEY,
     GEN_AI_PROVIDER_NAME_KEY,
     GEN_AI_REQUEST_CHOICE_COUNT_KEY,
+    GEN_AI_TOOL_DEFINITIONS_KEY,
     INVOKE_AGENT_OPERATION_NAME,
 )
 
@@ -902,3 +905,185 @@ class TestAggregateToolDefinitions(TestCase):
         content = tracer._agent_content[agent_run.id]
         self.assertIn("tool_definitions", content)
         self.assertIn("get_weather", content["tool_definitions"])
+
+
+class TestFinalizeAgentSpanAttributes(TestCase):
+    """End-to-end finalize: assert the wrapper invoke_agent span actually
+    receives ``gen_ai.input.messages``, ``gen_ai.output.messages``, and
+    ``gen_ai.tool.definitions`` attributes with the correct shape."""
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer._should_capture_content_on_spans")
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_finalize_writes_input_output_and_tool_definitions(self, mock_ctx, mock_capture):
+        import json
+
+        mock_ctx.get_value.return_value = None
+        mock_capture.return_value = True
+
+        tracer, otel_tracer, _ = _make_tracer()
+        wrapper = MagicMock()
+        inner = MagicMock()
+        otel_tracer.start_span.side_effect = [wrapper, inner]
+
+        agent_run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            inputs={"messages": [("human", "Weather in Paris?")]},
+            outputs={"messages": []},
+        )
+        tracer.run_map[str(agent_run.id)] = agent_run
+        tracer._start_trace(agent_run)
+
+        # LLM child #1: assistant emits a tool_call.
+        tool_defs = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "description": "Get weather",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {"location": {"type": "string"}},
+                    },
+                },
+            }
+        ]
+        llm_one = _make_run(
+            run_type="chat_model",
+            name="gpt-4o-mini",
+            parent_run_id=agent_run.id,
+            inputs={"prompts": ["Human: Weather in Paris?"]},
+            extra={"invocation_params": {"model": "gpt-4o-mini", "tools": tool_defs}},
+            outputs={
+                "generations": [
+                    [
+                        {
+                            "text": "",
+                            "message": {
+                                "id": ["langchain", "schema", "messages", "AIMessage"],
+                                "kwargs": {
+                                    "content": "",
+                                    "tool_calls": [
+                                        {
+                                            "name": "get_weather",
+                                            "args": {"location": "Paris"},
+                                            "id": "tc1",
+                                        }
+                                    ],
+                                    "type": "ai",
+                                },
+                            },
+                        }
+                    ]
+                ]
+            },
+        )
+        tracer.run_map[str(llm_one.id)] = llm_one
+        tracer._aggregate_into_parent(llm_one)
+
+        # Tool child returns weather.
+        tool_run = _make_run(
+            run_type="tool",
+            name="get_weather",
+            parent_run_id=agent_run.id,
+            inputs={"tool_call_id": "tc1", "location": "Paris"},
+            outputs={"output": "rainy"},
+        )
+        tracer.run_map[str(tool_run.id)] = tool_run
+        tracer._aggregate_into_parent(tool_run)
+
+        # LLM child #2: final assistant text.
+        llm_two = _make_run(
+            run_type="chat_model",
+            name="gpt-4o-mini",
+            parent_run_id=agent_run.id,
+            inputs={"prompts": ["..."]},
+            outputs={
+                "generations": [
+                    [
+                        {
+                            "text": "It's rainy in Paris.",
+                            "message": {
+                                "id": ["langchain", "schema", "messages", "AIMessage"],
+                                "kwargs": {
+                                    "content": "It's rainy in Paris.",
+                                    "type": "ai",
+                                },
+                            },
+                        }
+                    ]
+                ]
+            },
+        )
+        tracer.run_map[str(llm_two.id)] = llm_two
+        tracer._aggregate_into_parent(llm_two)
+
+        tracer._finalize_agent_span(wrapper, agent_run)
+
+        # Collect every (key, value) pair set on the wrapper span.
+        attrs: dict[str, object] = {}
+        for call in wrapper.set_attribute.call_args_list:
+            attrs[call.args[0]] = call.args[1]
+
+        self.assertIn(GEN_AI_INPUT_MESSAGES_KEY, attrs)
+        self.assertIn(GEN_AI_OUTPUT_MESSAGES_KEY, attrs)
+        self.assertIn(GEN_AI_TOOL_DEFINITIONS_KEY, attrs)
+
+        input_msgs = json.loads(attrs[GEN_AI_INPUT_MESSAGES_KEY])
+        roles = [m["role"] for m in input_msgs]
+        self.assertEqual(roles, ["user", "assistant", "tool"])
+        # User part is text.
+        self.assertEqual(input_msgs[0]["parts"][0]["type"], "text")
+        self.assertIn("Paris", input_msgs[0]["parts"][0]["content"])
+        # Assistant part is a tool_call with matching id.
+        self.assertEqual(input_msgs[1]["parts"][0]["type"], "tool_call")
+        self.assertEqual(input_msgs[1]["parts"][0]["id"], "tc1")
+        # Tool part is a tool_call_response with matching id and the
+        # unwrapped tool output (not a stringified ToolMessage repr).
+        self.assertEqual(input_msgs[2]["parts"][0]["type"], "tool_call_response")
+        self.assertEqual(input_msgs[2]["parts"][0]["id"], "tc1")
+        self.assertEqual(input_msgs[2]["parts"][0]["response"], "rainy")
+
+        output_msgs = json.loads(attrs[GEN_AI_OUTPUT_MESSAGES_KEY])
+        self.assertEqual(len(output_msgs), 1)
+        self.assertEqual(output_msgs[0]["role"], "assistant")
+        self.assertEqual(output_msgs[0]["parts"][0]["content"], "It's rainy in Paris.")
+
+        # Tool definitions preserved on the wrapper span.
+        tool_defs_attr = attrs[GEN_AI_TOOL_DEFINITIONS_KEY]
+        self.assertIn("get_weather", str(tool_defs_attr))
+
+
+class TestExtractAgentInputMessagesToolRole(TestCase):
+    """Pre-populated ReAct histories that include a tool-role message must
+    surface as ``tool_call_response`` parts -- not plain text."""
+
+    def test_tool_role_message_becomes_tool_call_response(self):
+        from microsoft.opentelemetry._genai._langchain._utils import (
+            _extract_agent_input_messages,
+        )
+
+        inputs = {
+            "messages": [
+                {"role": "user", "content": "Weather in Paris?"},
+                {
+                    "id": ["langchain", "schema", "messages", "AIMessage"],
+                    "kwargs": {
+                        "content": "",
+                        "tool_calls": [
+                            {"name": "get_weather", "args": {"location": "Paris"}, "id": "tc1"}
+                        ],
+                        "type": "ai",
+                    },
+                },
+                {"role": "tool", "content": "rainy", "tool_call_id": "tc1"},
+            ]
+        }
+        msgs = _extract_agent_input_messages(inputs)
+        roles = [m.role for m in msgs]
+        self.assertEqual(roles, ["user", "assistant", "tool"])
+        tool_part = msgs[2].parts[0]
+        self.assertEqual(tool_part.type, "tool_call_response")
+        self.assertEqual(tool_part.id, "tc1")
+        self.assertEqual(tool_part.response, "rainy")
+

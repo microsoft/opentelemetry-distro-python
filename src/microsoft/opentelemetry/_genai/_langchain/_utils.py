@@ -1360,10 +1360,16 @@ def _extract_agent_input_messages(
             msg = {"role": msg[0], "content": msg[1]}
         role = _normalize_role(_langchain_role(msg))
         parts: list[Any] = []
-        content = _langchain_content(msg)
-        if content:
-            parts.append(Text(content=content))
-        parts.extend(_langchain_tool_calls(msg))
+        # Tool-role messages in a pre-populated ReAct history must surface
+        # as ``tool_call_response`` parts, not plain text.
+        tool_responses = _langchain_tool_responses(msg)
+        if tool_responses:
+            parts.extend(tool_responses)
+        else:
+            content = _langchain_content(msg)
+            if content:
+                parts.append(Text(content=content))
+            parts.extend(_langchain_tool_calls(msg))
         if parts:
             results.append(InputMessage(role=role, parts=parts))
     return results
