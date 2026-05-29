@@ -111,9 +111,27 @@ jobs:
                   body: [
                     `@${author} we have not received the requested information within 14 days, so we are closing this issue for now.`,
                     "",
-                    "If you still need help, please comment with the requested details and we can reopen it."
+                    "If you still need help, please comment with the requested details and we can reopen it.",
+                    "",
+                    "<!-- needs-author-feedback:closed -->"
                   ].join("\n")
                 });
+
+                // Remove the label before closing so that if a maintainer later
+                // reopens the issue, this workflow does not immediately re-close
+                // it based on the stale `applied` marker.  When the label is
+                // re-applied to gather more info, a fresh `applied` marker
+                // restarts the 14-day clock.
+                try {
+                  await github.rest.issues.removeLabel({
+                    owner,
+                    repo,
+                    issue_number,
+                    name: "needs-author-feedback"
+                  });
+                } catch (error) {
+                  if (error.status !== 404) throw error;
+                }
 
                 await github.rest.issues.update({
                   owner,
