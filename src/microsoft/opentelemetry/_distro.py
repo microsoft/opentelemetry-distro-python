@@ -63,6 +63,10 @@ from microsoft.opentelemetry._constants import (
     _SPECTRA_PROTOCOL_ENV,
     MICROSOFT_OPENTELEMETRY_VERSION_ENV,
 )
+from microsoft.opentelemetry._version import VERSION
+
+os.environ.setdefault(MICROSOFT_OPENTELEMETRY_VERSION_ENV, VERSION)
+
 from microsoft.opentelemetry._genai.main_agent import (
     GenAIMainAgentLogRecordProcessor,
     GenAIMainAgentSpanProcessor,
@@ -85,9 +89,6 @@ from microsoft.opentelemetry._utils import (
     _append_otlp_components,
     _disable_openai_v2_instrumentation,
 )
-from microsoft.opentelemetry._version import VERSION
-
-os.environ.setdefault(MICROSOFT_OPENTELEMETRY_VERSION_ENV, VERSION)
 
 _logger = getLogger(__name__)
 

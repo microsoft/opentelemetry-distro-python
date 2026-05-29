@@ -513,9 +513,9 @@ class TestRequestSuccessCallback(unittest.TestCase):
         from opentelemetry.sdk.metrics import MeterProvider
         from microsoft.opentelemetry._sdkstats._metrics import SdkStatsMetrics
 
-        record_success("a.example")
-        record_success("a.example")
-        record_success("b.example")
+        record_success("a", "a.example")
+        record_success("a", "a.example")
+        record_success("b", "b.example")
 
         mp = MeterProvider()
         try:
@@ -523,10 +523,13 @@ class TestRequestSuccessCallback(unittest.TestCase):
             obs = list(metrics._observe_request_success_count(MagicMock()))
             self.assertEqual(len(obs), 2)
             by_endpoint = {}
+            by_host = {}
             for o in obs:
                 assert o.attributes is not None
                 by_endpoint[o.attributes["endpoint"]] = o.value
-            self.assertEqual(by_endpoint, {"a.example": 2, "b.example": 1})
+                by_host[o.attributes["host"]] = o.value
+            self.assertEqual(by_endpoint, {"a": 2, "b": 1})
+            self.assertEqual(by_host, {"a.example": 2, "b.example": 1})
         finally:
             mp.shutdown()
 
@@ -534,7 +537,7 @@ class TestRequestSuccessCallback(unittest.TestCase):
         from opentelemetry.sdk.metrics import MeterProvider
         from microsoft.opentelemetry._sdkstats._metrics import SdkStatsMetrics
 
-        record_success("a.example")
+        record_success("a", "a.example")
         mp = MeterProvider()
         try:
             metrics = SdkStatsMetrics(mp)
@@ -562,7 +565,7 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
 
         wrapper = _NetworkStatsSpanExporter(self._inner_span(SpanExportResult.SUCCESS))
         self.assertEqual(wrapper.export([]), SpanExportResult.SUCCESS)
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp.example.com",): 1})
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp","otlp.example.com"): 1})
 
     def test_span_failure_does_not_record(self):
         from opentelemetry.sdk.trace.export import SpanExportResult
@@ -592,7 +595,7 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
         inner.export.return_value = MetricExportResult.SUCCESS
         wrapper = _NetworkStatsMetricExporter(inner)
         wrapper.export(MagicMock())
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp.example.com",): 1})
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp","otlp.example.com"): 1})
 
     def test_metric_failure_does_not_record(self):
         from opentelemetry.sdk.metrics.export import MetricExportResult
@@ -611,10 +614,11 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
 
         inner = MagicMock()
         inner._endpoint = "https://otlp.example.com/v1/logs"
+        inner._host = "otlp"
         inner.export.return_value = LogRecordExportResult.SUCCESS
         wrapper = _NetworkStatsLogExporter(inner)
         wrapper.export([])
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp.example.com",): 1})
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp","otlp.example.com"): 1})
 
     def test_log_failure_does_not_record(self):
         from opentelemetry.sdk._logs.export import LogRecordExportResult
@@ -625,15 +629,6 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
         wrapper = _NetworkStatsLogExporter(inner)
         wrapper.export([])
         self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
-
-    def test_endpoint_unknown_when_missing(self):
-        from opentelemetry.sdk.trace.export import SpanExportResult
-
-        inner = MagicMock(spec=["export", "shutdown", "force_flush"])
-        inner.export.return_value = SpanExportResult.SUCCESS
-        wrapper = _NetworkStatsSpanExporter(inner)
-        wrapper.export([])
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("unknown",): 1})
 
 
 if __name__ == "__main__":

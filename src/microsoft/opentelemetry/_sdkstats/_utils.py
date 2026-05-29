@@ -65,8 +65,8 @@ def _bump(metric: str, key: Tuple[str, ...], value: float = 1.0) -> None:
         bucket[key] = bucket.get(key, 0) + value
 
 
-def record_success(endpoint: str) -> None:
-    _bump(REQUEST_SUCCESS_NAME, (endpoint,))
+def record_success(endpoint: str, host: str) -> None:
+    _bump(REQUEST_SUCCESS_NAME, (endpoint, host))
 
 
 # Returns the counts accumulated since the last call, and resets the counters to zero.

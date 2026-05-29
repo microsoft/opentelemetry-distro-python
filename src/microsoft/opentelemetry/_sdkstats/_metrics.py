@@ -130,5 +130,6 @@ class SdkStatsMetrics:
         for key, value in drain(REQUEST_SUCCESS_NAME).items():
             attrs = dict(self._common_attributes)
             attrs["endpoint"] = key[0]
+            attrs["host"] = key[1]
             observations.append(Observation(value, attrs))
         return observations

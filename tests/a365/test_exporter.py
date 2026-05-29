@@ -337,6 +337,7 @@ def _make_response(status_code, headers=None, text=""):
 class TestNetworkStatsbeatHook(unittest.TestCase):
     URL = "https://agent365.svc.cloud.microsoft/api/v1/spans"
     HOST = "agent365.svc.cloud.microsoft"
+    ENDPOINT = "a365"
 
     def setUp(self):
         from microsoft.opentelemetry._sdkstats._utils import reset_all
@@ -357,7 +358,7 @@ class TestNetworkStatsbeatHook(unittest.TestCase):
         exporter._session.post.return_value = _make_response(200)
         ok = exporter._post_with_retries(self.URL, "{}", {})
         self.assertTrue(ok)
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {(self.HOST,): 1})
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {(self.ENDPOINT, self.HOST,): 1})
         exporter.shutdown()
 
     @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.is_sdkstats_enabled", return_value=True)

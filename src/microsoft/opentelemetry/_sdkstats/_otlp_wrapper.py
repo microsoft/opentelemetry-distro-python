@@ -21,6 +21,7 @@ from opentelemetry.sdk._logs.export import LogRecordExporter, LogRecordExportRes
 from opentelemetry.sdk.metrics.export import MetricExporter, MetricExportResult, MetricsData
 from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 
+from microsoft.opentelemetry._sdkstats._constants import ENDPOINT_OTLP
 from microsoft.opentelemetry._sdkstats._utils import record_success
 
 
@@ -39,12 +40,12 @@ class _NetworkStatsSpanExporter(SpanExporter):
 
     def __init__(self, inner: SpanExporter) -> None:
         self._inner = inner
-        self._endpoint = _endpoint_host(inner)
+        self._host = _endpoint_host(inner)
 
     def export(self, spans: Any) -> SpanExportResult:  # type: ignore[override]
         result = self._inner.export(spans)
         if result == SpanExportResult.SUCCESS:
-            record_success(self._endpoint)
+            record_success(ENDPOINT_OTLP, self._host)
         return result
 
     def shutdown(self) -> None:
@@ -58,19 +59,12 @@ class _NetworkStatsMetricExporter(MetricExporter):
     """Metric exporter decorator that records ``request_success_count``."""
 
     def __init__(self, inner: MetricExporter) -> None:
-        # Don't call super().__init__() — preserve inner's preferences.
-        # pylint: disable=super-init-not-called
+        super().__init__(
+            preferred_temporality=getattr(inner, "_preferred_temporality", None),
+            preferred_aggregation=getattr(inner, "_preferred_aggregation", None),
+        )
         self._inner = inner
-        self._endpoint = _endpoint_host(inner)
-
-    @property
-    def _preferred_temporality(self):  # type: ignore[no-untyped-def]
-        return getattr(self._inner, "_preferred_temporality", None)
-
-    @property
-    def _preferred_aggregation(self):  # type: ignore[no-untyped-def]
-        return getattr(self._inner, "_preferred_aggregation", None)
-
+        self._host = _endpoint_host(inner)
     def export(  # type: ignore[override]
         self,
         metrics_data: MetricsData,
@@ -79,7 +73,7 @@ class _NetworkStatsMetricExporter(MetricExporter):
     ) -> MetricExportResult:
         result = self._inner.export(metrics_data, timeout_millis, **kwargs)
         if result == MetricExportResult.SUCCESS:
-            record_success(self._endpoint)
+            record_success(ENDPOINT_OTLP, self._host)
         return result
 
     def force_flush(self, timeout_millis: float = 10_000) -> bool:  # type: ignore[override]
@@ -94,12 +88,12 @@ class _NetworkStatsLogExporter(LogRecordExporter):
 
     def __init__(self, inner: LogRecordExporter) -> None:
         self._inner = inner
-        self._endpoint = _endpoint_host(inner)
+        self._host = _endpoint_host(inner)
 
     def export(self, batch: Any) -> LogRecordExportResult:  # type: ignore[override]
         result = self._inner.export(batch)
         if result == LogRecordExportResult.SUCCESS:
-            record_success(self._endpoint)
+            record_success(ENDPOINT_OTLP, self._host)
         return result
 
     def shutdown(self) -> None:
