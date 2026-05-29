@@ -69,6 +69,23 @@ jobs:
 
               const latestAppliedComment = getLatestAppliedMarker(comments);
               if (!latestAppliedComment) {
+                // Backfill an applied marker for issues labeled before this
+                // workflow existed (or where the marker comment was deleted).
+                // Without this, such issues would stay labeled forever because
+                // the reminder/close logic below keys off the marker timestamp.
+                // The backfilled comment uses today's date as the start of the
+                // 14-day clock and intentionally does not @-mention the author.
+                await github.rest.issues.createComment({
+                  owner,
+                  repo,
+                  issue_number,
+                  body: [
+                    `Backfilling \`needs-author-feedback\` follow-up tracker on ${now.toISOString().slice(0, 10)}.`,
+                    "The reminder/auto-close clock starts from this comment.",
+                    "",
+                    "<!-- needs-author-feedback:applied -->"
+                  ].join("\n")
+                });
                 continue;
               }
 
