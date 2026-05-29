@@ -1,6 +1,6 @@
 # Release History
 
-## 1.3.2 (2026-05-29)
+# 1.3.2 (2026-05-29)
 
 ### Bugs Fixed
 - Add an explicit `get_span_context` override on `EnrichedReadableSpan`
