@@ -1,5 +1,15 @@
 # Release History
 
+## 1.3.2 (2026-05-29)
+
+### Bugs Fixed
+- Add an explicit `get_span_context` override on `EnrichedReadableSpan`
+  ([#180](https://github.com/microsoft/opentelemetry-distro-python/pull/180))
+
+### Other Changes
+- Add GitHub Actions workflow for the `needs-author-feedback` label
+  ([#178](https://github.com/microsoft/opentelemetry-distro-python/pull/178))
+
 # 1.3.1 (2026-05-28)
 
 ### Features Added
