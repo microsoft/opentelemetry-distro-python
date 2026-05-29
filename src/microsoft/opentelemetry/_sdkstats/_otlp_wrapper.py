@@ -65,6 +65,7 @@ class _NetworkStatsMetricExporter(MetricExporter):
         )
         self._inner = inner
         self._host = _endpoint_host(inner)
+
     def export(  # type: ignore[override]
         self,
         metrics_data: MetricsData,
