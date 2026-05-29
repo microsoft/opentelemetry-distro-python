@@ -77,7 +77,7 @@ class SdkStatsManager:
     # Public initialisation
     # ------------------------------------------------------------------
 
-    def initialize(self) -> bool:
+    def initialize(self, enable_azure_monitor: bool = False) -> bool:
         """Set up SDKStats export via Azure Monitor statsbeat endpoint.
 
         Uses ``AzureMonitorMetricExporter`` with ``is_sdkstats=True``
@@ -91,9 +91,13 @@ class SdkStatsManager:
         with self._lock:
             if self._initialized:
                 return True
-            return self._do_initialize()
+            return self._do_initialize(enable_azure_monitor)
 
-    def initialize_standalone(self, metric_reader: MetricReader) -> bool:
+    def initialize_standalone(
+        self,
+        metric_reader: MetricReader,
+        enable_azure_monitor: bool = False,
+    ) -> bool:
         """Set up SDKStats with a caller-supplied metric reader.
 
         Intended for tests or future transports.
@@ -104,7 +108,7 @@ class SdkStatsManager:
         with self._lock:
             if self._initialized:
                 return True
-            return self._do_initialize_with_reader(metric_reader)
+            return self._do_initialize_with_reader(metric_reader, enable_azure_monitor)
 
     # ------------------------------------------------------------------
     # Shutdown
@@ -133,7 +137,7 @@ class SdkStatsManager:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _do_initialize(self) -> bool:
+    def _do_initialize(self, enable_azure_monitor: bool = False) -> bool:
         """Create an AzureMonitorMetricExporter for statsbeat."""
         try:
             from azure.monitor.opentelemetry.exporter.statsbeat._utils import (
@@ -162,7 +166,7 @@ class SdkStatsManager:
                 exporter,
                 export_interval_millis=export_interval_secs * 1000,
             )
-            return self._do_initialize_with_reader(reader)
+            return self._do_initialize_with_reader(reader, enable_azure_monitor)
 
         except ImportError:
             _logger.debug("azure-monitor-opentelemetry-exporter is not available; SDKStats will not be exported.")
@@ -171,13 +175,17 @@ class SdkStatsManager:
             _logger.warning("Failed to create SDKStats Azure Monitor exporter.", exc_info=True)
             return False
 
-    def _do_initialize_with_reader(self, reader: MetricReader) -> bool:
+    def _do_initialize_with_reader(
+        self,
+        reader: MetricReader,
+        enable_azure_monitor: bool = False,
+    ) -> bool:
         try:
             self._meter_provider = MeterProvider(
                 metric_readers=[reader],
                 resource=Resource.get_empty(),
             )
-            self._metrics = SdkStatsMetrics(self._meter_provider)
+            self._metrics = SdkStatsMetrics(self._meter_provider, enable_azure_monitor)
             self._initialized = True
             _logger.debug("SDKStats initialised.")
             return True

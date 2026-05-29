@@ -15,7 +15,8 @@ Azure Monitor consumers see no behavioural change.
 import os
 import threading
 from enum import IntFlag
-from microsoft.opentelemetry._utils import (
+
+from microsoft.opentelemetry._sdkstats._utils import (
     update_global_state_feature_bits,
     update_global_state_instrumentation_bits,
 )
@@ -155,8 +156,6 @@ def set_sdkstats_feature_bits(feature_bits: int) -> None:
 
 def set_sdkstats_instrumentation_bits(instrumentation_bits: int) -> None:
     update_global_state_instrumentation_bits(instrumentation_bits)
-
-
 
 
 # ---- Instrumentation flags ----

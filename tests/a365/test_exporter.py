@@ -321,5 +321,68 @@ class TestAgent365ExporterFiltering(unittest.TestCase):
         exporter.shutdown()
 
 
+# ---------------------------------------------------------------------------
+# Network statsbeat — request_success_count recorded inside _post_with_retries.
+# ---------------------------------------------------------------------------
+
+
+def _make_response(status_code, headers=None, text=""):
+    resp = MagicMock()
+    resp.status_code = status_code
+    resp.headers = headers or {}
+    resp.text = text
+    return resp
+
+
+class TestNetworkStatsbeatHook(unittest.TestCase):
+    URL = "https://agent365.svc.cloud.microsoft/api/v1/spans"
+    HOST = "agent365.svc.cloud.microsoft"
+    ENDPOINT = "a365"
+
+    def setUp(self):
+        from microsoft.opentelemetry._sdkstats._utils import reset_all
+
+        reset_all()
+
+    def tearDown(self):
+        from microsoft.opentelemetry._sdkstats._utils import reset_all
+
+        reset_all()
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.is_sdkstats_enabled", return_value=True)
+    def test_success_records_success(self, _enabled):
+        from microsoft.opentelemetry._sdkstats._utils import REQUEST_SUCCESS_NAME, drain
+
+        exporter = _Agent365Exporter(token_resolver=lambda a, t: "token")
+        exporter._session = MagicMock()
+        exporter._session.post.return_value = _make_response(200)
+        ok = exporter._post_with_retries(self.URL, "{}", {})
+        self.assertTrue(ok)
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {(self.ENDPOINT, self.HOST,): 1})
+        exporter.shutdown()
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.is_sdkstats_enabled", return_value=True)
+    def test_non_2xx_does_not_record(self, _enabled):
+        from microsoft.opentelemetry._sdkstats._utils import REQUEST_SUCCESS_NAME, drain
+
+        exporter = _Agent365Exporter(token_resolver=lambda a, t: "token")
+        exporter._session = MagicMock()
+        exporter._session.post.return_value = _make_response(404)
+        exporter._post_with_retries(self.URL, "{}", {})
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
+        exporter.shutdown()
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.is_sdkstats_enabled", return_value=False)
+    def test_disabled_does_not_record(self, _enabled):
+        from microsoft.opentelemetry._sdkstats._utils import REQUEST_SUCCESS_NAME, drain
+
+        exporter = _Agent365Exporter(token_resolver=lambda a, t: "token")
+        exporter._session = MagicMock()
+        exporter._session.post.return_value = _make_response(200)
+        exporter._post_with_retries(self.URL, "{}", {})
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
+        exporter.shutdown()
+
+
 if __name__ == "__main__":
     unittest.main()

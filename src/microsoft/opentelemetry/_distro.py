@@ -63,6 +63,11 @@ from microsoft.opentelemetry._constants import (
     _SPECTRA_PROTOCOL_ENV,
     MICROSOFT_OPENTELEMETRY_VERSION_ENV,
 )
+from microsoft.opentelemetry._version import VERSION
+
+os.environ.setdefault(MICROSOFT_OPENTELEMETRY_VERSION_ENV, VERSION)
+
+# pylint: disable=wrong-import-position
 from microsoft.opentelemetry._genai.main_agent import (
     GenAIMainAgentLogRecordProcessor,
     GenAIMainAgentSpanProcessor,
@@ -85,9 +90,6 @@ from microsoft.opentelemetry._utils import (
     _append_otlp_components,
     _disable_openai_v2_instrumentation,
 )
-from microsoft.opentelemetry._version import VERSION
-
-os.environ.setdefault(MICROSOFT_OPENTELEMETRY_VERSION_ENV, VERSION)
 
 _logger = getLogger(__name__)
 
@@ -371,15 +373,15 @@ def _initialize_sdkstats(enable_azure_monitor: bool) -> None:
         # The exporter package runs its own statsbeat.  Bridge our
         # distro-level feature bits (A365_EXPORT, OTLP_EXPORT, etc.)
         # and instrumentation bits into the exporter's state so they
-        # appear in the same observation.  Our bit values (128+) do
-        # not collide with the exporter's (1–64).
+        # appear in its observations.  Our bit values (128+) do not
+        # collide with the exporter's (1–64).
+
         _bridge_sdkstats_to_azure_monitor()
-        return
 
     from microsoft.opentelemetry._sdkstats._manager import SdkStatsManager
 
     manager = SdkStatsManager()
-    manager.initialize()
+    manager.initialize(enable_azure_monitor)
 
 
 def _bridge_sdkstats_to_azure_monitor() -> None:

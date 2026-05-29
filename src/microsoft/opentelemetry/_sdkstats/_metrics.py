@@ -22,6 +22,10 @@ from microsoft.opentelemetry._sdkstats._state import (
     get_sdkstats_feature_flags,
     get_sdkstats_instrumentation_flags,
 )
+from microsoft.opentelemetry._sdkstats._utils import (
+    REQUEST_SUCCESS_NAME,
+    drain,
+)
 from microsoft.opentelemetry._version import VERSION
 
 
@@ -53,7 +57,7 @@ class SdkStatsMetrics:
     def __init__(
         self,
         meter_provider: MeterProvider,
-        *,
+        enable_azure_monitor: bool = False,
         distro_version: str = "",
     ) -> None:
         self._meter = meter_provider.get_meter("microsoft.opentelemetry.sdkstats")
@@ -69,20 +73,34 @@ class SdkStatsMetrics:
             "version": self._distro_version,
         }
 
-        # Feature gauge
-        self._meter.create_observable_gauge(
-            _FEATURE_METRIC_NAME,
-            callbacks=[self._observe_features],
-            unit="",
-            description="SDKStats metric tracking enabled features",
-        )
+        # Feature/instrumentation gauges are only registered when Azure
+        # Monitor is NOT enabled.  When it is, the distro's bridging
+        # logic ORs our feature/instrumentation bits into the exporter
+        # package's StatsbeatManager state, which emits those metrics
+        # on our behalf; we only need to register the network gauge here.
+        if not enable_azure_monitor:
+            # Feature gauge
+            self._meter.create_observable_gauge(
+                _FEATURE_METRIC_NAME,
+                callbacks=[self._observe_features],
+                unit="",
+                description="SDKStats metric tracking enabled features",
+            )
 
-        # Instrumentation gauge
+            # Instrumentation gauge
+            self._meter.create_observable_gauge(
+                _FEATURE_METRIC_NAME,
+                callbacks=[self._observe_instrumentations],
+                unit="",
+                description="SDKStats metric tracking enabled instrumentations",
+            )
+
+        # Network: request success count.
         self._meter.create_observable_gauge(
-            _FEATURE_METRIC_NAME,
-            callbacks=[self._observe_instrumentations],
-            unit="",
-            description="SDKStats metric tracking enabled instrumentations",
+            REQUEST_SUCCESS_NAME,
+            callbacks=[self._observe_request_success_count],
+            unit="count",
+            description="Number of successful HTTP exports per endpoint",
         )
 
     # ---- callbacks ----
@@ -105,4 +123,13 @@ class SdkStatsMetrics:
             attrs["feature"] = instr_bits
             attrs["type"] = _FeatureTypes.INSTRUMENTATION.value
             observations.append(Observation(1, attrs))
+        return observations
+
+    def _observe_request_success_count(self, options: CallbackOptions) -> Iterable[Observation]:
+        observations: List[Observation] = []
+        for key, value in drain(REQUEST_SUCCESS_NAME).items():
+            attrs = dict(self._common_attributes)
+            attrs["endpoint"] = key[0]
+            attrs["host"] = key[1]
+            observations.append(Observation(value, attrs))
         return observations
