@@ -115,6 +115,116 @@ class TestEnrichedReadableSpanNonRecordingSpan(unittest.TestCase):
         with self.assertRaises(AttributeError):
             _ = mock_span.context
 
+    def test_get_span_context_method_delegates_to_wrapped_span(self):
+        """EnrichedReadableSpan.get_span_context() must delegate to the wrapped span.
+
+        Regression test: ReadableSpan.get_span_context() returns self._context,
+        but EnrichedReadableSpan never sets _context. Without an explicit
+        override, calls to enriched.get_span_context() raise
+        AttributeError: 'EnrichedReadableSpan' object has no attribute '_context'.
+        The exporter (_map_span) calls get_span_context() on every span, so
+        this break manifested as "Export failed with exception" in production.
+        """
+        expected_ctx = SpanContext(
+            trace_id=0xDEAD,
+            span_id=0xBEEF,
+            is_remote=False,
+            trace_flags=TraceFlags(0),
+        )
+        mock_span = MagicMock(
+            spec_set=["get_span_context", "attributes", "name"],
+        )
+        mock_span.get_span_context.return_value = expected_ctx
+
+        enriched = EnrichedReadableSpan(mock_span, extra_attributes={})
+
+        # Must not raise AttributeError
+        result = enriched.get_span_context()
+        self.assertIs(result, expected_ctx)
+        mock_span.get_span_context.assert_called_once()
+
+    def test_no_underscore_context_attribute_set(self):
+        """EnrichedReadableSpan must not rely on a self._context attribute.
+
+        Guards against future refactors that might re-introduce dependence on
+        the base ReadableSpan._context attribute (which we deliberately never
+        set on the wrapper).
+        """
+        mock_span = MagicMock(spec_set=["get_span_context", "attributes", "name"])
+        mock_span.get_span_context.return_value = SpanContext(
+            trace_id=1, span_id=2, is_remote=False, trace_flags=TraceFlags(0)
+        )
+        enriched = EnrichedReadableSpan(mock_span, extra_attributes={})
+
+        self.assertFalse(
+            hasattr(enriched, "_context"),
+            "EnrichedReadableSpan should not have a _context attribute; "
+            "get_span_context() must delegate to the wrapped span.",
+        )
+
+    def test_exporter_map_span_accepts_enriched_span(self):
+        """_map_span must work when given an EnrichedReadableSpan.
+
+        End-to-end regression test for the production failure:
+        ``Export failed with exception: 'EnrichedReadableSpan' object has
+        no attribute '_context'``. Reproduces the call path the BSP uses:
+        EnrichingSpanProcessor wraps the span -> exporter._map_span calls
+        sp.get_span_context().
+        """
+        from microsoft.opentelemetry.a365.core.exporters.agent365_exporter import (
+            _Agent365Exporter,
+        )
+
+        inner = MagicMock(
+            spec_set=[
+                "get_span_context",
+                "name",
+                "attributes",
+                "parent",
+                "kind",
+                "start_time",
+                "end_time",
+                "status",
+                "events",
+                "links",
+                "instrumentation_scope",
+                "resource",
+            ],
+        )
+        inner.name = "wrapped"
+        inner.get_span_context.return_value = SpanContext(
+            trace_id=0xAAAA,
+            span_id=0xBBBB,
+            is_remote=False,
+            trace_flags=TraceFlags(0),
+        )
+        inner.attributes = {"gen_ai.operation.name": "invoke_agent"}
+        inner.parent = None
+        inner.kind = MagicMock()
+        inner.start_time = 1000000000
+        inner.end_time = 2000000000
+        inner.status = MagicMock()
+        inner.status.status_code = MagicMock()
+        inner.status.description = ""
+        inner.events = []
+        inner.links = []
+        inner.instrumentation_scope = MagicMock()
+        inner.instrumentation_scope.name = "test"
+        inner.instrumentation_scope.version = "1.0"
+        inner.resource = None
+
+        enriched = EnrichedReadableSpan(inner, extra_attributes={"extra": "v"})
+
+        exporter = _Agent365Exporter(token_resolver=lambda a, t: "token")
+        try:
+            # Must not raise AttributeError on missing _context
+            mapped = exporter._map_span(enriched)
+        finally:
+            exporter.shutdown()
+
+        self.assertEqual(mapped["traceId"], f"{0xAAAA:032x}")
+        self.assertEqual(mapped["spanId"], f"{0xBBBB:016x}")
+
     def test_to_json_with_non_recording_span_context(self):
         """to_json() must not crash when wrapped span uses get_span_context()."""
         mock_span = MagicMock(
