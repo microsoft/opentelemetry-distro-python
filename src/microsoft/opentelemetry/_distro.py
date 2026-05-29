@@ -67,6 +67,7 @@ from microsoft.opentelemetry._version import VERSION
 
 os.environ.setdefault(MICROSOFT_OPENTELEMETRY_VERSION_ENV, VERSION)
 
+# pylint: disable=wrong-import-position
 from microsoft.opentelemetry._genai.main_agent import (
     GenAIMainAgentLogRecordProcessor,
     GenAIMainAgentSpanProcessor,
