@@ -260,6 +260,12 @@ class TestSdkStatsBridgeSetters(unittest.TestCase):
 
         set_sdkstats_instrumentation_bits(int(SdkStatsInstrumentation.FASTAPI))
 
+        with _exporter_utils._INSTRUMENTATIONS_BIT_MASK_LOCK:
+            self.assertEqual(
+                _exporter_utils._INSTRUMENTATIONS_BIT_MASK,
+                3 | int(SdkStatsInstrumentation.FASTAPI),
+            )
+
 
 class TestBuildDefaultSdkStatsConfig(unittest.TestCase):
     """Tests for the default StatsbeatConfig builder."""

@@ -53,7 +53,6 @@ def _observe_request_success_count(options: CallbackOptions) -> Iterable[Observa
     common = _get_common_attributes()
 
     observations: List[Observation] = []
-   
     for key, value in drain(REQUEST_SUCCESS_NAME).items():
         attributes = dict(common)
         attributes["version"] = VERSION

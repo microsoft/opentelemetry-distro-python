@@ -23,14 +23,12 @@ from microsoft.opentelemetry._version import VERSION
 
 logger = logging.getLogger(__name__)
 
-
 # Region label used when SDKStats runs standalone (no customer exporter, so
 # no customer endpoint to derive a region from).  Upstream requires a
 # non-empty region to validate the config.
 _SDKSTATS_DEFAULT_REGION = "global"
 
-
-def _build_default_sdkstats_config():  # type: ignore[no-untyped-def]
+def _build_default_sdkstats_config() -> Optional[StatsbeatConfig]:
     """Return a default upstream ``StatsbeatConfig`` or ``None`` on failure."""
     try:
         from azure.monitor.opentelemetry.exporter._connection_string_parser import (
