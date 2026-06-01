@@ -855,15 +855,18 @@ class TestSpectraComponents(unittest.TestCase):
         mock_http_exporter = MagicMock()
 
         otel_kwargs = {}
-        with patch.dict(
-            "sys.modules",
-            {
-                "opentelemetry.exporter.otlp.proto.grpc": None,
-                "opentelemetry.exporter.otlp.proto.grpc.trace_exporter": None,
-            },
-        ), patch(
-            "opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter",
-            return_value=mock_http_exporter,
+        with (
+            patch.dict(
+                "sys.modules",
+                {
+                    "opentelemetry.exporter.otlp.proto.grpc": None,
+                    "opentelemetry.exporter.otlp.proto.grpc.trace_exporter": None,
+                },
+            ),
+            patch(
+                "opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter",
+                return_value=mock_http_exporter,
+            ),
         ):
             _append_spectra_components(True, otel_kwargs, protocol="grpc")
 

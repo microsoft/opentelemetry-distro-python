@@ -134,9 +134,12 @@ class TestA365OpenAIAgentsInstrumentor(unittest.TestCase):
             mock_trace_api.get_tracer.return_value = MagicMock()
             inst = self.instrumentor_cls()
 
-            with patch.dict("sys.modules", {"agents.tracing": agents.tracing}), patch(
-                "microsoft.opentelemetry._genai._openai_agents._trace_instrumentor.OpenAIAgentsTraceProcessor"
-            ) as MockProc:
+            with (
+                patch.dict("sys.modules", {"agents.tracing": agents.tracing}),
+                patch(
+                    "microsoft.opentelemetry._genai._openai_agents._trace_instrumentor.OpenAIAgentsTraceProcessor"
+                ) as MockProc,
+            ):
                 MockProc.return_value = MagicMock()
                 inst._instrument()
                 MockProc.assert_called_once()

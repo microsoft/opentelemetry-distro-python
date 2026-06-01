@@ -135,7 +135,6 @@ class TestLangChainCallbackPatching(unittest.TestCase):
         inst = LangChainInstrumentor()
         inst._instrument()
 
-
         # After instrumentation, creating a new CallbackManager should include
         # the OTel tracer in its handlers (or the __init__ should be wrapped).
         # We verify by checking the instrumentor recorded the original init.
