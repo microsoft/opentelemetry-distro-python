@@ -45,9 +45,9 @@ def update_global_state_instrumentation_bits(instrumentation_bits: int) -> None:
 # ===========================================================================
 #
 # Per-export success counts for telemetry exporters.  Exporters call
-# ``record_success`` after each successful transmit; the
-# ``SdkStatsMetrics`` callback drains the accumulated counts on each
-# export interval.
+# ``record_success`` after each successful transmit; the network
+# gauge callback in ``_network_metrics`` drains the accumulated counts
+# on each export interval.
 
 __all__ = ["record_success", "drain", "reset_all"]
 

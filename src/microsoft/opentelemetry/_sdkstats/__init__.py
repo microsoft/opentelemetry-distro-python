@@ -16,8 +16,10 @@ A365, Console).  It tracks:
   FastAPI, OpenAI, LangChain, etc.)
 
 The module is initialised by :func:`use_microsoft_opentelemetry` during
-distro setup and sends metrics to the Application Insights statsbeat
-ingestion endpoint via ``AzureMonitorMetricExporter``.
+distro setup.  Feature/instrumentation gauges are emitted by the upstream
+``StatsbeatManager`` from ``azure-monitor-opentelemetry-exporter``; the
+distro registers its own network gauge on the manager's ``MeterProvider``
+for OTLP and Agent365 per-endpoint success counts.
 """
 
 from microsoft.opentelemetry._sdkstats._state import (
@@ -28,10 +30,8 @@ from microsoft.opentelemetry._sdkstats._state import (
     set_sdkstats_instrumentation,
     set_sdkstats_shutdown,
 )
-from microsoft.opentelemetry._sdkstats._manager import SdkStatsManager
 
 __all__ = [
-    "SdkStatsManager",
     "get_sdkstats_feature_flags",
     "get_sdkstats_instrumentation_flags",
     "is_sdkstats_enabled",
