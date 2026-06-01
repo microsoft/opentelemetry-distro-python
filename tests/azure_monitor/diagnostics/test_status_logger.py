@@ -62,7 +62,7 @@ def set_up(file_path, is_diagnostics_enabled=True):
 
 
 def check_file_for_messages(agent_initialized_successfully, file_path, reason=None, sdk_present=None):
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         f.seek(0)
         json = loads(f.readline())
         assert json["AgentInitializedSuccessfully"] == agent_initialized_successfully
@@ -84,7 +84,7 @@ def check_file_for_messages(agent_initialized_successfully, file_path, reason=No
 
 
 def check_file_is_empty(file_path):
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         f.seek(0)
         assert not f.read()
 

@@ -861,12 +861,11 @@ class TestSpectraComponents(unittest.TestCase):
                 "opentelemetry.exporter.otlp.proto.grpc": None,
                 "opentelemetry.exporter.otlp.proto.grpc.trace_exporter": None,
             },
+        ), patch(
+            "opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter",
+            return_value=mock_http_exporter,
         ):
-            with patch(
-                "opentelemetry.exporter.otlp.proto.http.trace_exporter.OTLPSpanExporter",
-                return_value=mock_http_exporter,
-            ):
-                _append_spectra_components(True, otel_kwargs, protocol="grpc")
+            _append_spectra_components(True, otel_kwargs, protocol="grpc")
 
         processors = otel_kwargs.get("span_processors", [])
         self.assertEqual(len(processors), 1)

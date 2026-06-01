@@ -29,7 +29,7 @@ def clear_file(file_path):
 
 
 def check_file_for_messages(file_path, level, messages):
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         f.seek(0)
         for message, message_id in messages:
             json = loads(f.readline())
@@ -49,7 +49,7 @@ def check_file_for_messages(file_path, level, messages):
 
 
 def check_file_is_empty(file_path):
-    with open(file_path, "r", encoding="utf-8") as f:
+    with open(file_path, encoding="utf-8") as f:
         f.seek(0)
         assert not f.read()
 

@@ -135,7 +135,6 @@ class TestLangChainCallbackPatching(unittest.TestCase):
         inst = LangChainInstrumentor()
         inst._instrument()
 
-        from langchain_core.callbacks import CallbackManager  # noqa: F811 pylint: disable=unused-import
 
         # After instrumentation, creating a new CallbackManager should include
         # the OTel tracer in its handlers (or the __init__ should be wrapped).

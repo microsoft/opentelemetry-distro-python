@@ -47,18 +47,17 @@ class TestA365OpenAIAgentsInstrumentor(unittest.TestCase):
         instrumentor = A365OpenAIAgentsInstrumentor()
 
         # Test the actual _instrument logic
-        with patch.dict("sys.modules", {"agents.tracing": MagicMock()}):
-            with patch(
-                "microsoft.opentelemetry._genai._openai_agents._trace_instrumentor.OpenAIAgentsTraceProcessor"
-            ) as MockProc:
-                mock_proc_instance = MagicMock()
-                MockProc.return_value = mock_proc_instance
+        with patch.dict("sys.modules", {"agents.tracing": MagicMock()}), patch(
+            "microsoft.opentelemetry._genai._openai_agents._trace_instrumentor.OpenAIAgentsTraceProcessor"
+        ) as MockProc:
+            mock_proc_instance = MagicMock()
+            MockProc.return_value = mock_proc_instance
 
-                instrumentor._instrument()
+            instrumentor._instrument()
 
-                mock_trace_api.get_tracer.assert_called_once()
-                MockProc.assert_called_once_with(mock_tracer)
-                self.assertIs(instrumentor._processor, mock_proc_instance)
+            mock_trace_api.get_tracer.assert_called_once()
+            MockProc.assert_called_once_with(mock_tracer)
+            self.assertIs(instrumentor._processor, mock_proc_instance)
 
     def test_instrument_idempotent(self):
         """Calling _instrument twice should not create a second processor."""

@@ -271,11 +271,10 @@ class TestGetApplicationName:
         pyproject.write_text('[project]\nname = "pyproject-app-name"')
 
         env = {k: v for k, v in os.environ.items() if k != "AGENT365_APPLICATION_NAME"}
-        with patch.dict(os.environ, env, clear=True):
-            with patch.object(Path, "cwd", return_value=tmp_path):
-                Utility.reset_application_name_cache()
-                result = Utility.get_application_name()
-                assert result == "pyproject-app-name"
+        with patch.dict(os.environ, env, clear=True), patch.object(Path, "cwd", return_value=tmp_path):
+            Utility.reset_application_name_cache()
+            result = Utility.get_application_name()
+            assert result == "pyproject-app-name"
 
     def test_caches_pyproject_result(self, tmp_path):
         """Test that pyproject.toml is only read once."""
@@ -283,20 +282,19 @@ class TestGetApplicationName:
         pyproject.write_text('[project]\nname = "cached-name"')
 
         env = {k: v for k, v in os.environ.items() if k != "AGENT365_APPLICATION_NAME"}
-        with patch.dict(os.environ, env, clear=True):
-            with patch.object(Path, "cwd", return_value=tmp_path):
-                Utility.reset_application_name_cache()
+        with patch.dict(os.environ, env, clear=True), patch.object(Path, "cwd", return_value=tmp_path):
+            Utility.reset_application_name_cache()
 
-                # First call
-                result1 = Utility.get_application_name()
+            # First call
+            result1 = Utility.get_application_name()
 
-                # Modify file (but cache should prevent re-read)
-                pyproject.write_text('[project]\nname = "new-name"')
-                # Second call should return cached value
-                result2 = Utility.get_application_name()
+            # Modify file (but cache should prevent re-read)
+            pyproject.write_text('[project]\nname = "new-name"')
+            # Second call should return cached value
+            result2 = Utility.get_application_name()
 
-                assert result1 == "cached-name"
-                assert result2 == "cached-name"
+            assert result1 == "cached-name"
+            assert result2 == "cached-name"
 
     def test_returns_none_when_nothing_available(self, tmp_path):
         """Test returns None when no env var and no pyproject.toml."""
@@ -304,11 +302,10 @@ class TestGetApplicationName:
         empty_dir.mkdir()
 
         env = {k: v for k, v in os.environ.items() if k != "AGENT365_APPLICATION_NAME"}
-        with patch.dict(os.environ, env, clear=True):
-            with patch.object(Path, "cwd", return_value=empty_dir):
-                Utility.reset_application_name_cache()
-                result = Utility.get_application_name()
-                assert result is None
+        with patch.dict(os.environ, env, clear=True), patch.object(Path, "cwd", return_value=empty_dir):
+            Utility.reset_application_name_cache()
+            result = Utility.get_application_name()
+            assert result is None
 
     def test_handles_pyproject_without_name(self, tmp_path):
         """Test handles pyproject.toml without name field."""
@@ -316,11 +313,10 @@ class TestGetApplicationName:
         pyproject.write_text('[project]\nversion = "1.0.0"')
 
         env = {k: v for k, v in os.environ.items() if k != "AGENT365_APPLICATION_NAME"}
-        with patch.dict(os.environ, env, clear=True):
-            with patch.object(Path, "cwd", return_value=tmp_path):
-                Utility.reset_application_name_cache()
-                result = Utility.get_application_name()
-                assert result is None
+        with patch.dict(os.environ, env, clear=True), patch.object(Path, "cwd", return_value=tmp_path):
+            Utility.reset_application_name_cache()
+            result = Utility.get_application_name()
+            assert result is None
 
     def test_handles_pyproject_with_different_sections(self, tmp_path):
         """Test correctly parses name from [project] section only."""
@@ -328,11 +324,10 @@ class TestGetApplicationName:
         pyproject.write_text('[tool.ruff]\nname = "ruff-name"\n\n[project]\nname = "project-name"\n')
 
         env = {k: v for k, v in os.environ.items() if k != "AGENT365_APPLICATION_NAME"}
-        with patch.dict(os.environ, env, clear=True):
-            with patch.object(Path, "cwd", return_value=tmp_path):
-                Utility.reset_application_name_cache()
-                result = Utility.get_application_name()
-                assert result == "project-name"
+        with patch.dict(os.environ, env, clear=True), patch.object(Path, "cwd", return_value=tmp_path):
+            Utility.reset_application_name_cache()
+            result = Utility.get_application_name()
+            assert result == "project-name"
 
     def test_ignores_fields_starting_with_name(self, tmp_path):
         """Test only matches exact 'name' field, not 'name_something'."""
@@ -340,11 +335,10 @@ class TestGetApplicationName:
         pyproject.write_text('[project]\nname_something = "wrong"\nnamespace = "also-wrong"\nname = "correct"\n')
 
         env = {k: v for k, v in os.environ.items() if k != "AGENT365_APPLICATION_NAME"}
-        with patch.dict(os.environ, env, clear=True):
-            with patch.object(Path, "cwd", return_value=tmp_path):
-                Utility.reset_application_name_cache()
-                result = Utility.get_application_name()
-                assert result == "correct"
+        with patch.dict(os.environ, env, clear=True), patch.object(Path, "cwd", return_value=tmp_path):
+            Utility.reset_application_name_cache()
+            result = Utility.get_application_name()
+            assert result == "correct"
 
     def test_handles_inline_comments(self, tmp_path):
         """Test ignores inline comments after the value."""
@@ -352,8 +346,7 @@ class TestGetApplicationName:
         pyproject.write_text('[project]\nname = "my-app" # this is a comment\n')
 
         env = {k: v for k, v in os.environ.items() if k != "AGENT365_APPLICATION_NAME"}
-        with patch.dict(os.environ, env, clear=True):
-            with patch.object(Path, "cwd", return_value=tmp_path):
-                Utility.reset_application_name_cache()
-                result = Utility.get_application_name()
-                assert result == "my-app"
+        with patch.dict(os.environ, env, clear=True), patch.object(Path, "cwd", return_value=tmp_path):
+            Utility.reset_application_name_cache()
+            result = Utility.get_application_name()
+            assert result == "my-app"
