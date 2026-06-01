@@ -17,18 +17,21 @@ endpoint so SDKStats can still be emitted in those modes.
 from __future__ import annotations
 
 import logging
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from microsoft.opentelemetry._version import VERSION
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from azure.monitor.opentelemetry.exporter.statsbeat._manager import StatsbeatConfig
 
 # Region label used when SDKStats runs standalone (no customer exporter, so
 # no customer endpoint to derive a region from).  Upstream requires a
 # non-empty region to validate the config.
 _SDKSTATS_DEFAULT_REGION = "global"
 
-def _build_default_sdkstats_config() -> Optional[StatsbeatConfig]:
+def _build_default_sdkstats_config() -> Optional["StatsbeatConfig"]:
     """Return a default upstream ``StatsbeatConfig`` or ``None`` on failure."""
     try:
         from azure.monitor.opentelemetry.exporter._connection_string_parser import (
