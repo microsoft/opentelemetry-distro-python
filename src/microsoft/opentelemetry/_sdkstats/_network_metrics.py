@@ -67,13 +67,12 @@ def _observe_request_success_count(options: CallbackOptions) -> Iterable[Observa
 def register_network_gauges() -> bool:
     """Attach distro network-stats callbacks to upstream's gauges.
 
-    The distro emits per-endpoint ``Request_Success_Count`` and
-    ``Request_Failure_Count`` observations via the upstream statsbeat
-    pipeline.  We cannot create separate gauges with the same names
-    because the stats backend identifies metric streams by
+    The distro emits per-endpoint ``Request_Success_Count`` observation
+    via the upstream statsbeat pipeline.  We cannot create separate gauges 
+    with the same names because the stats backend identifies metric streams by
     InstrumentationScope, and rows from an unknown scope are silently
     dropped.  Instead we append our callbacks to the already-registered
-    upstream ``_success_count`` / ``_failure_count`` observable gauges
+    upstream ``_success_count`` observable gauges
     so our observations are emitted on the exact same instrument/scope
     as upstream's breeze rows.
 
