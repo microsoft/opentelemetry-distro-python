@@ -565,7 +565,7 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
 
         wrapper = _NetworkStatsSpanExporter(self._inner_span(SpanExportResult.SUCCESS))
         self.assertEqual(wrapper.export([]), SpanExportResult.SUCCESS)
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp","otlp.example.com"): 1})
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp", "otlp.example.com"): 1})
 
     def test_span_failure_does_not_record(self):
         from opentelemetry.sdk.trace.export import SpanExportResult
@@ -595,7 +595,7 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
         inner.export.return_value = MetricExportResult.SUCCESS
         wrapper = _NetworkStatsMetricExporter(inner)
         wrapper.export(MagicMock())
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp","otlp.example.com"): 1})
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp", "otlp.example.com"): 1})
 
     def test_metric_failure_does_not_record(self):
         from opentelemetry.sdk.metrics.export import MetricExportResult
@@ -618,7 +618,7 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
         inner.export.return_value = LogRecordExportResult.SUCCESS
         wrapper = _NetworkStatsLogExporter(inner)
         wrapper.export([])
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp","otlp.example.com"): 1})
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp", "otlp.example.com"): 1})
 
     def test_log_failure_does_not_record(self):
         from opentelemetry.sdk._logs.export import LogRecordExportResult

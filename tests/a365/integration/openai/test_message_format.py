@@ -65,16 +65,20 @@ def _span_to_json(span: ReadableSpan) -> dict[str, object]:
 
     events_list: list[dict[str, object]] = []
     for e in getattr(span, "events", None) or []:
-        events_list.append({
-            "name": e.name,
-            "attributes": dict(e.attributes) if e.attributes else {},
-        })
+        events_list.append(
+            {
+                "name": e.name,
+                "attributes": dict(e.attributes) if e.attributes else {},
+            }
+        )
 
     links_list: list[dict[str, object]] = []
     for lnk in getattr(span, "links", None) or []:
-        links_list.append({
-            "attributes": dict(lnk.attributes) if lnk.attributes else {},
-        })
+        links_list.append(
+            {
+                "attributes": dict(lnk.attributes) if lnk.attributes else {},
+            }
+        )
 
     result: dict[str, object] = {
         "name": span.name,
@@ -116,11 +120,7 @@ class TestOpenAIMessageFormat:
         """Find exported spans that have gen_ai.input.messages."""
         get_tracer_provider().force_flush()
         time.sleep(0.5)
-        return [
-            s
-            for s in distro_exporter.spans
-            if s.attributes and GEN_AI_INPUT_MESSAGES_KEY in s.attributes
-        ]
+        return [s for s in distro_exporter.spans if s.attributes and GEN_AI_INPUT_MESSAGES_KEY in s.attributes]
 
     @pytest.mark.asyncio
     async def test_simple_chat_message_mapping(
@@ -153,9 +153,7 @@ class TestOpenAIMessageFormat:
             print(json.dumps(span_json, indent=2, default=str))
 
         message_spans = self._find_message_spans(distro_exporter)
-        assert len(message_spans) > 0, (
-            f"No message spans found. All spans: {[s.name for s in distro_exporter.spans]}"
-        )
+        assert len(message_spans) > 0, f"No message spans found. All spans: {[s.name for s in distro_exporter.spans]}"
 
         # Verify at least one span has structured A365 array format
         found_structured = False

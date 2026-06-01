@@ -197,17 +197,14 @@ class TestLangChainObservabilityPipeline:
 
         # --- 1. Find invoke_agent span ---
         invoke_spans = _find_spans_by_name_prefix(spans, "invoke_agent")
-        assert len(invoke_spans) >= 1, (
-            f"Expected at least 1 invoke_agent span, got: {[s.name for s in spans]}"
-        )
+        assert len(invoke_spans) >= 1, f"Expected at least 1 invoke_agent span, got: {[s.name for s in spans]}"
         invoke_span = invoke_spans[0]
         trace_id = invoke_span.context.trace_id
 
         # --- 2. All spans share the same trace_id ---
         for s in spans:
             assert s.context.trace_id == trace_id, (
-                f"Span '{s.name}' has different trace_id: "
-                f"{s.context.trace_id:032x} vs {trace_id:032x}"
+                f"Span '{s.name}' has different trace_id: {s.context.trace_id:032x} vs {trace_id:032x}"
             )
 
         # --- 3. invoke_agent span is the root ---
@@ -233,9 +230,7 @@ class TestLangChainObservabilityPipeline:
             )
             and not s.name.startswith("execute_tool")
         ]
-        assert len(inference_spans) >= 1, (
-            f"Expected at least 1 inference span, got: {[s.name for s in spans]}"
-        )
+        assert len(inference_spans) >= 1, f"Expected at least 1 inference span, got: {[s.name for s in spans]}"
 
         invoke_span_id = invoke_span.context.span_id
         for inf_span in inference_spans:
@@ -334,9 +329,7 @@ class TestLangChainObservabilityPipeline:
 
         # Inference spans are descendants
         inference_spans = [
-            s
-            for s in spans
-            if s != invoke_span and _get_span_attr(s, GEN_AI_INPUT_MESSAGES_KEY) is not None
+            s for s in spans if s != invoke_span and _get_span_attr(s, GEN_AI_INPUT_MESSAGES_KEY) is not None
         ]
         assert len(inference_spans) >= 1
 

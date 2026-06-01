@@ -173,7 +173,6 @@ class TestDjangoMiddleware(unittest.TestCase):
             patch.object(middleware._injector, "should_inject", return_value=True),
             patch.object(middleware._injector, "inject_with_compression") as mock_inject_with_compression,
         ):
-
             modified_content = b"<html><head><script>injected</script></head><body>Test</body></html>"
             mock_inject_with_compression.return_value = (modified_content, None)
 
@@ -244,7 +243,6 @@ class TestDjangoMiddleware(unittest.TestCase):
             patch.object(middleware._injector, "should_inject", return_value=True),
             patch.object(middleware._injector, "inject_with_compression", side_effect=Exception("Injection failed")),
         ):
-
             result = middleware.process_response(mock_request, mock_response)
 
             # Should log error and return original response
@@ -282,7 +280,6 @@ class TestDjangoMiddleware(unittest.TestCase):
             patch.object(middleware._injector, "should_inject", return_value=True) as mock_should_inject,
             patch.object(middleware._injector, "inject_with_compression") as mock_inject_with_compression,
         ):
-
             modified_content = b"modified_gzip_content"
             new_encoding = "gzip"
             mock_inject_with_compression.return_value = (modified_content, new_encoding)

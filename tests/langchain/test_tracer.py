@@ -760,6 +760,7 @@ class TestContextAttachDetach(TestCase):
             self.assertIs(attach_call_args[0][0], inner_span)
         mock_ctx.attach.assert_called_once()
 
+
 # ---- invoke_agent aggregation fixes (issue #172) -----------------------------
 
 
@@ -1070,9 +1071,7 @@ class TestExtractAgentInputMessagesToolRole(TestCase):
                     "id": ["langchain", "schema", "messages", "AIMessage"],
                     "kwargs": {
                         "content": "",
-                        "tool_calls": [
-                            {"name": "get_weather", "args": {"location": "Paris"}, "id": "tc1"}
-                        ],
+                        "tool_calls": [{"name": "get_weather", "args": {"location": "Paris"}, "id": "tc1"}],
                         "type": "ai",
                     },
                 },
@@ -1086,4 +1085,3 @@ class TestExtractAgentInputMessagesToolRole(TestCase):
         self.assertEqual(tool_part.type, "tool_call_response")
         self.assertEqual(tool_part.id, "tc1")
         self.assertEqual(tool_part.response, "rainy")
-

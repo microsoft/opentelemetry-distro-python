@@ -358,7 +358,15 @@ class TestNetworkStatsbeatHook(unittest.TestCase):
         exporter._session.post.return_value = _make_response(200)
         ok = exporter._post_with_retries(self.URL, "{}", {})
         self.assertTrue(ok)
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {(self.ENDPOINT, self.HOST,): 1})
+        self.assertEqual(
+            drain(REQUEST_SUCCESS_NAME),
+            {
+                (
+                    self.ENDPOINT,
+                    self.HOST,
+                ): 1
+            },
+        )
         exporter.shutdown()
 
     @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.is_sdkstats_enabled", return_value=True)

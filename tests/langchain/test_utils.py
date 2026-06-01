@@ -1196,6 +1196,7 @@ class TestBuildLlmInvocation(TestCase):
         self.assertEqual(inv.response_model_name, "gpt-4o-2024-11-20")
         self.assertEqual(inv.response_id, "chatcmpl-kwargs")
 
+
 # ---- Spec-compliant input.messages (issue #172) ------------------------------
 
 
