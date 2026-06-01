@@ -5,7 +5,6 @@
 # --------------------------------------------------------------------------
 
 
-
 from azure.monitor.opentelemetry.exporter._constants import (  # type: ignore[import-not-found]
     _REQ_SUCCESS_NAME,
 )

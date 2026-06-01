@@ -156,11 +156,7 @@ def _append_azure_monitor_components(
 
 def _disable_openai_v2_instrumentation(otel_kwargs: dict[str, Any]) -> None:
     options = otel_kwargs.get(INSTRUMENTATION_OPTIONS_ARG)
-    if (
-        isinstance(options, dict)
-        and isinstance(options.get("openai"), dict)
-        and "enabled" in options["openai"]
-    ):
+    if isinstance(options, dict) and isinstance(options.get("openai"), dict) and "enabled" in options["openai"]:
         return  # User has explicitly set openai instrumentation options; do not override
 
     overlapping_present = any(

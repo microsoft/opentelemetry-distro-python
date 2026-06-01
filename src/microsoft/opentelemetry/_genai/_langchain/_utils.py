@@ -1480,7 +1480,6 @@ def _output_message_to_input(out_msg: OutputMessage) -> InputMessage:
     return InputMessage(role=out_msg.role, parts=list(out_msg.parts))
 
 
-
 @stop_on_exception
 def invoke_agent_input_message(
     inputs: Mapping[str, Any] | None,
