@@ -6,7 +6,6 @@
 
 from logging import getLogger, Formatter
 from os import environ
-from typing import Dict
 
 from opentelemetry.environment_variables import (
     OTEL_LOGS_EXPORTER,
@@ -85,7 +84,7 @@ _SUPPORTED_RESOURCE_DETECTORS = (
 _logger = getLogger(__name__)
 
 
-def _get_configurations(**kwargs) -> Dict[str, ConfigurationValue]:
+def _get_configurations(**kwargs) -> dict[str, ConfigurationValue]:
     configurations = {}
 
     for key, val in kwargs.items():
@@ -353,7 +352,7 @@ def _default_browser_sdk_loader(configurations):
     # Use cast to Dict[str, Any] to avoid MyPy ConfigurationValue Union type issues
     from typing import cast, Any
 
-    configurations.setdefault(BROWSER_SDK_LOADER_CONFIG_ARG, cast(Dict[str, Any], {}))
+    configurations.setdefault(BROWSER_SDK_LOADER_CONFIG_ARG, cast(dict[str, Any], {}))
 
 
 def _get_otel_disabled_instrumentations():

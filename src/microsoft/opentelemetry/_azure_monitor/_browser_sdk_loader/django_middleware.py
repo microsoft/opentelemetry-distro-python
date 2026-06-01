@@ -4,7 +4,8 @@
 # license information.
 # -------------------------------------------------------------------------
 
-from typing import Optional, Callable, Any, Union
+from typing import Optional, Any, Union
+from collections.abc import Callable
 from logging import getLogger
 
 try:

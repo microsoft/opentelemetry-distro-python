@@ -13,7 +13,8 @@ collected into a caller-supplied ``MeterProvider``.
 
 from enum import Enum
 import platform
-from typing import Any, Dict, Iterable, List
+from typing import Any
+from collections.abc import Iterable
 
 from opentelemetry.metrics import CallbackOptions, Observation
 from opentelemetry.sdk.metrics import MeterProvider
@@ -63,7 +64,7 @@ class SdkStatsMetrics:
         self._meter = meter_provider.get_meter("microsoft.opentelemetry.sdkstats")
         self._distro_version = distro_version or VERSION
 
-        self._common_attributes: Dict[str, Any] = {
+        self._common_attributes: dict[str, Any] = {
             "rp": _RP_Names.UNKNOWN.value,
             "attach": _AttachTypes.MANUAL.value,
             "cikey": None,
@@ -106,7 +107,7 @@ class SdkStatsMetrics:
     # ---- callbacks ----
 
     def _observe_features(self, options: CallbackOptions) -> Iterable[Observation]:
-        observations: List[Observation] = []
+        observations: list[Observation] = []
         feature_bits = get_sdkstats_feature_flags()
         if feature_bits != 0:
             attrs = dict(self._common_attributes)
@@ -116,7 +117,7 @@ class SdkStatsMetrics:
         return observations
 
     def _observe_instrumentations(self, options: CallbackOptions) -> Iterable[Observation]:
-        observations: List[Observation] = []
+        observations: list[Observation] = []
         instr_bits = get_sdkstats_instrumentation_flags()
         if instr_bits != 0:
             attrs = dict(self._common_attributes)
@@ -126,7 +127,7 @@ class SdkStatsMetrics:
         return observations
 
     def _observe_request_success_count(self, options: CallbackOptions) -> Iterable[Observation]:
-        observations: List[Observation] = []
+        observations: list[Observation] = []
         for key, value in drain(REQUEST_SUCCESS_NAME).items():
             attrs = dict(self._common_attributes)
             attrs["endpoint"] = key[0]

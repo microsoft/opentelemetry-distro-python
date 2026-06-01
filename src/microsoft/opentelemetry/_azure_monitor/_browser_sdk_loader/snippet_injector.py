@@ -8,7 +8,7 @@ import gzip
 import importlib
 import re
 from logging import getLogger
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Optional
 
 from ._config import BrowserSDKConfig
 
@@ -194,7 +194,7 @@ class WebSnippetInjector:
         content: bytes,
         content_encoding: Optional[str] = None,
         encoding: str = "utf-8",
-    ) -> Tuple[bytes, Optional[str]]:  # pylint: disable=too-many-return-statements
+    ) -> tuple[bytes, Optional[str]]:  # pylint: disable=too-many-return-statements
         """Inject snippet handling compression/decompression efficiently using cached decompressed content.
 
         :param content: Response content bytes, potentially compressed.
@@ -464,7 +464,7 @@ class WebSnippetInjector:
             return self._dict_to_js_object(value)
         return f'"{str(value)}"'
 
-    def _dict_to_js_object(self, obj: Dict[str, Any]) -> str:
+    def _dict_to_js_object(self, obj: dict[str, Any]) -> str:
         """Convert Python dict to JavaScript object literal.
 
         :param obj: Python dictionary to convert to JavaScript object syntax.

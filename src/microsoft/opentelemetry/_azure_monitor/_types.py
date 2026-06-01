@@ -4,7 +4,8 @@
 # license information.
 # --------------------------------------------------------------------------
 
-from typing import Sequence, Union
+from typing import Union
+from collections.abc import Sequence
 
 from opentelemetry.sdk.metrics.export import MetricReader
 from opentelemetry.sdk.metrics.view import View

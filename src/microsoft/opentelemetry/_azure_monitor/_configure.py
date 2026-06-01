@@ -4,7 +4,7 @@
 # license information.
 # --------------------------------------------------------------------------
 from logging import getLogger, Formatter
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Optional, cast
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader, MetricReader
 from opentelemetry.sdk.metrics.view import View
@@ -151,7 +151,7 @@ def configure_azure_monitor(**kwargs) -> None:  # pylint: disable=C4758
     _setup_browser_sdk_loader(configurations)
 
 
-def _setup_tracing(configurations: Dict[str, ConfigurationValue]):
+def _setup_tracing(configurations: dict[str, ConfigurationValue]):
     resource: Resource = configurations[RESOURCE_ARG]  # type: ignore
     enable_performance_counters_config = configurations[ENABLE_PERFORMANCE_COUNTERS_ARG]
     if SAMPLING_ARG in configurations:
@@ -188,7 +188,7 @@ def _setup_tracing(configurations: Dict[str, ConfigurationValue]):
     return tracer_provider
 
 
-def _setup_logging(configurations: Dict[str, ConfigurationValue]):  # pylint: disable=inconsistent-return-statements
+def _setup_logging(configurations: dict[str, ConfigurationValue]):  # pylint: disable=inconsistent-return-statements
     # Setup logging
     # Use try catch while signal is experimental
     try:
@@ -248,9 +248,9 @@ def _setup_logging(configurations: Dict[str, ConfigurationValue]):  # pylint: di
         )
 
 
-def _setup_metrics(configurations: Dict[str, ConfigurationValue]):
+def _setup_metrics(configurations: dict[str, ConfigurationValue]):
     resource: Resource = configurations[RESOURCE_ARG]  # type: ignore
-    views: List[View] = configurations[VIEWS_ARG]  # type: ignore
+    views: list[View] = configurations[VIEWS_ARG]  # type: ignore
     readers: list[MetricReader] = configurations[METRIC_READERS_ARG]  # type: ignore
     enable_performance_counters_config = configurations[ENABLE_PERFORMANCE_COUNTERS_ARG]
     metric_exporter = AzureMonitorMetricExporter(**configurations)
@@ -269,7 +269,7 @@ def _setup_live_metrics(configurations):
     enable_live_metrics(**configurations)
 
 
-def _setup_azure_instrumentations(configurations: Dict[str, ConfigurationValue]):
+def _setup_azure_instrumentations(configurations: dict[str, ConfigurationValue]):
     """Set up Azure-specific instrumentations (Azure SDK tracing, AI instrumentors)."""
     # Azure Core tracing
     if not configurations[DISABLE_TRACING_ARG]:
@@ -313,7 +313,7 @@ def _send_attach_warning():
 
 
 def _setup_additional_azure_sdk_instrumentations(
-    configurations: Dict[str, ConfigurationValue],
+    configurations: dict[str, ConfigurationValue],
 ):
     if _AZURE_SDK_INSTRUMENTATION_NAME not in _ALL_SUPPORTED_INSTRUMENTED_LIBRARIES:
         return
@@ -353,7 +353,7 @@ def _setup_additional_azure_sdk_instrumentations(
                 )
 
 
-def _setup_browser_sdk_loader(configurations: Dict[str, ConfigurationValue]):
+def _setup_browser_sdk_loader(configurations: dict[str, ConfigurationValue]):
     """Setup browser SDK loader for supported frameworks.
 
     :param configurations: Configuration dictionary containing browser SDK loader settings.
@@ -366,7 +366,7 @@ def _setup_browser_sdk_loader(configurations: Dict[str, ConfigurationValue]):
             browser_sdk_loader_config = browser_sdk_loader_config_value
         else:
             # Create typed empty dict to satisfy mypy
-            browser_sdk_loader_config = cast(Dict[str, Any], {})
+            browser_sdk_loader_config = cast(dict[str, Any], {})
 
         # Check if browser SDK loader should be enabled (default False)
         enabled = browser_sdk_loader_config.get("enabled", False)

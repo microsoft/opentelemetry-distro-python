@@ -6,7 +6,7 @@
 import os
 from functools import cached_property
 from logging import getLogger, Formatter
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from opentelemetry.metrics import set_meter_provider
 from opentelemetry.sdk.metrics import MeterProvider
@@ -221,8 +221,8 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
     enable_sensitive_data: bool = bool(kwargs.pop(ENABLE_SENSITIVE_DATA_ARG, False))
 
     # Separate Azure Monitor kwargs from generic OTel kwargs
-    otel_kwargs: Dict[str, Any] = {k: v for k, v in kwargs.items() if k not in _AZURE_MONITOR_KWARG_MAP}
-    azure_monitor_kwargs: Dict[str, Any] = {
+    otel_kwargs: dict[str, Any] = {k: v for k, v in kwargs.items() if k not in _AZURE_MONITOR_KWARG_MAP}
+    azure_monitor_kwargs: dict[str, Any] = {
         _AZURE_MONITOR_KWARG_MAP[k]: v for k, v in kwargs.items() if k in _AZURE_MONITOR_KWARG_MAP
     }  # pylint: disable=line-too-long
 
@@ -401,7 +401,7 @@ def _bridge_sdkstats_to_azure_monitor() -> None:
 
 def _append_a365_components(
     enable_a365: bool,
-    otel_kwargs: Dict[str, Any],
+    otel_kwargs: dict[str, Any],
     token_resolver: Any = None,
     cluster_category: Any = None,
     use_s2s_endpoint: Any = None,
@@ -500,7 +500,7 @@ def _append_a365_components(
         # Enriching batch processor wrapping the exporter.
         # Only forward batch parameters when the user explicitly supplied
         # them so that BatchSpanProcessor uses its own defaults otherwise.
-        batch_kwargs: Dict[str, Any] = {}
+        batch_kwargs: dict[str, Any] = {}
         if max_queue_size is not None:
             batch_kwargs["max_queue_size"] = max_queue_size
         if scheduled_delay_ms is not None:
@@ -529,7 +529,7 @@ def _append_a365_components(
 
 def _append_spectra_components(
     enable_spectra: bool,
-    otel_kwargs: Dict[str, Any],
+    otel_kwargs: dict[str, Any],
     endpoint: Any = None,
     protocol: Any = None,
     insecure: Any = None,
@@ -616,7 +616,7 @@ def _append_spectra_components(
 
 def _setup_tracing(
     resource: Resource,
-    otel_kwargs: Dict[str, Any],
+    otel_kwargs: dict[str, Any],
 ) -> TracerProvider:
     """Create a TracerProvider with user-supplied span processors."""
     tracer_provider = TracerProvider(resource=resource)
@@ -627,11 +627,11 @@ def _setup_tracing(
 
 def _setup_metrics(
     resource: Resource,
-    otel_kwargs: Dict[str, Any],
+    otel_kwargs: dict[str, Any],
 ) -> MeterProvider:
     """Create a MeterProvider with user-supplied readers/views."""
-    readers: List[MetricReader] = list(otel_kwargs.get(METRIC_READERS_ARG) or [])
-    views: List[View] = list(otel_kwargs.get(VIEWS_ARG) or [])
+    readers: list[MetricReader] = list(otel_kwargs.get(METRIC_READERS_ARG) or [])
+    views: list[View] = list(otel_kwargs.get(VIEWS_ARG) or [])
     meter_provider = MeterProvider(
         metric_readers=readers,
         resource=resource,
@@ -642,7 +642,7 @@ def _setup_metrics(
 
 def _setup_logging(
     resource: Resource,
-    otel_kwargs: Dict[str, Any],
+    otel_kwargs: dict[str, Any],
 ) -> LoggerProvider | None:
     """Create a LoggerProvider with user-supplied processors."""
     logger_provider = LoggerProvider(resource=resource)
@@ -669,7 +669,7 @@ def _setup_logging(
 
 class _EntryPointDistFinder:
     @cached_property
-    def _mapping(self) -> Dict[str, Any]:
+    def _mapping(self) -> dict[str, Any]:
         return {self._key_for(ep): dist for dist in distributions() for ep in dist.entry_points}
 
     def dist_for(self, entry_point: EntryPoint) -> Any:
@@ -683,7 +683,7 @@ class _EntryPointDistFinder:
         return f"{entry_point.group}:{entry_point.name}:{entry_point.value}"
 
 
-def _is_instrumentation_enabled(otel_kwargs: Dict[str, Any], lib_name: str) -> bool:
+def _is_instrumentation_enabled(otel_kwargs: dict[str, Any], lib_name: str) -> bool:
     """Check if a library instrumentation is enabled via instrumentation_options."""
     options = otel_kwargs.get(INSTRUMENTATION_OPTIONS_ARG)
     if not options or lib_name not in options:
@@ -695,7 +695,7 @@ def _is_instrumentation_enabled(otel_kwargs: Dict[str, Any], lib_name: str) -> b
     return lib_options["enabled"] is True
 
 
-def _get_instrumentation_kwargs(otel_kwargs: Dict[str, Any], lib_name: str) -> Dict[str, Any]:
+def _get_instrumentation_kwargs(otel_kwargs: dict[str, Any], lib_name: str) -> dict[str, Any]:
     """Extract per-library kwargs from instrumentation_options (everything except 'enabled')."""
     options = otel_kwargs.get(INSTRUMENTATION_OPTIONS_ARG)
     if not options or lib_name not in options:
@@ -704,7 +704,7 @@ def _get_instrumentation_kwargs(otel_kwargs: Dict[str, Any], lib_name: str) -> D
     return {k: v for k, v in lib_options.items() if k != "enabled"}
 
 
-def _setup_instrumentations(otel_kwargs: Dict[str, Any], **kwargs: Any) -> None:
+def _setup_instrumentations(otel_kwargs: dict[str, Any], **kwargs: Any) -> None:
     """Discover and activate OTel instrumentations for supported libraries."""
     enable_a365: bool = kwargs.pop("enable_a365", False)
     enable_sensitive_data: bool = kwargs.pop(ENABLE_SENSITIVE_DATA_ARG, False)

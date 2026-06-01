@@ -6,7 +6,7 @@
 
 from importlib.util import find_spec
 from logging import getLogger
-from typing import Any, Dict
+from typing import Any
 
 from microsoft.opentelemetry._constants import (
     DISABLE_LOGGING_ARG,
@@ -29,7 +29,7 @@ _logger = getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-def _append_otlp_components(otel_kwargs: Dict[str, Any]) -> None:
+def _append_otlp_components(otel_kwargs: dict[str, Any]) -> None:
     """Append OTLP processors/readers to otel_kwargs when OTLP is enabled.
 
     Respects per-signal disable flags so that disabled pipelines do not
@@ -59,7 +59,7 @@ def _append_otlp_components(otel_kwargs: Dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 
 
-def _append_console_components(otel_kwargs: Dict[str, Any], enable_console: bool) -> None:
+def _append_console_components(otel_kwargs: dict[str, Any], enable_console: bool) -> None:
     """Append console exporters to otel_kwargs when console export is enabled.
 
     Console export is enabled when ``enable_console=True`` is passed as a
@@ -95,8 +95,8 @@ def _append_console_components(otel_kwargs: Dict[str, Any], enable_console: bool
 
 
 def _append_azure_monitor_components(
-    otel_kwargs: Dict[str, Any],
-    azure_monitor_kwargs: Dict[str, Any],
+    otel_kwargs: dict[str, Any],
+    azure_monitor_kwargs: dict[str, Any],
 ) -> tuple:
     """Call Azure Monitor _setup_* functions which build fully-configured providers.
 
@@ -154,7 +154,7 @@ def _append_azure_monitor_components(
         return None, None, None
 
 
-def _disable_openai_v2_instrumentation(otel_kwargs: Dict[str, Any]) -> None:
+def _disable_openai_v2_instrumentation(otel_kwargs: dict[str, Any]) -> None:
     options = otel_kwargs.get(INSTRUMENTATION_OPTIONS_ARG)
     if (
         isinstance(options, dict)

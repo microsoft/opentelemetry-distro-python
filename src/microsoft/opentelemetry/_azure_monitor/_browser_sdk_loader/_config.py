@@ -4,7 +4,7 @@
 # license information.
 # -------------------------------------------------------------------------
 
-from typing import Optional, Dict, Any
+from typing import Optional, Any
 
 
 class BrowserSDKConfig:
@@ -34,13 +34,13 @@ class BrowserSDKConfig:
         self.enabled = enabled
         self.connection_string = connection_string
 
-    def to_dict(self) -> Dict[str, Dict[str, Any]]:
+    def to_dict(self) -> dict[str, dict[str, Any]]:
         """Convert the config to a dictionary for the web snippet.
 
         :return: Dictionary representation of the configuration.
         :rtype: dict
         """
-        cfg: Dict[str, Any] = {}
+        cfg: dict[str, Any] = {}
         if self.connection_string:
             cfg["connectionString"] = self.connection_string
         return {"cfg": cfg}

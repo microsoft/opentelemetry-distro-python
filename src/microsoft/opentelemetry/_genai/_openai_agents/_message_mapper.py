@@ -198,11 +198,7 @@ def _map_chat_completions_message(msg: dict[str, Any]) -> ChatMessage | None:
     elif isinstance(content, list):
         for item in content:
             if isinstance(item, dict):
-                if item.get("type") in ("input_text", "text"):
-                    text = item.get("text", "")
-                    if text:
-                        parts.append(TextPart(content=text))
-                elif item.get("type") == "output_text":
+                if item.get("type") in ("input_text", "text") or item.get("type") == "output_text":
                     text = item.get("text", "")
                     if text:
                         parts.append(TextPart(content=text))

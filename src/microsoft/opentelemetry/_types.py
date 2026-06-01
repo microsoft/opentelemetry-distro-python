@@ -4,7 +4,8 @@
 # license information.
 # --------------------------------------------------------------------------
 
-from typing import Any, Sequence, Union
+from typing import Any, Union
+from collections.abc import Sequence
 
 ConfigurationValue = Union[
     str,

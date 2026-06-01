@@ -18,7 +18,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, List, Optional, TypeVar
+from typing import Any, Optional, TypeVar
 from urllib.parse import urlparse
 
 from opentelemetry.sdk.trace import ReadableSpan
@@ -600,7 +600,7 @@ def _create_default_token_resolver(
 class A365Handlers:
     """Processors created for Agent365 export, mirroring ``OtlpHandlers``."""
 
-    span_processors: List[SpanProcessor] = field(default_factory=list)
+    span_processors: list[SpanProcessor] = field(default_factory=list)
 
 
 def is_a365_enabled(enable_a365: bool = False) -> bool:

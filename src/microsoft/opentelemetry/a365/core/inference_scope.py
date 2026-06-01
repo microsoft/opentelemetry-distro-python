@@ -1,7 +1,6 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-from typing import List
 
 from opentelemetry.trace import SpanKind
 
@@ -184,7 +183,7 @@ class InferenceScope(OpenTelemetryScope):
         """
         self.set_tag_maybe(GEN_AI_USAGE_OUTPUT_TOKENS_KEY, output_tokens)
 
-    def record_finish_reasons(self, finish_reasons: List[str]) -> None:
+    def record_finish_reasons(self, finish_reasons: list[str]) -> None:
         """Records the finish reasons for telemetry tracking.
 
         Args:

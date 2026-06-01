@@ -5,7 +5,7 @@
 Represents the result of an operation.
 """
 
-from typing import List, Optional
+from typing import Optional
 
 from microsoft.opentelemetry.a365.runtime.operation_error import OperationError
 
@@ -20,7 +20,7 @@ class OperationResult:
 
     _success_instance: Optional["OperationResult"] = None
 
-    def __init__(self, succeeded: bool, errors: Optional[List[OperationError]] = None):
+    def __init__(self, succeeded: bool, errors: Optional[list[OperationError]] = None):
         """
         Initialize a new instance of the OperationResult class.
 
@@ -42,7 +42,7 @@ class OperationResult:
         return self._succeeded
 
     @property
-    def errors(self) -> List[OperationError]:
+    def errors(self) -> list[OperationError]:
         """
         Get the list of errors that occurred during the operation.
 

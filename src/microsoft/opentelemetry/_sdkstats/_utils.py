@@ -9,7 +9,6 @@
 from __future__ import annotations
 
 import threading
-from typing import Dict, Tuple
 
 from microsoft.opentelemetry._sdkstats._constants import REQUEST_SUCCESS_NAME
 
@@ -53,13 +52,13 @@ __all__ = ["record_success", "drain", "reset_all"]
 
 
 _REQUESTS_MAP_LOCK = threading.Lock()
-_REQUESTS_MAP: Dict[str, Dict[Tuple[str, ...], float]] = {
+_REQUESTS_MAP: dict[str, dict[tuple[str, ...], float]] = {
     REQUEST_SUCCESS_NAME: {},
 }
 
 
 # Increment the counter for the given metric/key by the given value (default 1.0).
-def _bump(metric: str, key: Tuple[str, ...], value: float = 1.0) -> None:
+def _bump(metric: str, key: tuple[str, ...], value: float = 1.0) -> None:
     with _REQUESTS_MAP_LOCK:
         bucket = _REQUESTS_MAP[metric]
         bucket[key] = bucket.get(key, 0) + value
@@ -70,7 +69,7 @@ def record_success(endpoint: str, host: str) -> None:
 
 
 # Returns the counts accumulated since the last call, and resets the counters to zero.
-def drain(metric: str) -> Dict[Tuple[str, ...], float]:
+def drain(metric: str) -> dict[tuple[str, ...], float]:
     with _REQUESTS_MAP_LOCK:
         bucket = _REQUESTS_MAP[metric]
         snapshot = dict(bucket)

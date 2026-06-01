@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
-from typing import Any, Optional, Set
+from typing import Any, Optional
 
 from opentelemetry.sdk.trace import ReadableSpan
 from opentelemetry.util import types
@@ -34,7 +34,7 @@ class EnrichedReadableSpan(ReadableSpan):
         self,
         span: ReadableSpan,
         extra_attributes: dict[str, Any],
-        excluded_attribute_keys: Optional[Set[str]] = None,
+        excluded_attribute_keys: Optional[set[str]] = None,
     ):
         self._span = span
         self._extra_attributes = extra_attributes
