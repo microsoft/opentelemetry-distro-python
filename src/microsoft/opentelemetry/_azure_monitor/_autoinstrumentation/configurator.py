@@ -63,7 +63,7 @@ class AzureMonitorConfigurator(_OTelSDKConfigurator):
             )
         except Exception as e:
             AzureDiagnosticLogging.error(  # pylint: disable=C
-                "Azure Monitor Configurator failed during configuration: %s" % str(e), # noqa: UP031
+                "Azure Monitor Configurator failed during configuration: %s" % str(e),  # noqa: UP031
                 _ATTACH_FAILURE_CONFIGURATOR,
             )
             raise e

@@ -90,7 +90,7 @@ class ApplyGuardrailScope(OpenTelemetryScope):
         request: Request | None = None,
         user_details: UserDetails | None = None,
         span_details: SpanDetails | None = None,
-    ) -> ApplyGuardrailScope: # noqa: UP037
+    ) -> ApplyGuardrailScope:  # noqa: UP037
         """Create and start a new scope for guardrail evaluation tracing.
 
         Args:

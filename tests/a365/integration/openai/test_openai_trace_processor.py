@@ -243,7 +243,11 @@ class TestOpenAITraceProcessorIntegration:
                 assert attributes[GEN_AI_AGENT_ID_KEY] == agent365_config["agent_id"]
 
             # Check for LLM spans (generation spans)
-            if GEN_AI_PROVIDER_NAME_KEY in attributes and attributes[GEN_AI_PROVIDER_NAME_KEY] == "openai" and GEN_AI_REQUEST_MODEL_KEY in attributes:
+            if (
+                GEN_AI_PROVIDER_NAME_KEY in attributes
+                and attributes[GEN_AI_PROVIDER_NAME_KEY] == "openai"
+                and GEN_AI_REQUEST_MODEL_KEY in attributes
+            ):
                 llm_spans_found += 1
                 # Validate LLM span attributes
                 assert GEN_AI_REQUEST_MODEL_KEY in attributes
@@ -289,7 +293,11 @@ class TestOpenAITraceProcessorIntegration:
                 assert attributes[GEN_AI_AGENT_ID_KEY] == agent365_config["agent_id"]
 
             # Check for LLM spans (generation spans)
-            if GEN_AI_PROVIDER_NAME_KEY in attributes and attributes[GEN_AI_PROVIDER_NAME_KEY] == "openai" and GEN_AI_REQUEST_MODEL_KEY in attributes:
+            if (
+                GEN_AI_PROVIDER_NAME_KEY in attributes
+                and attributes[GEN_AI_PROVIDER_NAME_KEY] == "openai"
+                and GEN_AI_REQUEST_MODEL_KEY in attributes
+            ):
                 llm_spans_found += 1
                 print(f"✓ Found LLM span with model: {attributes[GEN_AI_REQUEST_MODEL_KEY]}")
 

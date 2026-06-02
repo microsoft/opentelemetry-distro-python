@@ -100,7 +100,7 @@ class TestConfigurator(TestCase):
     def test_configure_exc(self, mock_diagnostics, attach_mock, super_mock):
         configurator = AzureMonitorConfigurator()
         super_mock()._configure.side_effect = Exception("Test Exception")
-        with self.assertRaises(Exception): # noqa: B017
+        with self.assertRaises(Exception):  # noqa: B017
             configurator._configure()
         mock_diagnostics.error.assert_called_once_with(
             "Azure Monitor Configurator failed during configuration: Test Exception", _ATTACH_FAILURE_CONFIGURATOR
