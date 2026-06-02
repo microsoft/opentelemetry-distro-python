@@ -9,6 +9,8 @@ from uuid import UUID, uuid4
 
 import pytest
 
+import contextlib
+
 pytest.importorskip("langchain_core")
 
 from microsoft.opentelemetry._genai._langchain._tracer import (  # noqa: E402  # pylint: disable=wrong-import-position
@@ -25,7 +27,6 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     GEN_AI_TOOL_DEFINITIONS_KEY,
     INVOKE_AGENT_OPERATION_NAME,
 )
-import contextlib
 
 pytest.importorskip("langchain_core")
 
