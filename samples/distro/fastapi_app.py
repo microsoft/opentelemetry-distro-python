@@ -17,7 +17,7 @@ use_microsoft_opentelemetry(
 logger = getLogger(__name__)
 logger.setLevel(INFO)
 
-from fastapi import FastAPI  # pylint: disable=wrong-import-position
+from fastapi import FastAPI  # noqa: E402
 
 app = FastAPI()
 
