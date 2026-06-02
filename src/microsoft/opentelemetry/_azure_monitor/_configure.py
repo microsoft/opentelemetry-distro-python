@@ -272,7 +272,7 @@ def _setup_live_metrics(configurations):
 def _setup_azure_instrumentations(configurations: dict[str, ConfigurationValue]):
     """Set up Azure-specific instrumentations (Azure SDK tracing, AI instrumentors)."""
     # Azure Core tracing
-    if not configurations[DISABLE_TRACING_ARG]:
+    if not configurations[DISABLE_TRACING_ARG]:  # noqa: SIM102
         if _is_instrumentation_enabled(configurations, _AZURE_SDK_INSTRUMENTATION_NAME):
             try:
                 from azure.core.settings import settings

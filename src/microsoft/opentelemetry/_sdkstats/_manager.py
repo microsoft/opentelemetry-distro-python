@@ -19,6 +19,7 @@ or Console-only customers this manager creates a standalone
 pipeline so usage/feature metrics are still collected.
 """
 
+import contextlib
 import logging
 import threading
 from typing import Optional
@@ -196,10 +197,8 @@ class SdkStatsManager:
 
     def _cleanup(self) -> None:
         if self._meter_provider:
-            try:
+            with contextlib.suppress(Exception):  # pylint: disable=broad-exception-caught
                 self._meter_provider.shutdown()
-            except Exception:  # pylint: disable=broad-exception-caught
-                pass
         self._meter_provider = None
         self._metrics = None
         self._initialized = False

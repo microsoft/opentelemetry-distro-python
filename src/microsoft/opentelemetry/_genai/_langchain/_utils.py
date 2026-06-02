@@ -308,7 +308,7 @@ def input_messages(
             elif hasattr(message_data, "get"):
                 if content := message_data.get("content"):
                     contents.append(str(content))
-                elif kwargs := message_data.get("kwargs"):
+                elif kwargs := message_data.get("kwargs"):  # noqa: SIM102
                     if hasattr(kwargs, "get") and (content := kwargs.get("content")):
                         contents.append(str(content))
             elif isinstance(message_data, Sequence) and len(message_data) == 2:
@@ -388,7 +388,7 @@ def output_messages(
             elif hasattr(message_data, "get"):
                 if content := message_data.get("content"):
                     contents.append(str(content))
-                elif kwargs := message_data.get("kwargs"):
+                elif kwargs := message_data.get("kwargs"):  # noqa: SIM102
                     if hasattr(kwargs, "get") and (content := kwargs.get("content")):
                         contents.append(str(content))
     if contents:
@@ -1036,14 +1036,14 @@ def build_llm_invocation(run: Run) -> LLMInvocation:  # pylint: disable=too-many
                 "endpoint_url",
                 "service_url",
             ):
-                if (addr := _first_param(key)) is not None:
+                if (addr := _first_param(key)) is not None:  # noqa: SIM102
                     if normalized_addr := _normalize_server_address(addr):
                         inv.server_address = normalized_addr
                         break
 
         if not inv.server_address and isinstance(meta := run.extra.get("metadata"), Mapping):
             for key in ("ls_server_address", "server.address"):
-                if (addr := meta.get(key)) is not None:
+                if (addr := meta.get(key)) is not None:  # noqa: SIM102
                     if normalized_addr := _normalize_server_address(addr):
                         inv.server_address = normalized_addr
                         break
@@ -1083,7 +1083,7 @@ def build_llm_invocation(run: Run) -> LLMInvocation:  # pylint: disable=too-many
     # ``response_metadata`` (or ``generation_info``). Fall back to those.
     if not inv.response_model_name or not inv.response_id:
         for meta in _iter_generation_response_metadata(run.outputs):
-            if not inv.response_model_name:
+            if not inv.response_model_name:  # noqa: SIM102
                 if resp_model := get_first_value(meta, ("model_name", "model")):
                     inv.response_model_name = str(resp_model)
             if not inv.response_id and (resp_id := meta.get("id")):
@@ -1542,7 +1542,7 @@ def extract_agent_metadata(run: Run) -> Iterator[tuple[str, str]]:
                 yield GEN_AI_AGENT_DESCRIPTION_KEY, desc
             return
     # From serialized graph
-    if run.serialized and isinstance(run.serialized, dict) and (name := run.serialized.get("name")):
+    if run.serialized and isinstance(run.serialized, dict) and (name := run.serialized.get("name")):  # noqa: SIM102
         if name != "LangGraph":
             yield GEN_AI_AGENT_NAME_KEY, name
 

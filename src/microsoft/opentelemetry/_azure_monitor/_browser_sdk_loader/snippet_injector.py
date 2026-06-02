@@ -264,7 +264,7 @@ class WebSnippetInjector:
         :rtype: bytes
         """
         # Fast path: if no encoding specified and content doesn't look compressed, return as-is
-        if not content_encoding:
+        if not content_encoding:  # noqa: SIM102
             # Quick check for compression headers to avoid unnecessary processing
             if not self._appears_compressed(content):
                 return content

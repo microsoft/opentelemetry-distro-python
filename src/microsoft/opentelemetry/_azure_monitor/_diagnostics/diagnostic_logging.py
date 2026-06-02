@@ -4,6 +4,7 @@
 # license information.
 # --------------------------------------------------------------------------
 
+import contextlib
 import logging
 import threading
 from os import makedirs
@@ -87,11 +88,9 @@ class AzureDiagnosticLogging:
                 )
                 try:
                     if not exists(_DIAGNOSTIC_LOG_PATH):
-                        try:
-                            makedirs(_DIAGNOSTIC_LOG_PATH)
                         # Multi-thread can create a race condition for creating the log file
-                        except FileExistsError:
-                            pass
+                        with contextlib.suppress(FileExistsError):
+                            makedirs(_DIAGNOSTIC_LOG_PATH)
                     f_handler = logging.FileHandler(join(_DIAGNOSTIC_LOG_PATH, _DIAGNOSTIC_LOGGER_FILE_NAME))
                     formatter = logging.Formatter(fmt=log_format, datefmt="%Y-%m-%dT%H:%M:%S")
                     f_handler.setFormatter(formatter)

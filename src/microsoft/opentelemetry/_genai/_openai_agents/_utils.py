@@ -6,6 +6,7 @@
 # HELPER FUNCTIONS ###
 # -------------------------------------------------- #
 
+import contextlib
 from collections.abc import Iterable, Iterator, Mapping
 from typing import TYPE_CHECKING, Any
 
@@ -231,10 +232,8 @@ def _get_attributes_from_chat_completions_input(
 ) -> Iterator[tuple[str, AttributeValue]]:
     if not obj:
         return
-    try:
+    with contextlib.suppress(Exception):  # pylint: disable=broad-exception-caught
         yield GEN_AI_INPUT_MESSAGES_KEY, safe_json_dumps(obj)
-    except Exception:  # pylint: disable=broad-exception-caught
-        pass
     yield from get_attributes_from_chat_completions_message_dicts(
         obj,
         f"{GEN_AI_INPUT_MESSAGES_KEY}.",
@@ -246,10 +245,8 @@ def _get_attributes_from_chat_completions_output(
 ) -> Iterator[tuple[str, AttributeValue]]:
     if not obj:
         return
-    try:
+    with contextlib.suppress(Exception):  # pylint: disable=broad-exception-caught
         yield GEN_AI_OUTPUT_MESSAGES_KEY, safe_json_dumps(obj)
-    except Exception:  # pylint: disable=broad-exception-caught
-        pass
 
     # Collect all finish_reason values
     finish_reasons = [str(message.get("finish_reason")) for message in obj if message.get("finish_reason") is not None]

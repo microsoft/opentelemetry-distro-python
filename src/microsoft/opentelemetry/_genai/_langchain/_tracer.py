@@ -408,7 +408,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                 if name := meta.get("lc_agent_name"):
                     return str(name)
         # 3. From serialized graph name
-        if run.serialized and isinstance(run.serialized, dict) and (name := run.serialized.get("name")):
+        if run.serialized and isinstance(run.serialized, dict) and (name := run.serialized.get("name")):  # noqa: SIM102
             if name != "LangGraph":  # avoid generic name
                 return str(name)
         # 4. Run name itself if it's not just "LangGraph"
