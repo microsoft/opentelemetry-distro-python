@@ -12,7 +12,7 @@ import pytest
 
 pytest.importorskip("langchain_core")
 
-from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # pylint: disable=wrong-import-position
+from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402
     DictWithLock,
     CHAT_OPERATION_NAME,
     EXECUTE_TOOL_OPERATION_NAME,
@@ -146,7 +146,7 @@ class TestStopOnException(TestCase):
         @stop_on_exception
         def gen():
             raise ValueError("boom")
-            yield ("k", "v")  # noqa: unreachable # pylint: disable=unreachable
+            yield ("k", "v")  # noqa: unreachable
 
         self.assertEqual(list(gen()), [])
 

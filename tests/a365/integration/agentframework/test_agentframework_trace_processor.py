@@ -147,24 +147,23 @@ class TestAgentFrameworkTraceProcessorIntegration:
                 assert attributes[TENANT_ID_KEY] == agent365_config["tenant_id"]
 
             # Check for LLM spans (generation spans)
-            if GEN_AI_PROVIDER_NAME_KEY in attributes and attributes[GEN_AI_PROVIDER_NAME_KEY] == "openai":
-                if GEN_AI_REQUEST_MODEL_KEY in attributes:
-                    llm_spans_found += 1
-                    # Validate LLM span attributes
-                    assert GEN_AI_REQUEST_MODEL_KEY in attributes
-                    assert attributes[GEN_AI_REQUEST_MODEL_KEY] is not None
-                    print(f"✓ Found LLM span with model: {attributes[GEN_AI_REQUEST_MODEL_KEY]}")
+            if GEN_AI_PROVIDER_NAME_KEY in attributes and attributes[GEN_AI_PROVIDER_NAME_KEY] == "openai" and GEN_AI_REQUEST_MODEL_KEY in attributes:
+                llm_spans_found += 1
+                # Validate LLM span attributes
+                assert GEN_AI_REQUEST_MODEL_KEY in attributes
+                assert attributes[GEN_AI_REQUEST_MODEL_KEY] is not None
+                print(f"✓ Found LLM span with model: {attributes[GEN_AI_REQUEST_MODEL_KEY]}")
 
-                    # Check for input/output messages
-                    if GEN_AI_INPUT_MESSAGES_KEY in attributes:
-                        input_messages = attributes[GEN_AI_INPUT_MESSAGES_KEY]
-                        assert input_messages is not None
-                        print(f"✓ Input messages found: {input_messages[:100]}...")
+                # Check for input/output messages
+                if GEN_AI_INPUT_MESSAGES_KEY in attributes:
+                    input_messages = attributes[GEN_AI_INPUT_MESSAGES_KEY]
+                    assert input_messages is not None
+                    print(f"✓ Input messages found: {input_messages[:100]}...")
 
-                    if GEN_AI_OUTPUT_MESSAGES_KEY in attributes:
-                        output_messages = attributes[GEN_AI_OUTPUT_MESSAGES_KEY]
-                        assert output_messages is not None
-                        print(f"✓ Output messages found: {output_messages[:100]}...")
+                if GEN_AI_OUTPUT_MESSAGES_KEY in attributes:
+                    output_messages = attributes[GEN_AI_OUTPUT_MESSAGES_KEY]
+                    assert output_messages is not None
+                    print(f"✓ Output messages found: {output_messages[:100]}...")
 
             # Check for agent spans
             if "agent" in span.name.lower():
@@ -191,16 +190,15 @@ class TestAgentFrameworkTraceProcessorIntegration:
                 assert attributes[TENANT_ID_KEY] == agent365_config["tenant_id"]
 
             # Check for LLM spans
-            if "chat" in span.name.lower():
-                if GEN_AI_REQUEST_MODEL_KEY in attributes:
-                    llm_spans_found += 1
-                    print(f"✓ Found LLM span with model: {attributes[GEN_AI_REQUEST_MODEL_KEY]}")
+            if "chat" in span.name.lower() and GEN_AI_REQUEST_MODEL_KEY in attributes: # noqa: SIM102
+                llm_spans_found += 1
+                print(f"✓ Found LLM span with model: {attributes[GEN_AI_REQUEST_MODEL_KEY]}")
 
-                    # Check for tool calls in messages
-                    if GEN_AI_OUTPUT_MESSAGES_KEY in attributes:
-                        output_messages = attributes[GEN_AI_OUTPUT_MESSAGES_KEY]
-                        if "tool_calls" in output_messages:
-                            print("✓ Found tool calls in LLM output messages")
+                # Check for tool calls in messages
+                if GEN_AI_OUTPUT_MESSAGES_KEY in attributes:
+                    output_messages = attributes[GEN_AI_OUTPUT_MESSAGES_KEY]
+                    if "tool_calls" in output_messages:
+                        print("✓ Found tool calls in LLM output messages")
 
             # Check for agent spans
             if "agent" in span.name.lower():

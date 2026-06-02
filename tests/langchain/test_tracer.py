@@ -25,6 +25,7 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     GEN_AI_TOOL_DEFINITIONS_KEY,
     INVOKE_AGENT_OPERATION_NAME,
 )
+import contextlib
 
 pytest.importorskip("langchain_core")
 
@@ -342,11 +343,8 @@ class TestErrorHandlers(TestCase):
         run = _make_run(run_type="llm", name="gpt-4")
         tracer._start_trace(run)
         error = ValueError("test error")
-        with patch.object(tracer, "_persist_run"):
-            try:
-                tracer.on_llm_error(error, run_id=run.id)
-            except Exception:
-                pass
+        with patch.object(tracer, "_persist_run"), contextlib.suppress(Exception):
+            tracer.on_llm_error(error, run_id=run.id)
         mock_span.record_exception.assert_called_with(error)
 
     @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
@@ -356,11 +354,8 @@ class TestErrorHandlers(TestCase):
         run = _make_run(run_type="chain", name="test")
         tracer._start_trace(run)
         error = RuntimeError("chain failed")
-        with patch.object(tracer, "_persist_run"):
-            try:
-                tracer.on_chain_error(error, run_id=run.id)
-            except Exception:
-                pass
+        with patch.object(tracer, "_persist_run"), contextlib.suppress(Exception):
+            tracer.on_chain_error(error, run_id=run.id)
         mock_span.record_exception.assert_called_with(error)
 
     @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
@@ -370,11 +365,8 @@ class TestErrorHandlers(TestCase):
         run = _make_run(run_type="tool", name="calc")
         tracer._start_trace(run)
         error = RuntimeError("tool failed")
-        with patch.object(tracer, "_persist_run"):
-            try:
-                tracer.on_tool_error(error, run_id=run.id)
-            except Exception:
-                pass
+        with patch.object(tracer, "_persist_run"), contextlib.suppress(Exception):
+            tracer.on_tool_error(error, run_id=run.id)
         mock_span.record_exception.assert_called_with(error)
 
 

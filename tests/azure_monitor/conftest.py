@@ -8,6 +8,7 @@ import os
 from tempfile import mkstemp
 
 import pytest
+import contextlib
 
 
 @pytest.fixture
@@ -15,7 +16,5 @@ def temp_file_path():
     f, path = mkstemp()
     os.close(f)
     yield path
-    try:
+    with contextlib.suppress(OSError):
         os.unlink(path)
-    except OSError:
-        pass

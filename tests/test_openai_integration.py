@@ -15,6 +15,8 @@ import unittest
 
 import pytest
 
+import contextlib
+
 openai = pytest.importorskip("openai")
 
 # pylint: disable=wrong-import-position
@@ -124,13 +126,11 @@ class TestOpenAISpanGeneration(unittest.TestCase):
             create=True,
         ):
             client = openai.OpenAI(api_key="test-key")
-            try:
+            with contextlib.suppress(Exception):
                 client.chat.completions.create(
                     model="gpt-4o",
                     messages=[{"role": "user", "content": "Hi"}],
                 )
-            except Exception:  # pylint: disable=broad-exception-caught
-                pass  # API call may fail; we still get spans from the wrapper
 
         self.provider.force_flush()
         spans = self.exporter.get_finished_spans()

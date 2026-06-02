@@ -259,8 +259,7 @@ class TestGetApplicationName:
         pyproject = tmp_path / "pyproject.toml"
         pyproject.write_text('[project]\nname = "pyproject-app-name"')
 
-        with patch.dict(os.environ, {"AGENT365_APPLICATION_NAME": "env-app-name"}):
-            with patch.object(Path, "cwd", return_value=tmp_path):
+        with patch.dict(os.environ, {"AGENT365_APPLICATION_NAME": "env-app-name"}), patch.object(Path, "cwd", return_value=tmp_path):
                 Utility.reset_application_name_cache()
                 result = Utility.get_application_name()
                 assert result == "env-app-name"

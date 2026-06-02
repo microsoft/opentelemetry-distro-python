@@ -111,7 +111,7 @@ class TestDistro(TestCase):
     def test_configure_exc(self, mock_diagnostics, azure_core_mock, attach_mock, configure_mock):
         distro = AzureMonitorDistro()
         configure_mock.side_effect = Exception("Test Exception")
-        with self.assertRaises(Exception):
+        with self.assertRaises(Exception): # noqa: B017
             distro.configure()
         mock_diagnostics.error.assert_called_once_with(
             "Azure Monitor OpenTelemetry Distro failed during configuration: Test Exception", _ATTACH_FAILURE_DISTRO
