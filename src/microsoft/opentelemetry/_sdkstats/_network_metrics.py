@@ -55,7 +55,6 @@ def _observe_request_success_count(options: CallbackOptions) -> Iterable[Observa
     observations: List[Observation] = []
     for key, value in drain(REQUEST_SUCCESS_NAME).items():
         attributes = dict(common)
-        attributes["version"] = VERSION
         attributes["endpoint"] = key[0]
         attributes["host"] = key[1]
         attributes["statusCode"] = 200
