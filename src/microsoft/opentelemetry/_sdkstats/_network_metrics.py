@@ -34,7 +34,7 @@ try:  # Upstream is an optional dependency for non-AzMon consumers.
         _StatsbeatMetrics,
     )
 except ImportError:  # pragma: no cover
-    _StatsbeatMetrics = None  # type: ignore[assignment]
+    _StatsbeatMetrics = None  # type: ignore[assignment,misc]
 
 logger = logging.getLogger(__name__)
 
