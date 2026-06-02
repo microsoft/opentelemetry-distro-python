@@ -29,7 +29,7 @@ if TYPE_CHECKING:
 # Region label used when SDKStats runs standalone (no customer exporter, so
 # no customer endpoint to derive a region from).  Upstream requires a
 # non-empty region to validate the config.
-_SDKSTATS_DEFAULT_REGION = "global"
+_SDKSTATS_DEFAULT_REGION = "n/a"
 
 def _build_default_sdkstats_config() -> Optional["StatsbeatConfig"]:
     """Return a default upstream ``StatsbeatConfig`` or ``None`` on failure."""
@@ -49,8 +49,6 @@ def _build_default_sdkstats_config() -> Optional["StatsbeatConfig"]:
 
     # Upstream will return the default statsbeat connection string.
     conn_str = _get_stats_connection_string("")
-    if not conn_str:
-        return None
 
     try:
         parsed = ConnectionStringParser(conn_str)
