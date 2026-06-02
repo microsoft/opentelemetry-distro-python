@@ -112,7 +112,6 @@ def main():
             agent_details=agent,
             caller_details=caller,
         ) as invoke_scope:
-
             # Record structured input messages
             invoke_scope.record_input_messages(
                 InputMessages(
@@ -139,7 +138,6 @@ def main():
                 agent_details=agent,
                 user_details=user,
             ) as inference_scope:
-
                 inference_scope.record_input_messages(
                     InputMessages(
                         messages=[
@@ -190,7 +188,6 @@ def main():
                 agent_details=agent,
                 user_details=user,
             ) as tool_scope:
-
                 # Simulate tool execution
                 time.sleep(0.02)
                 tool_result = '{"temperature": 62, "condition": "Partly cloudy"}'
@@ -213,7 +210,6 @@ def main():
                 agent_details=agent,
                 user_details=user,
             ) as inference_scope_2:
-
                 time.sleep(0.05)
 
                 final_answer = "It's currently 62°F and partly cloudy in Seattle."

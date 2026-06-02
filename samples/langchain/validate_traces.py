@@ -134,9 +134,9 @@ def main():  # pylint: disable=too-many-statements
         print(f"  {status} {label}" + (f" — {detail}" if detail else ""))
 
     # ── LLM span checks ────────────────────────────────────────────────
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"LLM SPANS ({len(llm_spans)} found)")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     for span in llm_spans:
         attrs = span.attributes
@@ -150,12 +150,10 @@ def main():  # pylint: disable=too-many-statements
 
     # ── Responses-API fake span: response.model / response.id from
     #     message.response_metadata (the bug this fix addresses) ─────────
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("RESPONSES-API FAKE SPAN CHECKS")
-    print(f"{'='*60}")
-    responses_spans = [
-        s for s in llm_spans if s.attributes.get("gen_ai.response.id") == "resp_abc123"
-    ]
+    print(f"{'=' * 60}")
+    responses_spans = [s for s in llm_spans if s.attributes.get("gen_ai.response.id") == "resp_abc123"]
     check("Responses-API fake LLM span found", len(responses_spans) == 1, f"found {len(responses_spans)}")
     if responses_spans:
         attrs = responses_spans[0].attributes
@@ -171,9 +169,9 @@ def main():  # pylint: disable=too-many-statements
         )
 
     # ── Tool span checks ───────────────────────────────────────────────
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print(f"TOOL SPANS ({len(tool_spans)} found)")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     for span in tool_spans:
         attrs = span.attributes
@@ -194,9 +192,9 @@ def main():  # pylint: disable=too-many-statements
         check("gen_ai.tool.call.result present (content on)", "gen_ai.tool.call.result" in attrs)
 
     # ── All-span attribute dump ─────────────────────────────────────────
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     print("ALL SPANS ATTRIBUTE DUMP")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     for span in spans:
         print(f"\n  [{span.kind.name}] {span.name}")
         for k, v in sorted(span.attributes.items()):
@@ -204,12 +202,12 @@ def main():  # pylint: disable=too-many-statements
             print(f"    {k} = {val}")
 
     # ── Summary ─────────────────────────────────────────────────────────
-    print(f"\n{'='*60}")
+    print(f"\n{'=' * 60}")
     if ok:
         print("✅ ALL CHECKS PASSED")
     else:
         print("❌ SOME CHECKS FAILED")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
 
     inst.uninstrument()
     provider.shutdown()
