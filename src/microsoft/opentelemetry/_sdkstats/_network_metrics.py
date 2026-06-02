@@ -27,8 +27,6 @@ from microsoft.opentelemetry._sdkstats._utils import (
     drain,
 )
 
-from microsoft.opentelemetry._version import VERSION
-
 try:  # Upstream is an optional dependency for non-AzMon consumers.
     from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (
         _StatsbeatMetrics,
