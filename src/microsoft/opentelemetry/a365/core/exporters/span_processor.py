@@ -57,6 +57,7 @@ from microsoft.opentelemetry.a365.constants import (
     USER_ID_KEY,
     USER_NAME_KEY,
 )
+import contextlib
 
 # mypy: disable-error-code="no-untyped-def"
 
@@ -130,15 +131,11 @@ class A365SpanProcessor(BaseSpanProcessor):
             existing = {}
 
         if self._tenant_id and TENANT_ID_KEY not in existing:
-            try:
+            with contextlib.suppress(Exception):
                 span.set_attribute(TENANT_ID_KEY, self._tenant_id)
-            except Exception:
-                pass
         if self._agent_id and GEN_AI_AGENT_ID_KEY not in existing:
-            try:
+            with contextlib.suppress(Exception):
                 span.set_attribute(GEN_AI_AGENT_ID_KEY, self._agent_id)
-            except Exception:
-                pass
 
         # Refresh existing after stamping identity
         try:

@@ -230,10 +230,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             framework_name = self._resolve_framework_name(run)
             span_name = f"{INVOKE_AGENT_OPERATION_NAME} {framework_name}"
 
-        if run.run_type.lower() in ("llm", "chat_model"):
-            span_kind = SpanKind.CLIENT
-        else:
-            span_kind = SpanKind.INTERNAL
+        span_kind = SpanKind.CLIENT if run.run_type.lower() in ("llm", "chat_model") else SpanKind.INTERNAL
 
         span = self._tracer.start_span(
             name=span_name,
@@ -395,9 +392,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         if not self._is_agent_like_chain(run):
             return False
         # Don't nest agents — if a parent is already an agent, this is internal
-        if run.parent_run_id and run.parent_run_id in self._agent_run_ids:
-            return False
-        return True
+        return not (run.parent_run_id and run.parent_run_id in self._agent_run_ids)
 
     def _resolve_agent_name(self, run: Run) -> str | None:
         """Resolve agent name from config override, run metadata, or run name."""
@@ -413,10 +408,9 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                 if name := meta.get("lc_agent_name"):
                     return str(name)
         # 3. From serialized graph name
-        if run.serialized and isinstance(run.serialized, dict):
-            if name := run.serialized.get("name"):
-                if name != "LangGraph":  # avoid generic name
-                    return str(name)
+        if run.serialized and isinstance(run.serialized, dict) and (name := run.serialized.get("name")):
+            if name != "LangGraph":  # avoid generic name
+                return str(name)
         # 4. Run name itself if it's not just "LangGraph"
         if run.name and run.name != "LangGraph":
             return str(run.name)

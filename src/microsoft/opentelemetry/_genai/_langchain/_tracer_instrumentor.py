@@ -197,9 +197,8 @@ def _current_parent_run_id() -> UUID | None:
     if not isinstance(config, dict):
         return None
     for v in config.values():
-        if isinstance(v, langchain_core.callbacks.BaseCallbackManager):
-            if v.parent_run_id:
-                return UUID(str(v.parent_run_id))
+        if isinstance(v, langchain_core.callbacks.BaseCallbackManager) and v.parent_run_id:
+            return UUID(str(v.parent_run_id))
     return None
 
 

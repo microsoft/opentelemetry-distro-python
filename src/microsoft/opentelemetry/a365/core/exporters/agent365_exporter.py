@@ -39,6 +39,7 @@ from microsoft.opentelemetry.a365.core.exporters.utils import (
     truncate_span,
 )
 from microsoft.opentelemetry.a365.constants import A365_HTTP_TIMEOUT_SECONDS
+import contextlib
 
 # mypy: disable-error-code="import-untyped, union-attr"
 
@@ -324,10 +325,8 @@ class _Agent365Exporter(SpanExporter):
             if self._closed:
                 return
             self._closed = True
-            try:
+            with contextlib.suppress(Exception):
                 self._session.close()
-            except Exception:
-                pass
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
         return True

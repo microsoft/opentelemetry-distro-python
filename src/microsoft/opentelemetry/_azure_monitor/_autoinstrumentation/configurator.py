@@ -41,7 +41,7 @@ from microsoft.opentelemetry._azure_monitor._diagnostics.status_logger import (
 class AzureMonitorConfigurator(_OTelSDKConfigurator):
     def _configure(self, **kwargs):
         if not _is_attach_enabled():
-            warn(_PREVIEW_ENTRY_POINT_WARNING)
+            warn(_PREVIEW_ENTRY_POINT_WARNING, stacklevel=2)
         try:
             if environ.get(OTEL_TRACES_EXPORTER, "").lower().strip() != "none":
                 kwargs.setdefault(TRACE_EXPORTER_NAMES_ARG, ["azure_monitor_opentelemetry_exporter"])
@@ -63,7 +63,7 @@ class AzureMonitorConfigurator(_OTelSDKConfigurator):
             )
         except Exception as e:
             AzureDiagnosticLogging.error(  # pylint: disable=C
-                "Azure Monitor Configurator failed during configuration: %s" % str(e),
+                "Azure Monitor Configurator failed during configuration: %s" % str(e), # noqa: UP031
                 _ATTACH_FAILURE_CONFIGURATOR,
             )
             raise e

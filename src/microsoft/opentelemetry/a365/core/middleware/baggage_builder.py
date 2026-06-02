@@ -228,10 +228,7 @@ class BaggageBuilder:
         """
         if not pairs:
             return self
-        if isinstance(pairs, dict):
-            iterator = pairs.items()
-        else:
-            iterator = pairs
+        iterator = pairs.items() if isinstance(pairs, dict) else pairs
         for k, v in iterator:
             if v is None:
                 continue

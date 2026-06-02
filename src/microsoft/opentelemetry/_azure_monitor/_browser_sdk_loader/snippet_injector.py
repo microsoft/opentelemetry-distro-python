@@ -308,9 +308,7 @@ class WebSnippetInjector:
         # Brotli: no reliable magic number, but check for common patterns
         # (Brotli detection is harder without trying to decompress)
         # zlib/deflate: starts with 0x78 followed by various values
-        if content[0] == 0x78 and content[1] in (0x01, 0x5E, 0x9C, 0xDA):
-            return True
-        return False
+        return content[0] == 0x78 and content[1] in (0x01, 0x5E, 0x9C, 0xDA)
 
     def _clear_decompression_cache(self) -> None:
         """Clear the decompressed content cache.

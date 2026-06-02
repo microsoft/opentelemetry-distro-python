@@ -66,44 +66,43 @@ class AzureDiagnosticLogging:
     @classmethod
     def _initialize(cls):
         with cls._lock:
-            if not cls._initialized:
-                if _is_diagnostics_enabled() and _DIAGNOSTIC_LOG_PATH:
-                    log_format = (
-                        "{"
-                        + '"time":"%(asctime)s.%(msecs)03d", '
-                        + '"level":"%(levelname)s", '
-                        + '"logger":"%(name)s", '
-                        + '"message":"%(message)s", '
-                        + '"properties":{'
-                        + '"operation":"Startup", '
-                        + f'"siteName":"{_SITE_NAME}", '
-                        + f'"ikey":"{_get_customer_ikey_from_env_var()}", '
-                        + f'"extensionVersion":"{_EXTENSION_VERSION}", '
-                        + f'"sdkVersion":"{VERSION}", '
-                        + f'"subscriptionId":"{_SUBSCRIPTION_ID}", '
-                        + '"msgId":"%(msgId)s", '
-                        + '"language":"python"'
-                        + "}"
-                        + "}"
-                    )
-                    try:
-                        if not exists(_DIAGNOSTIC_LOG_PATH):
-                            try:
-                                makedirs(_DIAGNOSTIC_LOG_PATH)
-                            # Multi-thread can create a race condition for creating the log file
-                            except FileExistsError:
-                                pass
-                        f_handler = logging.FileHandler(join(_DIAGNOSTIC_LOG_PATH, _DIAGNOSTIC_LOGGER_FILE_NAME))
-                        formatter = logging.Formatter(fmt=log_format, datefmt="%Y-%m-%dT%H:%M:%S")
-                        f_handler.setFormatter(formatter)
-                        _diagnostic_file_logger.addHandler(f_handler)
-                        cls._initialized = True
-                    except Exception as e:  # pylint: disable=broad-except
-                        _logger.error(
-                            "Failed to initialize Azure Monitor diagnostic logging: %s",
-                            e,
-                        )  # pylint: disable=do-not-log-exceptions-if-not-debug
-                        cls._initialized = False
+            if not cls._initialized and _is_diagnostics_enabled() and _DIAGNOSTIC_LOG_PATH:
+                log_format = (
+                    "{"
+                    + '"time":"%(asctime)s.%(msecs)03d", '
+                    + '"level":"%(levelname)s", '
+                    + '"logger":"%(name)s", '
+                    + '"message":"%(message)s", '
+                    + '"properties":{'
+                    + '"operation":"Startup", '
+                    + f'"siteName":"{_SITE_NAME}", '
+                    + f'"ikey":"{_get_customer_ikey_from_env_var()}", '
+                    + f'"extensionVersion":"{_EXTENSION_VERSION}", '
+                    + f'"sdkVersion":"{VERSION}", '
+                    + f'"subscriptionId":"{_SUBSCRIPTION_ID}", '
+                    + '"msgId":"%(msgId)s", '
+                    + '"language":"python"'
+                    + "}"
+                    + "}"
+                )
+                try:
+                    if not exists(_DIAGNOSTIC_LOG_PATH):
+                        try:
+                            makedirs(_DIAGNOSTIC_LOG_PATH)
+                        # Multi-thread can create a race condition for creating the log file
+                        except FileExistsError:
+                            pass
+                    f_handler = logging.FileHandler(join(_DIAGNOSTIC_LOG_PATH, _DIAGNOSTIC_LOGGER_FILE_NAME))
+                    formatter = logging.Formatter(fmt=log_format, datefmt="%Y-%m-%dT%H:%M:%S")
+                    f_handler.setFormatter(formatter)
+                    _diagnostic_file_logger.addHandler(f_handler)
+                    cls._initialized = True
+                except Exception as e:  # pylint: disable=broad-except
+                    _logger.error(
+                        "Failed to initialize Azure Monitor diagnostic logging: %s",
+                        e,
+                    )  # pylint: disable=do-not-log-exceptions-if-not-debug
+                    cls._initialized = False
 
     @classmethod
     def debug(cls, message: str, message_id: str):

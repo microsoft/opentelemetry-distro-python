@@ -71,6 +71,7 @@ except ImportError:  # pragma: no cover - older util-genai versions
 
 from opentelemetry.util.types import AttributeValue
 from wrapt import ObjectProxy
+import contextlib
 
 try:
     from opentelemetry.semconv._incubating.attributes.gen_ai_attributes import (
@@ -469,10 +470,8 @@ def invocation_parameters(run: Run) -> Iterator[tuple[str, AttributeValue]]:  # 
 
         # gen_ai.request.top_k
         if (top_k_val := _first_param("top_k")) is not None:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 yield GEN_AI_REQUEST_TOP_K_KEY, float(top_k_val)
-            except (ValueError, TypeError):
-                pass
 
         # gen_ai.openai.request.response_format + gen_ai.output.type
         if (response_format := _first_param("response_format")) is not None:
@@ -686,8 +685,7 @@ def token_counts(outputs: Mapping[str, Any] | None) -> Iterator[tuple[str, int]]
     if (output_tokens := usage.get("output_tokens")) is not None:
         yield GEN_AI_USAGE_OUTPUT_TOKENS_KEY, output_tokens
     if usage_mapping := _as_usage_mapping(_parse_token_usage(outputs)):
-        for attribute_name, token_count in _extra_usage_attributes(usage_mapping):
-            yield attribute_name, token_count
+        yield from _extra_usage_attributes(usage_mapping)
 
 
 def _iter_generation_mappings(outputs: Mapping[str, Any] | None) -> Iterator[Mapping[str, Any]]:
@@ -880,9 +878,8 @@ def tools(run: Run) -> Iterator[tuple[str, str]]:
         yield GEN_AI_TOOL_NAME_KEY, name
     if description := serialized.get("description"):
         yield GEN_AI_TOOL_DESCRIPTION_KEY, description
-    if run.extra and hasattr(run.extra, "get"):
-        if tool_call_id := run.extra.get("tool_call_id"):
-            yield GEN_AI_TOOL_CALL_ID_KEY, tool_call_id
+    if run.extra and hasattr(run.extra, "get") and (tool_call_id := run.extra.get("tool_call_id")):
+        yield GEN_AI_TOOL_CALL_ID_KEY, tool_call_id
     if _should_capture_content_on_spans():
         if run.inputs and hasattr(run.inputs, "get"):
             _sentinel = object()
@@ -1076,9 +1073,8 @@ def build_llm_invocation(run: Run) -> LLMInvocation:  # pylint: disable=too-many
     # --- Response ID ---
     if run.outputs and isinstance(run.outputs, Mapping):
         llm_output = run.outputs.get("llm_output")
-        if llm_output and hasattr(llm_output, "get"):
-            if resp_id := llm_output.get("id"):
-                inv.response_id = str(resp_id)
+        if llm_output and hasattr(llm_output, "get") and (resp_id := llm_output.get("id")):
+            inv.response_id = str(resp_id)
 
     # ``llm_output`` is only populated for the OpenAI client path patched by
     # ``opentelemetry-instrumentation-openai-v2``. ``AzureChatOpenAI`` and
@@ -1090,9 +1086,8 @@ def build_llm_invocation(run: Run) -> LLMInvocation:  # pylint: disable=too-many
             if not inv.response_model_name:
                 if resp_model := get_first_value(meta, ("model_name", "model")):
                     inv.response_model_name = str(resp_model)
-            if not inv.response_id:
-                if resp_id := meta.get("id"):
-                    inv.response_id = str(resp_id)
+            if not inv.response_id and (resp_id := meta.get("id")):
+                inv.response_id = str(resp_id)
             if inv.response_model_name and inv.response_id:
                 break
 
@@ -1120,17 +1115,16 @@ def _langchain_role(message: Any) -> str:
         if msg_type and msg_type != "constructor":
             return "assistant" if msg_type == "ai" else str(msg_type)
         # Fallback: parse role from serialized id field (e.g. ["langchain", "schema", "HumanMessage"])
-        if id_field := message.get("id"):
-            if isinstance(id_field, list) and len(id_field) > 0:
-                type_name = id_field[-1]
-                if "Human" in type_name:
-                    return "user"
-                if "AI" in type_name or "Assistant" in type_name:
-                    return "assistant"
-                if "System" in type_name:
-                    return "system"
-                if "Tool" in type_name:
-                    return "tool"
+        if (id_field := message.get("id")) and isinstance(id_field, list) and len(id_field) > 0:
+            type_name = id_field[-1]
+            if "Human" in type_name:
+                return "user"
+            if "AI" in type_name or "Assistant" in type_name:
+                return "assistant"
+            if "System" in type_name:
+                return "system"
+            if "Tool" in type_name:
+                return "tool"
     return "unknown"
 
 
@@ -1142,9 +1136,8 @@ def _langchain_content(message: Any) -> str | None:
     if hasattr(message, "get"):
         if c := message.get("content"):
             return str(c)
-        if kwargs := message.get("kwargs"):
-            if hasattr(kwargs, "get") and (c := kwargs.get("content")):
-                return str(c)
+        if (kwargs := message.get("kwargs")) and hasattr(kwargs, "get") and (c := kwargs.get("content")):
+            return str(c)
     return None
 
 
@@ -1549,10 +1542,9 @@ def extract_agent_metadata(run: Run) -> Iterator[tuple[str, str]]:
                 yield GEN_AI_AGENT_DESCRIPTION_KEY, desc
             return
     # From serialized graph
-    if run.serialized and isinstance(run.serialized, dict):
-        if name := run.serialized.get("name"):
-            if name != "LangGraph":
-                yield GEN_AI_AGENT_NAME_KEY, name
+    if run.serialized and isinstance(run.serialized, dict) and (name := run.serialized.get("name")):
+        if name != "LangGraph":
+            yield GEN_AI_AGENT_NAME_KEY, name
 
 
 @stop_on_exception

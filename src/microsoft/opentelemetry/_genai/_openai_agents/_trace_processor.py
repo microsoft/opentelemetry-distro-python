@@ -68,6 +68,7 @@ from ._utils import (
     get_span_status,
     get_tool_call_id,
 )
+import contextlib
 
 logger = logging.getLogger(__name__)
 
@@ -267,10 +268,8 @@ class OpenAIAgentsTraceProcessor(TracingProcessor):
 
         end_time: int | None = None
         if span.ended_at:
-            try:
+            with contextlib.suppress(ValueError):
                 end_time = as_utc_nano(datetime.fromisoformat(span.ended_at))
-            except ValueError:
-                pass
         otel_span.set_status(status=get_span_status(span))
         otel_span.end(end_time)
 

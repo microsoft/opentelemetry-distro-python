@@ -114,25 +114,22 @@ def _get_configurations(**kwargs) -> dict[str, ConfigurationValue]:
 
 def _default_disable_logging(configurations):
     default = False
-    if OTEL_LOGS_EXPORTER in environ:
-        if environ[OTEL_LOGS_EXPORTER].lower().strip() == "none":
-            default = True
+    if OTEL_LOGS_EXPORTER in environ and environ[OTEL_LOGS_EXPORTER].lower().strip() == "none":
+        default = True
     configurations[DISABLE_LOGGING_ARG] = default
 
 
 def _default_disable_metrics(configurations):
     default = False
-    if OTEL_METRICS_EXPORTER in environ:
-        if environ[OTEL_METRICS_EXPORTER].lower().strip() == "none":
-            default = True
+    if OTEL_METRICS_EXPORTER in environ and environ[OTEL_METRICS_EXPORTER].lower().strip() == "none":
+        default = True
     configurations[DISABLE_METRICS_ARG] = default
 
 
 def _default_disable_tracing(configurations):
     default = False
-    if OTEL_TRACES_EXPORTER in environ:
-        if environ[OTEL_TRACES_EXPORTER].lower().strip() == "none":
-            default = True
+    if OTEL_TRACES_EXPORTER in environ and environ[OTEL_TRACES_EXPORTER].lower().strip() == "none":
+        default = True
     configurations[DISABLE_TRACING_ARG] = default
 
 

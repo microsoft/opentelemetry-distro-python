@@ -323,9 +323,8 @@ def _get_attributes_from_chat_completions_tool_call_dict(
     if function := obj.get("function"):
         if name := function.get("name"):
             yield f"{prefix}{GEN_AI_TOOL_NAME_KEY}", name
-        if arguments := function.get("arguments"):
-            if arguments != "{}":
-                yield f"{prefix}{GEN_AI_TOOL_ARGS_KEY}", arguments
+        if (arguments := function.get("arguments")) and arguments != "{}":
+            yield f"{prefix}{GEN_AI_TOOL_ARGS_KEY}", arguments
 
 
 def _get_attributes_from_chat_completions_usage(
