@@ -52,7 +52,7 @@ class OperationResult:
             protecting the singleton instance returned by success().
 
         Returns:
-            List[OperationError]: A copy of the list of operation errors.
+            list[OperationError]: A copy of the list of operation errors.
         """
         return list(self._errors)
 

@@ -29,13 +29,13 @@ python -m pip install -e .[dev] tox
 Run all environments at once or pick individual ones.
 
 ```bash
-# Run everything (pylint, mypy, black, tests on Python 3.10-3.14)
+# Run everything (pylint, mypy, ruff, tests on Python 3.10-3.14)
 tox
 
 # Run a single check
 tox -e pylint       # Lint with pylint
 tox -e mypy         # Type-check with mypy
-tox -e black        # Format with black
+tox -e ruff         # Lint and check formatting with ruff
 
 # Run tests on a specific Python version
 tox -e pytest-py312
