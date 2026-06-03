@@ -144,7 +144,14 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
     :keyword a365_token_resolver:
         Optional callable ``(agent_id: str, tenant_id: str) -> str | None``
         used to authenticate with the Agent365 endpoint.  When omitted,
-        ``DefaultAzureCredential`` is used.
+        ``DefaultAzureCredential`` is used.  When both this and
+        ``a365_contextual_token_resolver`` are set, the contextual resolver
+        takes precedence.
+    :keyword a365_contextual_token_resolver:
+        Optional callable ``(TokenResolverContext) -> str | None`` used to
+        authenticate with the Agent365 endpoint.  Receives rich context
+        including the agentic user ID (AAD Object ID) extracted from span
+        attributes.  Takes precedence over ``a365_token_resolver`` when set.
     :keyword str a365_cluster_category:
         Cluster category for endpoint discovery. Also read from ``A365_CLUSTER_CATEGORY``
         env var. Defaults to ``"prod"``.
