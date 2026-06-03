@@ -26,10 +26,6 @@ logger = logging.getLogger(__name__)
 if TYPE_CHECKING:
     from azure.monitor.opentelemetry.exporter.statsbeat._manager import StatsbeatConfig
 
-# Region label used when SDKStats runs standalone (no customer exporter, so
-# no customer endpoint to derive a region from).  Upstream requires a
-# non-empty region to validate the config.
-_SDKSTATS_DEFAULT_REGION = "n/a"
 
 def _build_default_sdkstats_config() -> Optional["StatsbeatConfig"]:
     """Return a default upstream ``StatsbeatConfig`` or ``None`` on failure."""
@@ -61,7 +57,7 @@ def _build_default_sdkstats_config() -> Optional["StatsbeatConfig"]:
 
     return StatsbeatConfig(
         endpoint=parsed.endpoint,
-        region=parsed.region or _SDKSTATS_DEFAULT_REGION,
+        region=parsed.region,
         instrumentation_key=parsed.instrumentation_key,
         # Standalone (no Azure Monitor) — the customer has not opted into
         # Azure Monitor's offline disk-retry storage, so suppress upstream's
