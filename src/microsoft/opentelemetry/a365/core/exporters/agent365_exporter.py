@@ -16,7 +16,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable, Sequence
-from typing import Any, final
+from typing import Any, Optional, final
 
 import requests
 from opentelemetry.sdk.trace import ReadableSpan
@@ -24,6 +24,10 @@ from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 from opentelemetry.trace import StatusCode
 
 from microsoft.opentelemetry._sdkstats import is_sdkstats_enabled
+from microsoft.opentelemetry.a365.core.exporters.token_resolver_context import (
+    AgentIdentity,
+    TokenResolverContext,
+)
 from microsoft.opentelemetry.a365.core.exporters.utils import (
     DEFAULT_MAX_PAYLOAD_BYTES,
     build_export_url,
@@ -38,7 +42,7 @@ from microsoft.opentelemetry.a365.core.exporters.utils import (
     status_name,
     truncate_span,
 )
-from microsoft.opentelemetry.a365.constants import A365_HTTP_TIMEOUT_SECONDS
+from microsoft.opentelemetry.a365.constants import A365_HTTP_TIMEOUT_SECONDS, GEN_AI_AGENT_AUID_KEY
 
 # mypy: disable-error-code="import-untyped, union-attr"
 
@@ -172,19 +176,21 @@ class _Agent365Exporter(SpanExporter):
 
     def __init__(
         self,
-        token_resolver: Callable[[str, str], str | None],
+        token_resolver: Optional[Callable[[str, str], str | None]] = None,
+        contextual_token_resolver: Optional[Callable[[TokenResolverContext], str | None]] = None,
         cluster_category: str = "prod",
         use_s2s_endpoint: bool = False,
         max_payload_bytes: int = DEFAULT_MAX_PAYLOAD_BYTES,
     ):
-        if token_resolver is None:
-            raise ValueError("token_resolver must be provided.")
+        if token_resolver is None and contextual_token_resolver is None:
+            raise ValueError("token_resolver or contextual_token_resolver must be provided.")
         if max_payload_bytes <= 0:
             raise ValueError(f"max_payload_bytes must be positive, got {max_payload_bytes}")
         self._session = requests.Session()
         self._closed = False
         self._lock = threading.Lock()
         self._token_resolver = token_resolver
+        self._contextual_token_resolver = contextual_token_resolver
         self._cluster_category = cluster_category
         self._use_s2s_endpoint = use_s2s_endpoint
         self._max_payload_bytes = max_payload_bytes
@@ -245,7 +251,21 @@ class _Agent365Exporter(SpanExporter):
 
                 headers: dict[str, str | bytes] = {"content-type": "application/json"}
                 try:
-                    token = self._token_resolver(agent_id, tenant_id)
+                    # Prefer contextual_token_resolver when set; extract agentic user ID
+                    # from the first span in the group (1:1 relationship between agent and user).
+                    if self._contextual_token_resolver is not None:
+                        agentic_user_id = None
+                        if activities:
+                            first_attrs = activities[0].attributes or {}
+                            agentic_user_id = first_attrs.get(GEN_AI_AGENT_AUID_KEY)
+                            if agentic_user_id is not None:
+                                agentic_user_id = str(agentic_user_id)
+                        identity = AgentIdentity(agent_id, agentic_user_id)
+                        context = TokenResolverContext(identity, tenant_id)
+                        token = self._contextual_token_resolver(context)
+                    else:
+                        token = self._token_resolver(agent_id, tenant_id)
+
                     if token:
                         if not url.lower().startswith("https://"):
                             logger.warning(

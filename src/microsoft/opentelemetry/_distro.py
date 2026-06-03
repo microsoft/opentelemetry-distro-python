@@ -35,6 +35,7 @@ from microsoft.opentelemetry._constants import (
     SPECTRA_PROTOCOL_ARG,
     SPECTRA_INSECURE_ARG,
     A365_TOKEN_RESOLVER_ARG,
+    A365_CONTEXTUAL_TOKEN_RESOLVER_ARG,
     A365_CLUSTER_CATEGORY_ARG,
     A365_USE_S2S_ENDPOINT_ARG,
     A365_SUPPRESS_INVOKE_AGENT_INPUT_ARG,
@@ -203,6 +204,7 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
     enable_console: bool = bool(kwargs.pop(ENABLE_CONSOLE_ARG, False))
     enable_a365: bool = bool(kwargs.pop(ENABLE_A365_ARG, False))
     a365_token_resolver = kwargs.pop(A365_TOKEN_RESOLVER_ARG, None)
+    a365_contextual_token_resolver = kwargs.pop(A365_CONTEXTUAL_TOKEN_RESOLVER_ARG, None)
     a365_cluster_category = kwargs.pop(A365_CLUSTER_CATEGORY_ARG, None)
     a365_use_s2s_endpoint = kwargs.pop(A365_USE_S2S_ENDPOINT_ARG, None)
     a365_suppress_invoke_agent_input = kwargs.pop(A365_SUPPRESS_INVOKE_AGENT_INPUT_ARG, None)
@@ -281,6 +283,7 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
         enable_a365,
         otel_kwargs,
         token_resolver=a365_token_resolver,
+        contextual_token_resolver=a365_contextual_token_resolver,
         cluster_category=a365_cluster_category,
         use_s2s_endpoint=a365_use_s2s_endpoint,
         suppress_invoke_agent_input=a365_suppress_invoke_agent_input,
@@ -403,6 +406,7 @@ def _append_a365_components(
     enable_a365: bool,
     otel_kwargs: Dict[str, Any],
     token_resolver: Any = None,
+    contextual_token_resolver: Any = None,
     cluster_category: Any = None,
     use_s2s_endpoint: Any = None,
     suppress_invoke_agent_input: Any = None,
@@ -487,12 +491,17 @@ def _append_a365_components(
             )
             return
 
-        resolved_token_resolver = token_resolver or _create_default_token_resolver(
-            scope_override=resolved_scope_override
-        )
+        # Prefer contextual_token_resolver when set; fall back to token_resolver or default.
+        if contextual_token_resolver is not None:
+            resolved_token_resolver = None
+        else:
+            resolved_token_resolver = token_resolver or _create_default_token_resolver(
+                scope_override=resolved_scope_override
+            )
 
         exporter = _Agent365Exporter(
             token_resolver=resolved_token_resolver,
+            contextual_token_resolver=contextual_token_resolver,
             cluster_category=resolved_cluster_category,
             use_s2s_endpoint=resolved_use_s2s,
         )
