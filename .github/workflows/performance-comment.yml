@@ -1,0 +1,72 @@
+name: Performance Comment
+
+# Posts the perf comparison as a sticky PR comment.
+#
+# This runs in the *base* repository's context via `workflow_run`, which
+# means it has a writable `GITHUB_TOKEN` even for pull requests opened from
+# forks. The Performance workflow itself runs in the (potentially untrusted)
+# PR context and only produces an artifact — no PR write permissions there.
+
+on:
+  workflow_run:
+    workflows: ["Performance"]
+    types:
+      - completed
+
+permissions:
+  contents: read
+  pull-requests: write
+  actions: read
+
+jobs:
+  comment:
+    name: Post sticky PR comment
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.event == 'pull_request'
+
+    steps:
+      - name: Download perf-results artifact
+        id: download
+        uses: actions/download-artifact@v4
+        with:
+          name: perf-results
+          path: perf-results
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve PR number
+        id: pr
+        run: |
+          set -euo pipefail
+          if [ -f perf-results/pr-number.txt ]; then
+            pr="$(tr -d '[:space:]' < perf-results/pr-number.txt)"
+          else
+            pr=""
+          fi
+
+          if [ -z "$pr" ]; then
+            echo "Could not determine PR number; skipping comment." >&2
+            echo "number=" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "number=$pr" >> "$GITHUB_OUTPUT"
+
+      - name: Verify report exists
+        id: report
+        if: steps.pr.outputs.number != ''
+        run: |
+          if [ -s perf-results/report.md ]; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            echo "report.md missing or empty; skipping comment." >&2
+          fi
+
+      - name: Post sticky PR comment
+        if: steps.pr.outputs.number != '' && steps.report.outputs.found == 'true'
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: perf-comparison
+          number: ${{ steps.pr.outputs.number }}
+          path: perf-results/report.md
