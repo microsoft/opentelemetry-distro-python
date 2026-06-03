@@ -37,7 +37,7 @@ try:
     langchain_available = True
 except ImportError:  # pragma: no cover - exercised only when langchain-core absent
     langchain_available = False
-    logger.warning(
+    logger.debug(
         "LangChain instrumentation is disabled because 'langchain-core' is not "
         "installed. Install the optional extra with "
         "`pip install microsoft-opentelemetry[langchain]` to enable it."
