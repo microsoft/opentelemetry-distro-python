@@ -95,7 +95,7 @@ def register_network_gauges() -> bool:
         meter_provider = manager._meter_provider  # pylint: disable=protected-access
         metrics = manager._metrics  # pylint: disable=protected-access
         if meter_provider is None or metrics is None:
-            logger.info("StatsbeatManager not initialised; skipping network gauges.")
+            logger.debug("StatsbeatManager not initialised; skipping network gauges.")
             return False
 
         attached: List[str] = []
@@ -104,12 +104,12 @@ def register_network_gauges() -> bool:
         ):
             gauge = getattr(metrics, gauge_attr, None)
             if gauge is None:
-                logger.info("Upstream %s gauge not yet created; skipping.", gauge_attr)
+                logger.debug("Upstream %s gauge not yet created; skipping.", gauge_attr)
                 continue
             try:
                 gauge._callbacks.append(callback)  # pylint: disable=protected-access
             except AttributeError:
-                logger.warning(
+                logger.debug(
                     "Upstream %s gauge has no _callbacks list; cannot attach.", gauge_attr,
                 )
                 continue
@@ -118,10 +118,6 @@ def register_network_gauges() -> bool:
         if not attached:
             return False
 
-        logger.info(
-            "distro callbacks attached to upstream %s on MeterProvider id=%s",
-            attached, id(meter_provider),
-        )
         _registered = True
         return True
 

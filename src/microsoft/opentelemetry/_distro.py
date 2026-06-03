@@ -407,30 +407,17 @@ def _initialize_sdkstats(enable_azure_monitor: bool) -> None:
         )
 
         config = _build_default_sdkstats_config()
-        if config is not None:
-            
-            # Version should reflect the SDK which exports the sdkstats
-            _StatsbeatMetrics._COMMON_ATTRIBUTES["version"] = VERSION  # pylint: disable=protected-access
+        if config is None:
+            return
 
-            manager = StatsbeatManager()
-            manager.initialize(config)
+        # Version should reflect the SDK which exports the sdkstats
+        _StatsbeatMetrics._COMMON_ATTRIBUTES["version"] = VERSION  # pylint: disable=protected-access
 
-            # Since azure monitor is disabled, the cikey is not applicable.
-            _StatsbeatMetrics._COMMON_ATTRIBUTES["cikey"] = "n/a"  # pylint: disable=protected-access
+        manager = StatsbeatManager()
+        manager.initialize(config)
 
-            # Suppress upstream's `attach` statsbeat row in standalone mode.
-            # That metric reports how the Azure Monitor SDK is attached
-            # (Manual/Integrated). In standalone (no Azure Monitor) the
-            # customer has not attached anything, so the row is misleading.
-            # We surgically clear the observable gauge's callbacks; other
-            # upstream metrics (feature/instrumentation/network) remain.
-            try:
-                metrics = getattr(manager, "_metrics", None)
-                attach_metric = getattr(metrics, "_attach_metric", None) if metrics else None
-                if attach_metric is not None:
-                    attach_metric._callbacks = []  # pylint: disable=protected-access
-            except Exception:  # pylint: disable=broad-except
-                _logger.debug("Failed to suppress upstream attach statsbeat metric.", exc_info=True)
+        # Since azure monitor is disabled, the cikey is not applicable.
+        _StatsbeatMetrics._COMMON_ATTRIBUTES["cikey"] = "n/a"  # pylint: disable=protected-access
 
     # Register distro-owned network gauge on the manager's MeterProvider.
     from microsoft.opentelemetry._sdkstats._network_metrics import (
