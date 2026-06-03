@@ -6,6 +6,14 @@ name: Performance Comment
 # means it has a writable `GITHUB_TOKEN` even for pull requests opened from
 # forks. The Performance workflow itself runs in the (potentially untrusted)
 # PR context and only produces an artifact — no PR write permissions there.
+#
+# Security model:
+#   * The artifact from the PR-context workflow is treated as untrusted
+#     input. We only consume the JSON benchmark outputs (`base.json` /
+#     `pr.json`) and the PR number, and we regenerate `report.md` here
+#     using the base repository's checked-out `perf.compare` so the
+#     markdown posted under the writable token is never attacker-supplied.
+#   * The PR number is validated as a positive integer before being used.
 
 on:
   workflow_run:
@@ -25,8 +33,14 @@ jobs:
     if: github.event.workflow_run.event == 'pull_request'
 
     steps:
+      - name: Check out base repository (trusted)
+        uses: actions/checkout@v4
+
       - name: Download perf-results artifact
         id: download
+        # Don't fail this job if the upstream Performance run was cancelled
+        # or failed before producing the artifact — we just skip posting.
+        continue-on-error: true
         uses: actions/download-artifact@v4
         with:
           name: perf-results
@@ -36,31 +50,54 @@ jobs:
 
       - name: Resolve PR number
         id: pr
+        if: steps.download.outcome == 'success'
         run: |
           set -euo pipefail
+          pr=""
           if [ -f perf-results/pr-number.txt ]; then
             pr="$(tr -d '[:space:]' < perf-results/pr-number.txt)"
-          else
-            pr=""
           fi
 
-          if [ -z "$pr" ]; then
-            echo "Could not determine PR number; skipping comment." >&2
+          if ! [[ "$pr" =~ ^[1-9][0-9]*$ ]]; then
+            echo "pr-number.txt missing or not a positive integer (got: '${pr}'); skipping comment." >&2
             echo "number=" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           echo "number=$pr" >> "$GITHUB_OUTPUT"
 
-      - name: Verify report exists
+      - name: Set up Python
+        if: steps.pr.outputs.number != ''
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Regenerate report from JSON (trusted code)
         id: report
         if: steps.pr.outputs.number != ''
         run: |
-          if [ -s perf-results/report.md ]; then
+          set -euo pipefail
+          if [ ! -s perf-results/base.json ] || [ ! -s perf-results/pr.json ]; then
+            echo "base.json or pr.json missing from artifact; skipping comment." >&2
+            echo "found=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Use the base repo's perf.compare (trusted) to render the markdown
+          # from the PR-supplied JSON data, so we never post attacker-supplied
+          # markdown under the base repo's writable token.
+          python -m perf.compare \
+            --baseline perf-results/base.json \
+            --candidate perf-results/pr.json \
+            --threshold "${PERF_REGRESSION_THRESHOLD:-15}" \
+            --output report.md \
+            || true
+
+          if [ -s report.md ]; then
             echo "found=true" >> "$GITHUB_OUTPUT"
           else
             echo "found=false" >> "$GITHUB_OUTPUT"
-            echo "report.md missing or empty; skipping comment." >&2
+            echo "report.md was not produced; skipping comment." >&2
           fi
 
       - name: Post sticky PR comment
@@ -69,4 +106,4 @@ jobs:
         with:
           header: perf-comparison
           number: ${{ steps.pr.outputs.number }}
-          path: perf-results/report.md
+          path: report.md
