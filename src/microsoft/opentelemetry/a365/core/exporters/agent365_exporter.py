@@ -16,7 +16,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable, Sequence
-from typing import Any, final
+from typing import Any, Optional, final
 
 import requests
 from opentelemetry.sdk.trace import ReadableSpan
@@ -24,6 +24,10 @@ from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 from opentelemetry.trace import StatusCode
 
 from microsoft.opentelemetry._sdkstats import is_sdkstats_enabled
+from microsoft.opentelemetry.a365.core.exporters.token_resolver_context import (
+    AgentIdentity,
+    TokenResolverContext,
+)
 from microsoft.opentelemetry.a365.core.exporters.utils import (
     DEFAULT_MAX_PAYLOAD_BYTES,
     build_export_url,
@@ -38,7 +42,7 @@ from microsoft.opentelemetry.a365.core.exporters.utils import (
     status_name,
     truncate_span,
 )
-from microsoft.opentelemetry.a365.constants import A365_HTTP_TIMEOUT_SECONDS
+from microsoft.opentelemetry.a365.constants import A365_HTTP_TIMEOUT_SECONDS, GEN_AI_AGENT_AUID_KEY
 
 # mypy: disable-error-code="import-untyped, union-attr"
 
@@ -167,24 +171,27 @@ class _Agent365Exporter(SpanExporter):
     * Partitions spans by (tenantId, agentId)
     * Builds OTLP-like JSON: resourceSpans -> scopeSpans -> spans
     * POSTs per group to the Agent365 observability endpoint
-    * Adds Bearer token via token_resolver(agentId, tenantId)
+    * Adds Bearer token via contextual_token_resolver(context) when set,
+      otherwise falls back to token_resolver(agentId, tenantId)
     """
 
     def __init__(
         self,
-        token_resolver: Callable[[str, str], str | None],
+        token_resolver: Optional[Callable[[str, str], str | None]] = None,
+        contextual_token_resolver: Optional[Callable[[TokenResolverContext], str | None]] = None,
         cluster_category: str = "prod",
         use_s2s_endpoint: bool = False,
         max_payload_bytes: int = DEFAULT_MAX_PAYLOAD_BYTES,
     ):
-        if token_resolver is None:
-            raise ValueError("token_resolver must be provided.")
+        if token_resolver is None and contextual_token_resolver is None:
+            raise ValueError("token_resolver or contextual_token_resolver must be provided.")
         if max_payload_bytes <= 0:
             raise ValueError(f"max_payload_bytes must be positive, got {max_payload_bytes}")
         self._session = requests.Session()
         self._closed = False
         self._lock = threading.Lock()
         self._token_resolver = token_resolver
+        self._contextual_token_resolver = contextual_token_resolver
         self._cluster_category = cluster_category
         self._use_s2s_endpoint = use_s2s_endpoint
         self._max_payload_bytes = max_payload_bytes
@@ -193,6 +200,24 @@ class _Agent365Exporter(SpanExporter):
         self.record_sdkstats = is_sdkstats_enabled()
 
     # ------------- SpanExporter API -----------------
+
+    def _resolve_token(
+        self, agent_id: str, tenant_id: str, activities: list[ReadableSpan]
+    ) -> Optional[str]:
+        """Resolve auth token, preferring contextual_token_resolver when set."""
+        if self._contextual_token_resolver is not None:
+            agentic_user_id: Optional[str] = None
+            if activities:
+                first_attrs = activities[0].attributes or {}
+                raw_auid = first_attrs.get(GEN_AI_AGENT_AUID_KEY)
+                if raw_auid is not None:
+                    agentic_user_id = str(raw_auid)
+            identity = AgentIdentity(agent_id, agentic_user_id)
+            context = TokenResolverContext(identity, tenant_id)
+            return self._contextual_token_resolver(context)
+        # Constructor guarantees at least one resolver is set.
+        assert self._token_resolver is not None
+        return self._token_resolver(agent_id, tenant_id)
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         if self._closed:
@@ -245,7 +270,7 @@ class _Agent365Exporter(SpanExporter):
 
                 headers: dict[str, str | bytes] = {"content-type": "application/json"}
                 try:
-                    token = self._token_resolver(agent_id, tenant_id)
+                    token = self._resolve_token(agent_id, tenant_id, activities)
                     if token:
                         if not url.lower().startswith("https://"):
                             logger.warning(

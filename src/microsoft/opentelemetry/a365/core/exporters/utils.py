@@ -18,7 +18,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, List, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, List, Optional, TypeVar
 from urllib.parse import urlparse
 
 from opentelemetry.sdk.trace import ReadableSpan
@@ -47,6 +47,9 @@ from microsoft.opentelemetry.a365.constants import (
     TENANT_ID_KEY,
 )
 from microsoft.opentelemetry.a365.core.inference_operation_type import InferenceOperationType
+
+if TYPE_CHECKING:
+    from microsoft.opentelemetry.a365.core.exporters.token_resolver_context import TokenResolverContext
 
 logger = logging.getLogger(__name__)
 
@@ -618,12 +621,16 @@ def _env_bool(name: str, default: bool = False) -> bool:
 
 def create_a365_components(
     token_resolver: Callable[[str, str], Optional[str]] | None = None,
+    contextual_token_resolver: Callable[[TokenResolverContext], Optional[str]] | None = None,
 ) -> A365Handlers:
     """Create Agent365 span processors ready to be added to a TracerProvider.
 
     :param token_resolver: Optional callable ``(agent_id, tenant_id) -> str | None``.
         When provided, it is used instead of the default ``DefaultAzureCredential``
         resolver.  This allows callers to supply FIC-based or other custom tokens.
+    :param contextual_token_resolver: Optional callable ``(TokenResolverContext) -> str | None``.
+        Provides rich context including the agentic user ID. Takes precedence over
+        ``token_resolver`` when set.
 
     All other configuration is read from environment variables:
       - ``ENABLE_A365_OBSERVABILITY_EXPORTER`` -- must be true for the HTTP exporter
@@ -637,29 +644,36 @@ def create_a365_components(
     from microsoft.opentelemetry.a365.core.exporters.agent365_exporter_options import Agent365ExporterOptions
     from microsoft.opentelemetry.a365.core.exporters.span_processor import A365SpanProcessor
 
-    if token_resolver is None:
-        token_resolver = _create_default_token_resolver()
+    if contextual_token_resolver is not None:
+        resolved_token_resolver = None
+    elif token_resolver is None:
+        resolved_token_resolver = _create_default_token_resolver()
+    else:
+        resolved_token_resolver = token_resolver
     cluster_category = os.environ.get(A365_CLUSTER_CATEGORY_ENV, "prod")
     use_s2s_endpoint = _env_bool(A365_USE_S2S_ENDPOINT_ENV)
     suppress_invoke_agent_input = _env_bool(A365_SUPPRESS_INVOKE_AGENT_INPUT_ENV)
 
     options = Agent365ExporterOptions(
         cluster_category=cluster_category,
-        token_resolver=token_resolver,
+        token_resolver=resolved_token_resolver,
+        contextual_token_resolver=contextual_token_resolver,
         use_s2s_endpoint=use_s2s_endpoint,
     )
 
     # Create the exporter (Agent365 HTTP or console fallback)
-    if is_agent365_exporter_enabled() and options.token_resolver is not None:
+    has_resolver = options.token_resolver is not None or options.contextual_token_resolver is not None
+    if is_agent365_exporter_enabled() and has_resolver:
         exporter = _Agent365Exporter(
             token_resolver=options.token_resolver,
+            contextual_token_resolver=options.contextual_token_resolver,
             cluster_category=options.cluster_category,
             use_s2s_endpoint=options.use_s2s_endpoint,
             max_payload_bytes=options.max_payload_bytes,
         )
     else:
         logger.warning(
-            "ENABLE_A365_OBSERVABILITY_EXPORTER not set or token_resolver not provided. "
+            "ENABLE_A365_OBSERVABILITY_EXPORTER not set or no token resolver provided. "
             "A365 exporter will not be active."
         )
         return A365Handlers()
