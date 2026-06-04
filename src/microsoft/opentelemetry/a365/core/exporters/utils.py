@@ -18,7 +18,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
-from typing import Any, List, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, List, Optional, TypeVar
 from urllib.parse import urlparse
 
 from opentelemetry.sdk.trace import ReadableSpan
@@ -47,6 +47,9 @@ from microsoft.opentelemetry.a365.constants import (
     TENANT_ID_KEY,
 )
 from microsoft.opentelemetry.a365.core.inference_operation_type import InferenceOperationType
+
+if TYPE_CHECKING:
+    from microsoft.opentelemetry.a365.core.exporters.token_resolver_context import TokenResolverContext
 
 logger = logging.getLogger(__name__)
 
@@ -618,7 +621,7 @@ def _env_bool(name: str, default: bool = False) -> bool:
 
 def create_a365_components(
     token_resolver: Callable[[str, str], Optional[str]] | None = None,
-    contextual_token_resolver: Callable | None = None,
+    contextual_token_resolver: Callable[[TokenResolverContext], Optional[str]] | None = None,
 ) -> A365Handlers:
     """Create Agent365 span processors ready to be added to a TracerProvider.
 
@@ -659,7 +662,8 @@ def create_a365_components(
     )
 
     # Create the exporter (Agent365 HTTP or console fallback)
-    if is_agent365_exporter_enabled() and (options.token_resolver is not None or options.contextual_token_resolver is not None):
+    has_resolver = options.token_resolver is not None or options.contextual_token_resolver is not None
+    if is_agent365_exporter_enabled() and has_resolver:
         exporter = _Agent365Exporter(
             token_resolver=options.token_resolver,
             contextual_token_resolver=options.contextual_token_resolver,
@@ -669,7 +673,7 @@ def create_a365_components(
         )
     else:
         logger.warning(
-            "ENABLE_A365_OBSERVABILITY_EXPORTER not set or token_resolver not provided. "
+            "ENABLE_A365_OBSERVABILITY_EXPORTER not set or no token resolver provided. "
             "A365 exporter will not be active."
         )
         return A365Handlers()

@@ -171,7 +171,8 @@ class _Agent365Exporter(SpanExporter):
     * Partitions spans by (tenantId, agentId)
     * Builds OTLP-like JSON: resourceSpans -> scopeSpans -> spans
     * POSTs per group to the Agent365 observability endpoint
-    * Adds Bearer token via token_resolver(agentId, tenantId)
+    * Adds Bearer token via contextual_token_resolver(context) when set,
+      otherwise falls back to token_resolver(agentId, tenantId)
     """
 
     def __init__(
@@ -214,6 +215,8 @@ class _Agent365Exporter(SpanExporter):
             identity = AgentIdentity(agent_id, agentic_user_id)
             context = TokenResolverContext(identity, tenant_id)
             return self._contextual_token_resolver(context)
+        # Constructor guarantees at least one resolver is set.
+        assert self._token_resolver is not None
         return self._token_resolver(agent_id, tenant_id)
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
