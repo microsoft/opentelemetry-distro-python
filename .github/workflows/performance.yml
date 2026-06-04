@@ -94,6 +94,10 @@ jobs:
             --output "$GITHUB_WORKSPACE/report.md"
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
+      - name: Record PR number
+        if: always() && github.event_name == 'pull_request'
+        run: echo "${{ github.event.pull_request.number }}" > "$GITHUB_WORKSPACE/pr-number.txt"
+
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -103,17 +107,8 @@ jobs:
             pr.json
             base.json
             report.md
-
-      - name: Post sticky PR comment
-        # Skip for PRs from forks — the default GITHUB_TOKEN has read-only
-        # access in that case and the comment API will reject the call. The
-        # JSON artifacts and the workflow log still contain the comparison.
-        if: always() && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        continue-on-error: true
-        uses: marocchino/sticky-pull-request-comment@v2
-        with:
-          header: perf-comparison
-          path: report.md
+            pr-number.txt
+          if-no-files-found: ignore
 
       - name: Fail on regression
         if: steps.compare.outputs.exit_code != '0'
