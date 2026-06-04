@@ -1,5 +1,21 @@
 # Release History
 
+# 1.3.3 (2026-06-04)
+
+### Features Added
+- Add `ContextualTokenResolver` with agentic user ID support
+  ([#185](https://github.com/microsoft/opentelemetry-distro-python/pull/185))
+- Network SdkStats: add request success count metric
+  ([#144](https://github.com/microsoft/opentelemetry-distro-python/pull/144))
+
+### Bugs Fixed
+- Downgrade LangChain "not installed" log to DEBUG to silence stderr warnings for users not using LangChain
+  ([#184](https://github.com/microsoft/opentelemetry-distro-python/pull/184))
+
+### Other Changes
+- ci(perf): post sticky comment for fork PRs via `workflow_run`
+  ([#186](https://github.com/microsoft/opentelemetry-distro-python/pull/186))
+
 # 1.3.2 (2026-05-29)
 
 ### Bugs Fixed
