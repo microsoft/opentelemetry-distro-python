@@ -200,6 +200,22 @@ class _Agent365Exporter(SpanExporter):
 
     # ------------- SpanExporter API -----------------
 
+    def _resolve_token(
+        self, agent_id: str, tenant_id: str, activities: list[ReadableSpan]
+    ) -> Optional[str]:
+        """Resolve auth token, preferring contextual_token_resolver when set."""
+        if self._contextual_token_resolver is not None:
+            agentic_user_id: Optional[str] = None
+            if activities:
+                first_attrs = activities[0].attributes or {}
+                raw_auid = first_attrs.get(GEN_AI_AGENT_AUID_KEY)
+                if raw_auid is not None:
+                    agentic_user_id = str(raw_auid)
+            identity = AgentIdentity(agent_id, agentic_user_id)
+            context = TokenResolverContext(identity, tenant_id)
+            return self._contextual_token_resolver(context)
+        return self._token_resolver(agent_id, tenant_id)
+
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         if self._closed:
             return SpanExportResult.FAILURE
@@ -251,21 +267,7 @@ class _Agent365Exporter(SpanExporter):
 
                 headers: dict[str, str | bytes] = {"content-type": "application/json"}
                 try:
-                    # Prefer contextual_token_resolver when set; extract agentic user ID
-                    # from the first span in the group (1:1 relationship between agent and user).
-                    if self._contextual_token_resolver is not None:
-                        agentic_user_id = None
-                        if activities:
-                            first_attrs = activities[0].attributes or {}
-                            agentic_user_id = first_attrs.get(GEN_AI_AGENT_AUID_KEY)
-                            if agentic_user_id is not None:
-                                agentic_user_id = str(agentic_user_id)
-                        identity = AgentIdentity(agent_id, agentic_user_id)
-                        context = TokenResolverContext(identity, tenant_id)
-                        token = self._contextual_token_resolver(context)
-                    else:
-                        token = self._token_resolver(agent_id, tenant_id)
-
+                    token = self._resolve_token(agent_id, tenant_id, activities)
                     if token:
                         if not url.lower().startswith("https://"):
                             logger.warning(
