@@ -221,7 +221,9 @@ class TestExporterOptionsContextualResolver(unittest.TestCase):
             Agent365ExporterOptions,
         )
 
-        resolver = lambda ctx: "token"
+        def resolver(ctx):
+            return "token"
+
         opts = Agent365ExporterOptions(contextual_token_resolver=resolver)
         self.assertIs(opts.contextual_token_resolver, resolver)
         self.assertIsNone(opts.token_resolver)
@@ -231,8 +233,12 @@ class TestExporterOptionsContextualResolver(unittest.TestCase):
             Agent365ExporterOptions,
         )
 
-        tr = lambda a, t: "token1"
-        cr = lambda ctx: "token2"
+        def tr(a, t):
+            return "token1"
+
+        def cr(ctx):
+            return "token2"
+
         opts = Agent365ExporterOptions(token_resolver=tr, contextual_token_resolver=cr)
         self.assertIs(opts.token_resolver, tr)
         self.assertIs(opts.contextual_token_resolver, cr)
