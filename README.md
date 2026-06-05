@@ -106,7 +106,8 @@ See the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/bl
 | `azure_monitor_browser_sdk_loader_config` | `dict` | `None` | Browser SDK loader configuration. |
 | **Agent 365** | | | |
 | `enable_a365` | `bool` | `False` | Enable A365 telemetry export. |
-| `a365_token_resolver` | `Callable` | `None` | `(agent_id, tenant_id) -> token` callable. If omitted, defaults to FIC/DefaultAzureCredential. |
+| `a365_token_resolver` | `Callable` | `None` | `(agent_id, tenant_id) -> token` callable. If omitted, defaults to FIC/DefaultAzureCredential. Ignored when `a365_contextual_token_resolver` is also set. |
+| `a365_contextual_token_resolver` | `Callable` | `None` | `(TokenResolverContext) -> token` callable. Receives rich context — agent ID, agentic user ID (AAD Object ID, extracted from the `microsoft.agent.user.id` span attribute), and tenant ID — at export time. Takes precedence over `a365_token_resolver` when both are set. |
 | `a365_cluster_category` | `str` | `"prod"` | Cluster category (`prod`, `gov`, `dod`, `mooncake`). |
 | `a365_use_s2s_endpoint` | `bool` | `False` | Use the S2S endpoint. |
 | `a365_suppress_invoke_agent_input` | `bool` | `False` | Strip input messages from InvokeAgent spans. |
