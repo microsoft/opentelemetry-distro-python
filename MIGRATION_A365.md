@@ -275,6 +275,7 @@ use_microsoft_opentelemetry(
         "service.namespace": "my-namespace",
     }),
     a365_token_resolver=my_token_resolver,
+    # Prefer a365_contextual_token_resolver when you need the agentic user ID.
     a365_contextual_token_resolver=my_contextual_token_resolver,
     a365_cluster_category="prod",
     a365_use_s2s_endpoint=True,
