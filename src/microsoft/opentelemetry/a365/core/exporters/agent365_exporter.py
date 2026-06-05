@@ -363,9 +363,9 @@ class _Agent365Exporter(SpanExporter):
             return text[:max_length] + "..."
         return text
 
-    def _post_with_retries(
+    def _post_with_retries(  # pylint: disable=too-many-statements
         self, url: str, body: str, headers: dict[str, str | bytes]
-    ) -> bool:  # pylint: disable=too-many-statements
+    ) -> bool:
         if not self._circuit_breaker.allow_request():
             logger.warning(
                 "Circuit breaker is OPEN \u2014 skipping POST to %s. %d total requests rejected so far.",
