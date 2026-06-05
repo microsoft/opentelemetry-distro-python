@@ -275,8 +275,6 @@ use_microsoft_opentelemetry(
         "service.namespace": "my-namespace",
     }),
     a365_token_resolver=my_token_resolver,
-    # Prefer a365_contextual_token_resolver when you need the agentic user ID.
-    a365_contextual_token_resolver=my_contextual_token_resolver,
     a365_cluster_category="prod",
     a365_use_s2s_endpoint=True,
     a365_suppress_invoke_agent_input=True,
@@ -695,7 +693,7 @@ Use this checklist to track progress through the migration.
 
 **Token management**
 
-- [ ] Pass any custom token resolver via `a365_token_resolver=...` (or `a365_contextual_token_resolver=...` when you need the agentic user ID)
+- [ ] Pass any custom token resolver via `a365_token_resolver=...`
 - [ ] If no resolver is supplied, confirm `DefaultAzureCredential` works in your environment
 
 **Exporter customization**
