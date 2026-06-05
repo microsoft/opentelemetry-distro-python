@@ -4,20 +4,19 @@
 # license information.
 # --------------------------------------------------------------------------
 
-"""Network SDKStats gauges.
+"""Distro-owned network SDKStats observations.
 
 The upstream statsbeat metrics only count requests sent to the Breeze
-endpoint (the Azure Monitor exporter's destination).  Microsoft OpenTelemetry also
-ships OTLP and Agent365 exporters, whose per-export success counters
-live in its own ``_REQUESTS_MAP``.  This module registers an
-observable gauge on the upstream ``StatsbeatManager``'s ``MeterProvider``
-so those counters are exported on the same statsbeat pipeline.
+endpoint. This distro also ships OTLP and Agent365 exporters whose
+per-export counters live in the distro's own ``_REQUESTS_MAP``. We
+contribute extra rows to the upstream ``Request_Success_Count`` metric
+via ``add_metric_callback`` so the backend treats them as part of the
+same metric stream (same name + InstrumentationScope).
 """
 
 from __future__ import annotations
 
 import logging
-import threading
 from typing import Iterable, List
 
 from opentelemetry.metrics import CallbackOptions, Observation
@@ -33,6 +32,7 @@ from microsoft.opentelemetry._sdkstats._utils import (
 )
 
 try:
+    from azure.monitor.opentelemetry.exporter._constants import _REQ_SUCCESS_NAME
     from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (
         _StatsbeatMetrics,
     )
@@ -43,9 +43,6 @@ from microsoft.opentelemetry._version import VERSION
 
 logger = logging.getLogger(__name__)
 
-_REGISTER_LOCK = threading.Lock()
-_registered = False
-
 
 def _get_common_attributes() -> dict:
     if _StatsbeatMetrics is None:
@@ -54,9 +51,8 @@ def _get_common_attributes() -> dict:
 
 
 def _observe_request_success_count(options: CallbackOptions) -> Iterable[Observation]:
-    """Drain the per-endpoint success counts and emit one observation each."""
+    """Drain per-endpoint success counts and emit one observation each."""
     common = _get_common_attributes()
-
     observations: List[Observation] = []
     for key, value in drain(REQUEST_SUCCESS_NAME).items():
         attributes = dict(common)
@@ -148,76 +144,13 @@ def _observe_request_exception_count(options: CallbackOptions) -> Iterable[Obser
     return observations
 
 
-def register_network_gauges() -> bool:
-    """Attach our network-stats callbacks to upstream's gauges.
-
-    We emit per-endpoint (``Request_Success_Count``, ``Request_Duration``,
-    ``Request_Failure_Count``, ``Retry_Count``, ``Throttle_Count``,
-    ``Exception_Count``) observations via the upstream statsbeat pipeline.  We cannot
-    create separate gauges with the same names because the stats backend identifies
-    metric streams by InstrumentationScope, and rows from an unknown scope are silently
-    dropped.  Instead we append our callbacks to the already-registered
-    upstream observable gauges so our observations are emitted on the
-    exact same instrument/scope as upstream's breeze rows.
-
-    Idempotent — subsequent calls are no-ops.  Returns ``True`` on the
-    call that performs registration, ``False`` if registration was
-    skipped (already registered, upstream unavailable, or upstream
-    hasn't created the gauges yet).
-    """
-    global _registered  # pylint: disable=global-statement
-
-    with _REGISTER_LOCK:
-        if _registered:
-            return False
-
-        try:
-            from azure.monitor.opentelemetry.exporter.statsbeat._manager import (
-                StatsbeatManager,
-            )
-        except ImportError:
-            logger.debug("Upstream statsbeat unavailable; skipping network gauges.")
-            return False
-
-        manager = StatsbeatManager()
-        meter_provider = manager._meter_provider  # pylint: disable=protected-access
-        metrics = manager._metrics  # pylint: disable=protected-access
-        if meter_provider is None or metrics is None:
-            logger.debug("StatsbeatManager not initialised; skipping network gauges.")
-            return False
-
-        attached: List[str] = []
-        for gauge_attr, callback in (
-            ("_success_count", _observe_request_success_count),
-            ("_average_duration", _observe_request_duration),
-            ("_failure_count", _observe_request_failure_count),
-            ("_retry_count", _observe_request_retry_count),
-            ("_throttle_count", _observe_request_throttle_count),
-            ("_exception_count", _observe_request_exception_count),
-        ):
-            gauge = getattr(metrics, gauge_attr, None)
-            if gauge is None:
-                logger.debug("Upstream %s gauge not yet created; skipping.", gauge_attr)
-                continue
-            try:
-                gauge._callbacks.append(callback)  # pylint: disable=protected-access
-            except AttributeError:
-                logger.debug(
-                    "Upstream %s gauge has no _callbacks list; cannot attach.",
-                    gauge_attr,
-                )
-                continue
-            attached.append(gauge_attr)
-
-        if not attached:
-            return False
-
-        _registered = True
-        return True
+def register_network_gauges():
+    try:
+        from azure.monitor.opentelemetry.exporter.statsbeat._manager import StatsbeatManager  # type: ignore[import-not-found]
+    except ImportError:
+        logger.debug("Upstream statsbeat unavailable; skipping network gauges.")
+        return
+    manager = StatsbeatManager()
+    return manager.add_metric_callback(_REQ_SUCCESS_NAME[0], _observe_request_success_count)
 
 
-def _reset_for_tests() -> None:
-    """Reset the module-level registration guard.  Test-only."""
-    global _registered  # pylint: disable=global-statement
-    with _REGISTER_LOCK:
-        _registered = False
