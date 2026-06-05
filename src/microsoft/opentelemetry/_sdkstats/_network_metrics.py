@@ -23,7 +23,12 @@ from typing import Iterable, List
 from opentelemetry.metrics import CallbackOptions, Observation
 
 from microsoft.opentelemetry._sdkstats._utils import (
+    REQUEST_DURATION_NAME,
+    REQUEST_EXCEPTION_NAME,
+    REQUEST_FAILURE_NAME,
+    REQUEST_RETRY_NAME,
     REQUEST_SUCCESS_NAME,
+    REQUEST_THROTTLE_NAME,
     drain,
 )
 
@@ -33,6 +38,8 @@ try:
     )
 except ImportError:  # pragma: no cover
     _StatsbeatMetrics = None  # type: ignore[assignment,misc]
+
+from microsoft.opentelemetry._version import VERSION
 
 logger = logging.getLogger(__name__)
 
@@ -47,12 +54,12 @@ def _get_common_attributes() -> dict:
 
 
 def _observe_request_success_count(options: CallbackOptions) -> Iterable[Observation]:
-    """Drain the per-endpoint success counts and emit one observation each."""
     common = _get_common_attributes()
 
     observations: List[Observation] = []
     for key, value in drain(REQUEST_SUCCESS_NAME).items():
         attributes = dict(common)
+        attributes["version"] = VERSION
         attributes["endpoint"] = key[0]
         attributes["host"] = key[1]
         attributes["statusCode"] = 200
@@ -60,13 +67,90 @@ def _observe_request_success_count(options: CallbackOptions) -> Iterable[Observa
     return observations
 
 
+def _observe_request_duration(options: CallbackOptions) -> Iterable[Observation]:
+    """Drain accumulated (sum_seconds, count) per (endpoint, host) and
+    emit the interval *average* duration in milliseconds — matches
+    upstream's ``Request_Duration`` semantics."""
+    common = _get_common_attributes()
+
+    observations: List[Observation] = []
+    for key, value in drain(REQUEST_DURATION_NAME).items():
+        total_seconds, count = value
+        if count <= 0:
+            continue
+        avg_ms = (total_seconds / count) * 1000.0
+        attributes = dict(common)
+        attributes["version"] = VERSION
+        attributes["endpoint"] = key[0]
+        attributes["host"] = key[1]
+        observations.append(Observation(avg_ms, attributes))
+    return observations
+
+
+def _observe_request_failure_count(options: CallbackOptions) -> Iterable[Observation]:
+    common = _get_common_attributes()
+
+    observations: List[Observation] = []
+    for key, value in drain(REQUEST_FAILURE_NAME).items():
+        attributes = dict(common)
+        attributes["version"] = VERSION
+        attributes["endpoint"] = key[0]
+        attributes["host"] = key[1]
+        attributes["statusCode"] = key[2]
+        observations.append(Observation(value, attributes))
+    return observations
+
+
+def _observe_request_retry_count(options: CallbackOptions) -> Iterable[Observation]:
+    common = _get_common_attributes()
+
+    observations: List[Observation] = []
+    for key, value in drain(REQUEST_RETRY_NAME).items():
+        attributes = dict(common)
+        attributes["version"] = VERSION
+        attributes["endpoint"] = key[0]
+        attributes["host"] = key[1]
+        attributes["statusCode"] = key[2]
+        observations.append(Observation(value, attributes))
+    return observations
+
+
+def _observe_request_throttle_count(options: CallbackOptions) -> Iterable[Observation]:
+    common = _get_common_attributes()
+
+    observations: List[Observation] = []
+    for key, value in drain(REQUEST_THROTTLE_NAME).items():
+        attributes = dict(common)
+        attributes["version"] = VERSION
+        attributes["endpoint"] = key[0]
+        attributes["host"] = key[1]
+        attributes["statusCode"] = key[2]
+        observations.append(Observation(value, attributes))
+    return observations
+
+
+def _observe_request_exception_count(options: CallbackOptions) -> Iterable[Observation]:
+    common = _get_common_attributes()
+
+    observations: List[Observation] = []
+    for key, value in drain(REQUEST_EXCEPTION_NAME).items():
+        attributes = dict(common)
+        attributes["version"] = VERSION
+        attributes["endpoint"] = key[0]
+        attributes["host"] = key[1]
+        attributes["exceptionType"] = key[2]
+        observations.append(Observation(value, attributes))
+    return observations
+
+
 def register_network_gauges() -> bool:
     """Attach distro network-stats callbacks to upstream's gauges.
 
-    The distro emits per-endpoint ``Request_Success_Count`` observation
-    via the upstream statsbeat pipeline.  We cannot create separate gauges 
-    with the same names because the stats backend identifies metric streams by
-    InstrumentationScope, and rows from an unknown scope are silently
+    The distro emits per-endpoint (``Request_Success_Count``, ``Request_Duration``,
+    ``Request_Failure_Count``, ``Retry_Count``, ``Throttle_Count``,
+    ``Exception_Count``) observations via the upstream statsbeat pipeline.  We cannot
+    create separate gauges with the same names because the stats backend identifies
+    metric streams by InstrumentationScope, and rows from an unknown scope are silently
     dropped.  Instead we append our callbacks to the already-registered
     upstream ``_success_count`` observable gauges
     so our observations are emitted on the exact same instrument/scope
@@ -101,6 +185,11 @@ def register_network_gauges() -> bool:
         attached: List[str] = []
         for gauge_attr, callback in (
             ("_success_count", _observe_request_success_count),
+            ("_average_duration", _observe_request_duration),
+            ("_failure_count", _observe_request_failure_count),
+            ("_retry_count", _observe_request_retry_count),
+            ("_throttle_count", _observe_request_throttle_count),
+            ("_exception_count", _observe_request_exception_count),
         ):
             gauge = getattr(metrics, gauge_attr, None)
             if gauge is None:
@@ -110,7 +199,8 @@ def register_network_gauges() -> bool:
                 gauge._callbacks.append(callback)  # pylint: disable=protected-access
             except AttributeError:
                 logger.debug(
-                    "Upstream %s gauge has no _callbacks list; cannot attach.", gauge_attr,
+                    "Upstream %s gauge has no _callbacks list; cannot attach.",
+                    gauge_attr,
                 )
                 continue
             attached.append(gauge_attr)

@@ -358,7 +358,15 @@ class TestNetworkStatsbeatHook(unittest.TestCase):
         exporter._session.post.return_value = _make_response(200)
         ok = exporter._post_with_retries(self.URL, "{}", {})
         self.assertTrue(ok)
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {(self.ENDPOINT, self.HOST,): 1})
+        self.assertEqual(
+            drain(REQUEST_SUCCESS_NAME),
+            {
+                (
+                    self.ENDPOINT,
+                    self.HOST,
+                ): 1
+            },
+        )
         exporter.shutdown()
 
     @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.is_sdkstats_enabled", return_value=True)
@@ -381,6 +389,171 @@ class TestNetworkStatsbeatHook(unittest.TestCase):
         exporter._session.post.return_value = _make_response(200)
         exporter._post_with_retries(self.URL, "{}", {})
         self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
+        exporter.shutdown()
+
+    # ------- duration / failure / retry / throttle / exception -------
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.is_sdkstats_enabled", return_value=True)
+    def test_success_records_duration(self, _enabled):
+        from microsoft.opentelemetry._sdkstats._utils import REQUEST_DURATION_NAME, drain
+
+        exporter = _Agent365Exporter(token_resolver=lambda a, t: "token")
+        exporter._session = MagicMock()
+        exporter._session.post.return_value = _make_response(200)
+        exporter._post_with_retries(self.URL, "{}", {})
+
+        snap = drain(REQUEST_DURATION_NAME)
+        self.assertEqual(set(snap.keys()), {(self.ENDPOINT, self.HOST)})
+        total_seconds, count = snap[(self.ENDPOINT, self.HOST)]
+        self.assertEqual(count, 1)
+        self.assertGreaterEqual(total_seconds, 0)
+        exporter.shutdown()
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.is_sdkstats_enabled", return_value=True)
+    def test_non_retryable_status_records_failure(self, _enabled):
+        from microsoft.opentelemetry._sdkstats._utils import REQUEST_FAILURE_NAME, drain
+
+        exporter = _Agent365Exporter(token_resolver=lambda a, t: "token")
+        exporter._session = MagicMock()
+        exporter._session.post.return_value = _make_response(401)
+        exporter._post_with_retries(self.URL, "{}", {})
+        self.assertEqual(
+            drain(REQUEST_FAILURE_NAME),
+            {(self.ENDPOINT, self.HOST, 401): 1},
+        )
+        exporter.shutdown()
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.is_sdkstats_enabled", return_value=True)
+    def test_non_retryable_throttle_status_records_throttle(self, _enabled):
+        from microsoft.opentelemetry._sdkstats._utils import REQUEST_THROTTLE_NAME, drain
+
+        exporter = _Agent365Exporter(token_resolver=lambda a, t: "token")
+        exporter._session = MagicMock()
+        exporter._session.post.return_value = _make_response(402)
+        exporter._post_with_retries(self.URL, "{}", {})
+        self.assertEqual(
+            drain(REQUEST_THROTTLE_NAME),
+            {(self.ENDPOINT, self.HOST, 402): 1},
+        )
+        exporter.shutdown()
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.is_sdkstats_enabled", return_value=True)
+    def test_retryable_then_success_records_retry_and_success(self, _enabled):
+        from microsoft.opentelemetry._sdkstats._utils import (
+            REQUEST_RETRY_NAME,
+            REQUEST_SUCCESS_NAME,
+            drain,
+        )
+
+        with patch(
+            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter.time.sleep",
+            return_value=None,
+        ):
+            exporter = _Agent365Exporter(token_resolver=lambda a, t: "token")
+            exporter._session = MagicMock()
+            exporter._session.post.side_effect = [
+                _make_response(503),
+                _make_response(200),
+            ]
+            ok = exporter._post_with_retries(self.URL, "{}", {})
+
+        self.assertTrue(ok)
+        self.assertEqual(
+            drain(REQUEST_RETRY_NAME),
+            {(self.ENDPOINT, self.HOST, 503): 1},
+        )
+        self.assertEqual(
+            drain(REQUEST_SUCCESS_NAME),
+            {(self.ENDPOINT, self.HOST): 1},
+        )
+        exporter.shutdown()
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.is_sdkstats_enabled", return_value=True)
+    def test_retryable_final_failure_records_failure(self, _enabled):
+        """All retries exhausted with a 5xx → record_failure (not throttle)."""
+        from microsoft.opentelemetry._sdkstats._utils import (
+            REQUEST_FAILURE_NAME,
+            REQUEST_RETRY_NAME,
+            drain,
+        )
+
+        with patch(
+            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter.time.sleep",
+            return_value=None,
+        ):
+            exporter = _Agent365Exporter(token_resolver=lambda a, t: "token")
+            exporter._session = MagicMock()
+            exporter._session.post.return_value = _make_response(503)
+            ok = exporter._post_with_retries(self.URL, "{}", {})
+
+        self.assertFalse(ok)
+        # 3 retries (each leading to another attempt) + 1 final failed attempt
+        self.assertEqual(
+            drain(REQUEST_RETRY_NAME),
+            {(self.ENDPOINT, self.HOST, 503): 3},
+        )
+        self.assertEqual(
+            drain(REQUEST_FAILURE_NAME),
+            {(self.ENDPOINT, self.HOST, 503): 1},
+        )
+        exporter.shutdown()
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.is_sdkstats_enabled", return_value=True)
+    def test_request_exception_records_exception_and_duration(self, _enabled):
+        import requests
+
+        from microsoft.opentelemetry._sdkstats._utils import (
+            REQUEST_DURATION_NAME,
+            REQUEST_EXCEPTION_NAME,
+            drain,
+        )
+
+        with patch(
+            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter.time.sleep",
+            return_value=None,
+        ):
+            exporter = _Agent365Exporter(token_resolver=lambda a, t: "token")
+            exporter._session = MagicMock()
+            exporter._session.post.side_effect = requests.ConnectionError("boom")
+            ok = exporter._post_with_retries(self.URL, "{}", {})
+
+        self.assertFalse(ok)
+        # record_exception fires on every attempt (4 = 1 initial + 3 retries)
+        self.assertEqual(
+            drain(REQUEST_EXCEPTION_NAME),
+            {(self.ENDPOINT, self.HOST, "ConnectionError"): 4},
+        )
+        # record_duration likewise fires on every attempt
+        snap = drain(REQUEST_DURATION_NAME)
+        self.assertEqual(set(snap.keys()), {(self.ENDPOINT, self.HOST)})
+        _total, count = snap[(self.ENDPOINT, self.HOST)]
+        self.assertEqual(count, 4)
+        exporter.shutdown()
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.is_sdkstats_enabled", return_value=False)
+    def test_disabled_records_no_metrics(self, _enabled):
+        """When sdkstats is disabled, none of the new helpers fire."""
+        from microsoft.opentelemetry._sdkstats._utils import (
+            REQUEST_DURATION_NAME,
+            REQUEST_FAILURE_NAME,
+            REQUEST_RETRY_NAME,
+            REQUEST_THROTTLE_NAME,
+            drain,
+        )
+
+        with patch(
+            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter.time.sleep",
+            return_value=None,
+        ):
+            exporter = _Agent365Exporter(token_resolver=lambda a, t: "token")
+            exporter._session = MagicMock()
+            exporter._session.post.return_value = _make_response(503)
+            exporter._post_with_retries(self.URL, "{}", {})
+
+        self.assertEqual(drain(REQUEST_DURATION_NAME), {})
+        self.assertEqual(drain(REQUEST_FAILURE_NAME), {})
+        self.assertEqual(drain(REQUEST_RETRY_NAME), {})
+        self.assertEqual(drain(REQUEST_THROTTLE_NAME), {})
         exporter.shutdown()
 
 

@@ -417,7 +417,7 @@ def _initialize_sdkstats(enable_azure_monitor: bool) -> None:
         manager.initialize(config)
 
         # Since azure monitor is disabled, the cikey is not applicable.
-        _StatsbeatMetrics._COMMON_ATTRIBUTES["cikey"] = "n/a"  # pylint: disable=protected-access
+        _StatsbeatMetrics._COMMON_ATTRIBUTES["cikey"] = "N/A"  # pylint: disable=protected-access
 
     # Register distro-owned network gauge on the manager's MeterProvider.
     from microsoft.opentelemetry._sdkstats._network_metrics import (

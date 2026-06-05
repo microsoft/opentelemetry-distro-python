@@ -201,9 +201,7 @@ class _Agent365Exporter(SpanExporter):
 
     # ------------- SpanExporter API -----------------
 
-    def _resolve_token(
-        self, agent_id: str, tenant_id: str, activities: list[ReadableSpan]
-    ) -> Optional[str]:
+    def _resolve_token(self, agent_id: str, tenant_id: str, activities: list[ReadableSpan]) -> Optional[str]:
         """Resolve auth token, preferring contextual_token_resolver when set."""
         if self._contextual_token_resolver is not None:
             agentic_user_id: Optional[str] = None
@@ -365,7 +363,9 @@ class _Agent365Exporter(SpanExporter):
             return text[:max_length] + "..."
         return text
 
-    def _post_with_retries(self, url: str, body: str, headers: dict[str, str | bytes]) -> bool:
+    def _post_with_retries(
+        self, url: str, body: str, headers: dict[str, str | bytes]
+    ) -> bool:  # pylint: disable=too-many-statements
         if not self._circuit_breaker.allow_request():
             logger.warning(
                 "Circuit breaker is OPEN \u2014 skipping POST to %s. %d total requests rejected so far.",
@@ -378,12 +378,21 @@ class _Agent365Exporter(SpanExporter):
         # import graph for non-distro consumers.
         from urllib.parse import urlparse
         from microsoft.opentelemetry._sdkstats._constants import ENDPOINT_A365
-        from microsoft.opentelemetry._sdkstats._utils import record_success
+        from microsoft.opentelemetry._sdkstats._utils import (
+            THROTTLE_STATUS_CODES,
+            record_duration,
+            record_exception,
+            record_failure,
+            record_retry,
+            record_success,
+            record_throttle,
+        )
 
         host = urlparse(url).hostname or url
         record_a365_sdkstats = self.record_sdkstats
 
         for attempt in range(DEFAULT_MAX_RETRIES + 1):
+            start_time = time.time()
             try:
                 resp = self._session.post(
                     url,
@@ -391,6 +400,8 @@ class _Agent365Exporter(SpanExporter):
                     headers=headers,
                     timeout=DEFAULT_HTTP_TIMEOUT_SECONDS,
                 )
+                if record_a365_sdkstats:
+                    record_duration(ENDPOINT_A365, host, time.time() - start_time)
 
                 correlation_id = resp.headers.get("x-ms-correlation-id") or resp.headers.get("request-id") or "N/A"
 
@@ -412,11 +423,18 @@ class _Agent365Exporter(SpanExporter):
                 if resp.status_code in (408, 429) or 500 <= resp.status_code < 600:
                     retry_after = parse_retry_after(resp.headers)
                     if attempt < DEFAULT_MAX_RETRIES:
+                        if record_a365_sdkstats:
+                            record_retry(ENDPOINT_A365, host, resp.status_code)
                         if retry_after is not None:
                             time.sleep(min(retry_after, 60.0))
                         else:
                             time.sleep(0.5 * (2**attempt))
                         continue
+                    if record_a365_sdkstats:
+                        if resp.status_code in THROTTLE_STATUS_CODES:
+                            record_throttle(ENDPOINT_A365, host, resp.status_code)
+                        else:
+                            record_failure(ENDPOINT_A365, host, resp.status_code)
                     logger.error(
                         "HTTP %d final failure after %d attempts. Correlation ID: %s. Response: %s",
                         resp.status_code,
@@ -426,6 +444,11 @@ class _Agent365Exporter(SpanExporter):
                     )
                     self._circuit_breaker.record_failure()
                 else:
+                    if record_a365_sdkstats:
+                        if resp.status_code in THROTTLE_STATUS_CODES:
+                            record_throttle(ENDPOINT_A365, host, resp.status_code)
+                        else:
+                            record_failure(ENDPOINT_A365, host, resp.status_code)
                     logger.error(
                         "HTTP %d non-retryable error. Correlation ID: %s. Response: %s. "
                         "WWW-Authenticate: %s. Response headers: %s",
@@ -438,6 +461,9 @@ class _Agent365Exporter(SpanExporter):
                 return False
 
             except requests.RequestException as e:
+                if record_a365_sdkstats:
+                    record_duration(ENDPOINT_A365, host, time.time() - start_time)
+                    record_exception(ENDPOINT_A365, host, type(e).__name__)
                 if attempt < DEFAULT_MAX_RETRIES:
                     time.sleep(0.5 * (2**attempt))
                     continue
