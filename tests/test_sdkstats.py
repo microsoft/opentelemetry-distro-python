@@ -86,9 +86,21 @@ def _reset_upstream_singleton():
 
 
 def _reset_network_metrics_guard():
-    from microsoft.opentelemetry._sdkstats import _network_metrics
+    """Clear upstream's additional-callbacks store so tests can re-register."""
+    try:
+        from azure.monitor.opentelemetry.exporter.statsbeat import _manager as _upstream_manager
+    except ImportError:
+        return
 
-    _network_metrics._reset_for_tests()
+    callbacks = getattr(_upstream_manager, "_ADDITIONAL_CALLBACKS", None)
+    lock = getattr(_upstream_manager, "_ADDITIONAL_CALLBACKS_LOCK", None)
+    if callbacks is None:
+        return
+    if lock is not None:
+        with lock:
+            callbacks.clear()
+    else:
+        callbacks.clear()
 
 
 class TestSdkStatsEnabled(unittest.TestCase):
@@ -320,29 +332,44 @@ class TestNetworkMetricsRegistration(unittest.TestCase):
         _reset_upstream_singleton()
         _reset_network_metrics_guard()
 
-    def test_returns_false_when_manager_has_no_meter_provider(self):
-        from microsoft.opentelemetry._sdkstats._network_metrics import (
-            register_network_gauges,
-        )
-
-        self.assertFalse(register_network_gauges())
-
     def test_returns_true_then_false_on_repeat(self):
-        from azure.monitor.opentelemetry.exporter.statsbeat._manager import (
-            StatsbeatManager,
-        )
-        from microsoft.opentelemetry._sdkstats._config import (
-            _build_default_sdkstats_config,
-        )
         from microsoft.opentelemetry._sdkstats._network_metrics import (
             register_network_gauges,
         )
-
-        config = _build_default_sdkstats_config()
-        self.assertTrue(StatsbeatManager().initialize(config))
 
         self.assertTrue(register_network_gauges())
         self.assertFalse(register_network_gauges())
+
+    def test_registers_callback_under_request_success_metric_name(self):
+        from azure.monitor.opentelemetry.exporter._constants import _REQ_SUCCESS_NAME
+        from azure.monitor.opentelemetry.exporter.statsbeat import _manager as _upstream_manager
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            _observe_request_success_count,
+            register_network_gauges,
+        )
+
+        register_network_gauges()
+        callbacks = _upstream_manager._ADDITIONAL_CALLBACKS.get(_REQ_SUCCESS_NAME[0], [])
+        self.assertIn(_observe_request_success_count, callbacks)
+
+    def test_returns_none_when_upstream_unavailable(self):
+        # Simulate upstream import failure by patching the import in
+        # ``register_network_gauges``'s try block.
+        import builtins
+
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            register_network_gauges,
+        )
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "azure.monitor.opentelemetry.exporter.statsbeat._manager":
+                raise ImportError("simulated")
+            return real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=fake_import):
+            self.assertIsNone(register_network_gauges())
 
 
 class TestObserveRequestSuccessCount(unittest.TestCase):
