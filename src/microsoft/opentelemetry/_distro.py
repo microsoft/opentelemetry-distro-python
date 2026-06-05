@@ -366,32 +366,65 @@ def _env_bool(name: str, default: bool = False) -> bool:
 
 
 def _initialize_sdkstats(enable_azure_monitor: bool) -> None:
-    """Set up SDKStats — always sends to the Application Insights statsbeat endpoint.
+    """Set up SDKStats — emits to the Application Insights statsbeat endpoint.
 
-    When Azure Monitor is active the exporter package's own StatsbeatManager
-    handles everything and we bridge our distro-level feature/instrumentation
-    bits into its state so it reports the full picture.  For A365-only,
-    OTLP-only, or Console-only customers this function creates a standalone
-    pipeline using ``AzureMonitorMetricExporter(is_sdkstats=True)`` pointed
-    at the well-known statsbeat ingestion endpoint.  The customer's telemetry
-    pipeline is not affected.
+    The distro reuses the upstream ``StatsbeatManager`` singleton from the
+    Azure Monitor exporter package for the feature/instrumentation gauges.
+
+    * When Azure Monitor is enabled the exporter already initialises
+      ``StatsbeatManager`` from the customer's exporter config, so the
+      distro only bridges its own feature/instrumentation bits into the
+      exporter's global state.
+    * When Azure Monitor is disabled (OTLP/A365/Console)
+      the distro builds a synthetic :class:`StatsbeatConfig` pointed at the
+      default statsbeat endpoint and initialises ``StatsbeatManager``
+      itself.
+
+    In both cases the distro registers its own network gauge on the
+    manager's ``MeterProvider`` so OTLP/A365 per-endpoint success counts
+    flow through the same pipeline.
     """
     if not is_sdkstats_enabled():
         return
 
-    if enable_azure_monitor:
-        # The exporter package runs its own statsbeat.  Bridge our
-        # distro-level feature bits (A365_EXPORT, OTLP_EXPORT, etc.)
-        # and instrumentation bits into the exporter's state so they
-        # appear in its observations.  Our bit values (128+) do not
-        # collide with the exporter's (1–64).
+    # Bridge distro-level feature/instrumentation bits into the
+    # upstream exporter's global state.
+    _bridge_sdkstats_to_azure_monitor()
 
-        _bridge_sdkstats_to_azure_monitor()
+    if not enable_azure_monitor:
+        try:
+            from azure.monitor.opentelemetry.exporter.statsbeat._manager import (
+                StatsbeatManager,
+            )
+            from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (
+                _StatsbeatMetrics,
+            )
+        except ImportError:
+            return
 
-    from microsoft.opentelemetry._sdkstats._manager import SdkStatsManager
+        from microsoft.opentelemetry._sdkstats._config import (
+            _build_default_sdkstats_config,
+        )
 
-    manager = SdkStatsManager()
-    manager.initialize(enable_azure_monitor)
+        config = _build_default_sdkstats_config()
+        if config is None:
+            return
+
+        # Version should reflect the SDK which exports the sdkstats
+        _StatsbeatMetrics._COMMON_ATTRIBUTES["version"] = VERSION  # pylint: disable=protected-access
+
+        manager = StatsbeatManager()
+        manager.initialize(config)
+
+        # Since azure monitor is disabled, the cikey is not applicable.
+        _StatsbeatMetrics._COMMON_ATTRIBUTES["cikey"] = "n/a"  # pylint: disable=protected-access
+
+    # Register distro-owned network gauge on the manager's MeterProvider.
+    from microsoft.opentelemetry._sdkstats._network_metrics import (
+        register_network_gauges,
+    )
+
+    register_network_gauges()
 
 
 def _bridge_sdkstats_to_azure_monitor() -> None:

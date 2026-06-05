@@ -4,7 +4,8 @@
 # license information.
 # --------------------------------------------------------------------------
 
-"""Tests for the _sdkstats package — state, metrics, and manager."""
+"""Tests for the _sdkstats package — state, bridge, network metrics, and
+the distro-level ``_initialize_sdkstats`` orchestration."""
 
 import os
 import threading
@@ -52,12 +53,34 @@ def _reset_state():
     reset_all()
 
 
-class TestSdkStatsEnabled(unittest.TestCase):
-    """Tests for is_sdkstats_enabled()."""
+def _reset_upstream_singleton():
+    """Reset the upstream StatsbeatManager singleton between tests."""
+    try:
+        from azure.monitor.opentelemetry.exporter.statsbeat._manager import (
+            StatsbeatManager,
+        )
+        from azure.monitor.opentelemetry.exporter._utils import Singleton
+    except ImportError:
+        return
 
+    try:
+        StatsbeatManager().shutdown()
+    except Exception:  # pylint: disable=broad-except
+        pass
+    instances = getattr(Singleton, "_instances", None)
+    if isinstance(instances, dict):
+        instances.pop(StatsbeatManager, None)
+
+
+def _reset_network_metrics_guard():
+    from microsoft.opentelemetry._sdkstats import _network_metrics
+
+    _network_metrics._reset_for_tests()
+
+
+class TestSdkStatsEnabled(unittest.TestCase):
     def setUp(self):
         _reset_state()
-        # Clean env
         os.environ.pop(_SDKSTATS_DISABLED_ENV, None)
         os.environ.pop(_APPLICATIONINSIGHTS_STATSBEAT_DISABLED_ALL, None)
 
@@ -90,8 +113,6 @@ class TestSdkStatsEnabled(unittest.TestCase):
 
 
 class TestSdkStatsShutdown(unittest.TestCase):
-    """Tests for shutdown state."""
-
     def setUp(self):
         _reset_state()
 
@@ -109,8 +130,6 @@ class TestSdkStatsShutdown(unittest.TestCase):
 
 
 class TestSdkStatsFeatureFlags(unittest.TestCase):
-    """Tests for feature flag state."""
-
     def setUp(self):
         _reset_state()
 
@@ -142,8 +161,6 @@ class TestSdkStatsFeatureFlags(unittest.TestCase):
 
 
 class TestSdkStatsInstrumentationFlags(unittest.TestCase):
-    """Tests for instrumentation flag state."""
-
     def setUp(self):
         _reset_state()
 
@@ -175,14 +192,11 @@ class TestSdkStatsInstrumentationFlags(unittest.TestCase):
         self.assertEqual(get_sdkstats_instrumentation_flags(), expected)
 
     def test_name_map_covers_supported_libraries(self):
-        """Every name in the map resolves to a non-zero flag."""
         for name, flag in _INSTRUMENTATION_NAME_MAP.items():
             self.assertNotEqual(flag, 0, f"Flag for {name} is zero")
 
 
 class TestSdkStatsThreadSafety(unittest.TestCase):
-    """Ensure concurrent flag updates are safe."""
-
     def setUp(self):
         _reset_state()
 
@@ -205,254 +219,10 @@ class TestSdkStatsThreadSafety(unittest.TestCase):
             t.join()
         self.assertEqual(errors, [])
 
-        # All flags should be set
         expected = SdkStatsFeature.NONE
         for f in flags:
             expected |= f
         self.assertEqual(get_sdkstats_feature_flags(), expected)
-
-
-class TestSdkStatsMetrics(unittest.TestCase):
-    """Tests for the SdkStatsMetrics observable gauges."""
-
-    def setUp(self):
-        _reset_state()
-
-    def test_feature_observation_empty_when_no_flags(self):
-        from opentelemetry.sdk.metrics import MeterProvider
-        from microsoft.opentelemetry._sdkstats._metrics import SdkStatsMetrics
-
-        mp = MeterProvider()
-        try:
-            metrics = SdkStatsMetrics(mp)
-            obs = list(metrics._observe_features(MagicMock()))
-            self.assertEqual(obs, [])
-        finally:
-            mp.shutdown()
-
-    def test_feature_observation_emitted_with_flags(self):
-        from opentelemetry.sdk.metrics import MeterProvider
-        from microsoft.opentelemetry._sdkstats._metrics import SdkStatsMetrics
-
-        set_sdkstats_feature(SdkStatsFeature.DISTRO)
-        mp = MeterProvider()
-        try:
-            metrics = SdkStatsMetrics(mp)
-            obs = list(metrics._observe_features(MagicMock()))
-            self.assertEqual(len(obs), 1)
-            self.assertEqual(obs[0].value, 1)
-            attrs = obs[0].attributes
-            assert attrs is not None
-            self.assertEqual(attrs["feature"], int(SdkStatsFeature.DISTRO))
-            self.assertEqual(attrs["type"], 0)  # FEATURE
-        finally:
-            mp.shutdown()
-
-    def test_instrumentation_observation_emitted(self):
-        from opentelemetry.sdk.metrics import MeterProvider
-        from microsoft.opentelemetry._sdkstats._metrics import SdkStatsMetrics
-
-        set_sdkstats_instrumentation(SdkStatsInstrumentation.FASTAPI)
-        mp = MeterProvider()
-        try:
-            metrics = SdkStatsMetrics(mp)
-            obs = list(metrics._observe_instrumentations(MagicMock()))
-            self.assertEqual(len(obs), 1)
-            attrs = obs[0].attributes
-            assert attrs is not None
-            self.assertEqual(attrs["feature"], int(SdkStatsInstrumentation.FASTAPI))
-            self.assertEqual(attrs["type"], 1)  # INSTRUMENTATION
-        finally:
-            mp.shutdown()
-
-    def test_enable_azure_monitor_skips_feature_and_instrumentation_gauges(self):
-        from microsoft.opentelemetry._sdkstats._metrics import SdkStatsMetrics
-
-        meter_mock = MagicMock()
-        meter_provider_mock = MagicMock()
-        meter_provider_mock.get_meter.return_value = meter_mock
-
-        SdkStatsMetrics(meter_provider_mock, enable_azure_monitor=True)
-
-        callbacks = []
-        for call in meter_mock.create_observable_gauge.call_args_list:
-            callback_list = call.kwargs.get("callbacks", [])
-            callbacks.extend(callback_list)
-
-        callback_names = {cb.__name__ for cb in callbacks}
-        self.assertNotIn("_observe_features", callback_names)
-        self.assertNotIn("_observe_instrumentations", callback_names)
-        self.assertIn("_observe_request_success_count", callback_names)
-
-
-class TestSdkStatsManager(unittest.TestCase):
-    """Tests for the SdkStatsManager singleton."""
-
-    def setUp(self):
-        _reset_state()
-        from microsoft.opentelemetry._sdkstats._manager import SdkStatsManager
-
-        SdkStatsManager._reset()
-
-    def tearDown(self):
-        from microsoft.opentelemetry._sdkstats._manager import SdkStatsManager
-
-        SdkStatsManager._reset()
-
-    def test_singleton(self):
-        from microsoft.opentelemetry._sdkstats._manager import SdkStatsManager
-
-        a = SdkStatsManager()
-        b = SdkStatsManager()
-        self.assertIs(a, b)
-
-    def test_initialize_standalone(self):
-        from opentelemetry.sdk.metrics.export import InMemoryMetricReader
-        from microsoft.opentelemetry._sdkstats._manager import SdkStatsManager
-
-        reader = InMemoryMetricReader()
-        manager = SdkStatsManager()
-        result = manager.initialize_standalone(reader)
-        self.assertTrue(result)
-        self.assertTrue(manager.is_initialized)
-
-    def test_initialize_standalone_disabled(self):
-        from opentelemetry.sdk.metrics.export import InMemoryMetricReader
-        from microsoft.opentelemetry._sdkstats._manager import SdkStatsManager
-
-        os.environ[_SDKSTATS_DISABLED_ENV] = "true"
-        try:
-            reader = InMemoryMetricReader()
-            manager = SdkStatsManager()
-            result = manager.initialize_standalone(reader)
-            self.assertFalse(result)
-            self.assertFalse(manager.is_initialized)
-        finally:
-            os.environ.pop(_SDKSTATS_DISABLED_ENV, None)
-
-    def test_shutdown(self):
-        from opentelemetry.sdk.metrics.export import InMemoryMetricReader
-        from microsoft.opentelemetry._sdkstats._manager import SdkStatsManager
-
-        reader = InMemoryMetricReader()
-        manager = SdkStatsManager()
-        manager.initialize_standalone(reader)
-        result = manager.shutdown()
-        self.assertTrue(result)
-        self.assertFalse(manager.is_initialized)
-        self.assertTrue(get_sdkstats_shutdown())
-
-    def test_shutdown_when_not_initialized(self):
-        from microsoft.opentelemetry._sdkstats._manager import SdkStatsManager
-
-        manager = SdkStatsManager()
-        result = manager.shutdown()
-        self.assertFalse(result)
-
-    def test_double_initialize_is_idempotent(self):
-        from opentelemetry.sdk.metrics.export import InMemoryMetricReader
-        from microsoft.opentelemetry._sdkstats._manager import SdkStatsManager
-
-        reader1 = InMemoryMetricReader()
-        reader2 = InMemoryMetricReader()
-        manager = SdkStatsManager()
-        self.assertTrue(manager.initialize_standalone(reader1))
-        self.assertTrue(manager.initialize_standalone(reader2))  # Should return True (already init)
-
-    _FAKE_STATS_CS = "InstrumentationKey=fake;" + "IngestionEndpoint=https://test.in.applicationinsights.azure.com/"
-
-    @patch("azure.monitor.opentelemetry.exporter.export.metrics._exporter.AzureMonitorMetricExporter")
-    @patch(
-        "azure.monitor.opentelemetry.exporter.statsbeat._utils._get_stats_connection_string",
-        return_value=_FAKE_STATS_CS,
-    )
-    @patch(
-        "azure.monitor.opentelemetry.exporter.statsbeat._utils._get_stats_short_export_interval",
-        return_value=900,
-    )
-    def test_initialize_uses_azure_monitor_exporter(self, mock_interval, mock_cs, mock_exporter):
-        """initialize() must use AzureMonitorMetricExporter with is_sdkstats=True."""
-        from microsoft.opentelemetry._sdkstats._manager import SdkStatsManager
-
-        manager = SdkStatsManager()
-        result = manager.initialize()
-        self.assertTrue(result)
-        self.assertTrue(manager.is_initialized)
-
-        mock_exporter.assert_called_once_with(
-            connection_string=self._FAKE_STATS_CS,
-            disable_offline_storage=True,
-            is_sdkstats=True,
-        )
-
-    def test_initialize_forwards_enable_azure_monitor_flag(self):
-        from microsoft.opentelemetry._sdkstats._manager import SdkStatsManager
-
-        manager = SdkStatsManager()
-        with patch.object(manager, "_do_initialize", return_value=True) as do_initialize_mock:
-            result = manager.initialize(enable_azure_monitor=True)
-
-        self.assertTrue(result)
-        do_initialize_mock.assert_called_once_with(True)
-
-    def test_metrics_collected_after_initialize(self):
-        from opentelemetry.sdk.metrics.export import InMemoryMetricReader
-        from microsoft.opentelemetry._sdkstats._manager import SdkStatsManager
-
-        set_sdkstats_feature(SdkStatsFeature.DISTRO)
-        set_sdkstats_feature(SdkStatsFeature.A365_EXPORT)
-        set_sdkstats_instrumentation(SdkStatsInstrumentation.OPENAI_V2)
-
-        reader = InMemoryMetricReader()
-        manager = SdkStatsManager()
-        manager.initialize_standalone(reader)
-
-        metrics_data = reader.get_metrics_data()
-        self.assertIsNotNone(metrics_data)
-        metric_names = set()
-        for resource_metrics in metrics_data.resource_metrics:
-            for scope_metrics in resource_metrics.scope_metrics:
-                for metric in scope_metrics.metrics:
-                    metric_names.add(metric.name)
-
-        self.assertIn("feature", metric_names)
-        self.assertIn("feature", metric_names)
-
-
-class TestInitializeSdkStats(unittest.TestCase):
-    """Tests for _initialize_sdkstats in _distro.py."""
-
-    def setUp(self):
-        _reset_state()
-
-    def tearDown(self):
-        _reset_state()
-
-    def test_initialize_sdkstats_starts_manager_when_azure_monitor_enabled(self):
-        """_initialize_sdkstats starts the distro manager regardless of AzMon — the
-        two pipelines run independently so each emits its own statsbeat row."""
-        from microsoft.opentelemetry._distro import _initialize_sdkstats
-
-        set_sdkstats_feature(SdkStatsFeature.DISTRO)
-        set_sdkstats_feature(SdkStatsFeature.A365_EXPORT)
-
-        with patch("microsoft.opentelemetry._sdkstats._manager.SdkStatsManager") as mock_cls:
-            mock_manager = MagicMock()
-            mock_cls.return_value = mock_manager
-            _initialize_sdkstats(enable_azure_monitor=True)
-            mock_manager.initialize.assert_called_once_with(True)
-
-    def test_initialize_sdkstats_uses_manager_when_azure_monitor_disabled(self):
-        """_initialize_sdkstats creates SdkStatsManager when Azure Monitor is off."""
-        from microsoft.opentelemetry._distro import _initialize_sdkstats
-
-        set_sdkstats_feature(SdkStatsFeature.DISTRO)
-
-        with patch("microsoft.opentelemetry._sdkstats._manager.SdkStatsManager") as mock_cls:
-            mock_manager = MagicMock()
-            mock_cls.return_value = mock_manager
-            _initialize_sdkstats(enable_azure_monitor=False)
-            mock_manager.initialize.assert_called_once_with(False)
 
 
 class TestSdkStatsBridgeSetters(unittest.TestCase):
@@ -490,62 +260,217 @@ class TestSdkStatsBridgeSetters(unittest.TestCase):
 
         set_sdkstats_instrumentation_bits(int(SdkStatsInstrumentation.FASTAPI))
 
+        with _exporter_utils._INSTRUMENTATIONS_BIT_MASK_LOCK:
+            self.assertEqual(
+                _exporter_utils._INSTRUMENTATIONS_BIT_MASK,
+                3 | int(SdkStatsInstrumentation.FASTAPI),
+            )
 
-class TestRequestSuccessCallback(unittest.TestCase):
-    """Tests for SdkStatsMetrics._observe_request_success_count."""
+
+class TestBuildDefaultSdkStatsConfig(unittest.TestCase):
+    """Tests for the default StatsbeatConfig builder."""
+
+    def test_returns_config_with_required_fields(self):
+        from microsoft.opentelemetry._sdkstats._config import (
+            _build_default_sdkstats_config,
+        )
+
+        config = _build_default_sdkstats_config()
+        self.assertIsNotNone(config)
+        self.assertTrue(config.instrumentation_key)
+        self.assertTrue(config.endpoint)
+        self.assertTrue(config.region)
+        self.assertTrue(config.connection_string)
+
+    def test_passes_upstream_validation(self):
+        from azure.monitor.opentelemetry.exporter.statsbeat._manager import (
+            StatsbeatManager,
+        )
+        from microsoft.opentelemetry._sdkstats._config import (
+            _build_default_sdkstats_config,
+        )
+
+        config = _build_default_sdkstats_config()
+        # pylint: disable=protected-access
+        self.assertTrue(StatsbeatManager._validate_config(config))
+
+
+class TestNetworkMetricsRegistration(unittest.TestCase):
+    """Tests for register_network_gauges() idempotency and behaviour."""
+
+    def setUp(self):
+        _reset_state()
+        _reset_upstream_singleton()
+        _reset_network_metrics_guard()
+
+    def tearDown(self):
+        _reset_upstream_singleton()
+        _reset_network_metrics_guard()
+
+    def test_returns_false_when_manager_has_no_meter_provider(self):
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            register_network_gauges,
+        )
+
+        self.assertFalse(register_network_gauges())
+
+    def test_returns_true_then_false_on_repeat(self):
+        from azure.monitor.opentelemetry.exporter.statsbeat._manager import (
+            StatsbeatManager,
+        )
+        from microsoft.opentelemetry._sdkstats._config import (
+            _build_default_sdkstats_config,
+        )
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            register_network_gauges,
+        )
+
+        config = _build_default_sdkstats_config()
+        self.assertTrue(StatsbeatManager().initialize(config))
+
+        self.assertTrue(register_network_gauges())
+        self.assertFalse(register_network_gauges())
+
+
+class TestObserveRequestSuccessCount(unittest.TestCase):
+    """Tests for the network gauge callback."""
 
     def setUp(self):
         _reset_state()
 
     def test_empty_when_no_success(self):
-        from opentelemetry.sdk.metrics import MeterProvider
-        from microsoft.opentelemetry._sdkstats._metrics import SdkStatsMetrics
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            _observe_request_success_count,
+        )
 
-        mp = MeterProvider()
-        try:
-            metrics = SdkStatsMetrics(mp)
-            obs = list(metrics._observe_request_success_count(MagicMock()))
-            self.assertEqual(obs, [])
-        finally:
-            mp.shutdown()
+        obs = list(_observe_request_success_count(MagicMock()))
+        self.assertEqual(obs, [])
 
     def test_emits_one_observation_per_endpoint(self):
-        from opentelemetry.sdk.metrics import MeterProvider
-        from microsoft.opentelemetry._sdkstats._metrics import SdkStatsMetrics
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            _observe_request_success_count,
+        )
 
         record_success("a", "a.example")
         record_success("a", "a.example")
         record_success("b", "b.example")
 
-        mp = MeterProvider()
-        try:
-            metrics = SdkStatsMetrics(mp)
-            obs = list(metrics._observe_request_success_count(MagicMock()))
-            self.assertEqual(len(obs), 2)
-            by_endpoint = {}
-            by_host = {}
-            for o in obs:
-                assert o.attributes is not None
-                by_endpoint[o.attributes["endpoint"]] = o.value
-                by_host[o.attributes["host"]] = o.value
-            self.assertEqual(by_endpoint, {"a": 2, "b": 1})
-            self.assertEqual(by_host, {"a.example": 2, "b.example": 1})
-        finally:
-            mp.shutdown()
+        obs = list(_observe_request_success_count(MagicMock()))
+        self.assertEqual(len(obs), 2)
+        by_endpoint = {}
+        by_host = {}
+        for o in obs:
+            assert o.attributes is not None
+            by_endpoint[o.attributes["endpoint"]] = o.value
+            by_host[o.attributes["host"]] = o.value
+        self.assertEqual(by_endpoint, {"a": 2, "b": 1})
+        self.assertEqual(by_host, {"a.example": 2, "b.example": 1})
 
     def test_callback_drains_count(self):
-        from opentelemetry.sdk.metrics import MeterProvider
-        from microsoft.opentelemetry._sdkstats._metrics import SdkStatsMetrics
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            _observe_request_success_count,
+        )
 
         record_success("a", "a.example")
-        mp = MeterProvider()
+        list(_observe_request_success_count(MagicMock()))
+        obs = list(_observe_request_success_count(MagicMock()))
+        self.assertEqual(obs, [])
+
+
+class TestInitializeSdkStats(unittest.TestCase):
+    """Tests for _initialize_sdkstats in _distro.py."""
+
+    def setUp(self):
+        _reset_state()
+        _reset_upstream_singleton()
+        _reset_network_metrics_guard()
+
+    def tearDown(self):
+        _reset_state()
+        _reset_upstream_singleton()
+        _reset_network_metrics_guard()
+
+    def test_no_op_when_disabled(self):
+        from microsoft.opentelemetry._distro import _initialize_sdkstats
+
+        os.environ[_SDKSTATS_DISABLED_ENV] = "true"
         try:
-            metrics = SdkStatsMetrics(mp)
-            list(metrics._observe_request_success_count(MagicMock()))
-            obs = list(metrics._observe_request_success_count(MagicMock()))
-            self.assertEqual(obs, [])
+            with patch(
+                "azure.monitor.opentelemetry.exporter.statsbeat._manager.StatsbeatManager"
+            ) as mock_cls:
+                _initialize_sdkstats(enable_azure_monitor=False)
+                mock_cls.assert_not_called()
         finally:
-            mp.shutdown()
+            os.environ.pop(_SDKSTATS_DISABLED_ENV, None)
+
+    def test_azure_monitor_path_does_not_initialize_manager(self):
+        """When Azure Monitor is on, the exporter already initialised the
+        manager from customer config; the distro must NOT call initialize()."""
+        from microsoft.opentelemetry._distro import _initialize_sdkstats
+
+        with patch(
+            "azure.monitor.opentelemetry.exporter.statsbeat._manager.StatsbeatManager"
+        ) as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
+            _initialize_sdkstats(enable_azure_monitor=True)
+            mock_instance.initialize.assert_not_called()
+
+    def test_standalone_path_initializes_manager_with_default_config(self):
+        from microsoft.opentelemetry._distro import _initialize_sdkstats
+
+        with patch(
+            "microsoft.opentelemetry._sdkstats._config._build_default_sdkstats_config"
+        ) as mock_build, patch(
+            "azure.monitor.opentelemetry.exporter.statsbeat._manager.StatsbeatManager"
+        ) as mock_cls:
+            fake_config = MagicMock(name="StatsbeatConfig")
+            mock_build.return_value = fake_config
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
+
+            _initialize_sdkstats(enable_azure_monitor=False)
+
+            mock_build.assert_called_once_with()
+            mock_instance.initialize.assert_called_once_with(fake_config)
+
+    def test_standalone_skips_manager_when_config_is_none(self):
+        from microsoft.opentelemetry._distro import _initialize_sdkstats
+
+        with patch(
+            "microsoft.opentelemetry._sdkstats._config._build_default_sdkstats_config",
+            return_value=None,
+        ), patch(
+            "azure.monitor.opentelemetry.exporter.statsbeat._manager.StatsbeatManager"
+        ) as mock_cls:
+            mock_instance = MagicMock()
+            mock_cls.return_value = mock_instance
+            _initialize_sdkstats(enable_azure_monitor=False)
+            mock_instance.initialize.assert_not_called()
+
+    def test_always_calls_register_network_gauges(self):
+        from microsoft.opentelemetry._distro import _initialize_sdkstats
+
+        with patch(
+            "microsoft.opentelemetry._sdkstats._network_metrics.register_network_gauges"
+        ) as mock_register, patch(
+            "azure.monitor.opentelemetry.exporter.statsbeat._manager.StatsbeatManager"
+        ):
+            _initialize_sdkstats(enable_azure_monitor=True)
+            _initialize_sdkstats(enable_azure_monitor=False)
+            self.assertEqual(mock_register.call_count, 2)
+
+    def test_always_bridges_feature_and_instrumentation_bits(self):
+        from microsoft.opentelemetry._distro import _initialize_sdkstats
+
+        with patch(
+            "microsoft.opentelemetry._distro._bridge_sdkstats_to_azure_monitor"
+        ) as mock_bridge, patch(
+            "azure.monitor.opentelemetry.exporter.statsbeat._manager.StatsbeatManager"
+        ):
+            _initialize_sdkstats(enable_azure_monitor=True)
+            _initialize_sdkstats(enable_azure_monitor=False)
+            self.assertEqual(mock_bridge.call_count, 2)
 
 
 class TestNetworkStatsExporterWrappers(unittest.TestCase):
@@ -565,7 +490,7 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
 
         wrapper = _NetworkStatsSpanExporter(self._inner_span(SpanExportResult.SUCCESS))
         self.assertEqual(wrapper.export([]), SpanExportResult.SUCCESS)
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp","otlp.example.com"): 1})
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp", "otlp.example.com"): 1})
 
     def test_span_failure_does_not_record(self):
         from opentelemetry.sdk.trace.export import SpanExportResult
@@ -595,7 +520,7 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
         inner.export.return_value = MetricExportResult.SUCCESS
         wrapper = _NetworkStatsMetricExporter(inner)
         wrapper.export(MagicMock())
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp","otlp.example.com"): 1})
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp", "otlp.example.com"): 1})
 
     def test_metric_failure_does_not_record(self):
         from opentelemetry.sdk.metrics.export import MetricExportResult
@@ -618,7 +543,7 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
         inner.export.return_value = LogRecordExportResult.SUCCESS
         wrapper = _NetworkStatsLogExporter(inner)
         wrapper.export([])
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp","otlp.example.com"): 1})
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp", "otlp.example.com"): 1})
 
     def test_log_failure_does_not_record(self):
         from opentelemetry.sdk._logs.export import LogRecordExportResult
