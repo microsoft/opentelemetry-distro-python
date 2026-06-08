@@ -54,6 +54,7 @@ def _get_common_attributes() -> dict:
 
 
 def _observe_request_success_count(options: CallbackOptions) -> Iterable[Observation]:
+    """Drain the per-endpoint success counts and emit one observation each."""
     common = _get_common_attributes()
 
     observations: List[Observation] = []
@@ -88,6 +89,7 @@ def _observe_request_duration(options: CallbackOptions) -> Iterable[Observation]
 
 
 def _observe_request_failure_count(options: CallbackOptions) -> Iterable[Observation]:
+    """Drain the per-endpoint failure counts and emit one observation each."""
     common = _get_common_attributes()
 
     observations: List[Observation] = []
@@ -102,6 +104,7 @@ def _observe_request_failure_count(options: CallbackOptions) -> Iterable[Observa
 
 
 def _observe_request_retry_count(options: CallbackOptions) -> Iterable[Observation]:
+    """Drain the per-endpoint retry counts and emit one observation each."""
     common = _get_common_attributes()
 
     observations: List[Observation] = []
@@ -116,6 +119,7 @@ def _observe_request_retry_count(options: CallbackOptions) -> Iterable[Observati
 
 
 def _observe_request_throttle_count(options: CallbackOptions) -> Iterable[Observation]:
+    """Drain the per-endpoint throttle counts and emit one observation each."""
     common = _get_common_attributes()
 
     observations: List[Observation] = []
@@ -130,6 +134,7 @@ def _observe_request_throttle_count(options: CallbackOptions) -> Iterable[Observ
 
 
 def _observe_request_exception_count(options: CallbackOptions) -> Iterable[Observation]:
+    """Drain the per-endpoint exception counts and emit one observation each."""
     common = _get_common_attributes()
 
     observations: List[Observation] = []
@@ -152,9 +157,8 @@ def register_network_gauges() -> bool:
     create separate gauges with the same names because the stats backend identifies
     metric streams by InstrumentationScope, and rows from an unknown scope are silently
     dropped.  Instead we append our callbacks to the already-registered
-    upstream ``_success_count`` observable gauges
-    so our observations are emitted on the exact same instrument/scope
-    as upstream's breeze rows.
+    upstream observable gauges so our observations are emitted on the
+    exact same instrument/scope as upstream's breeze rows.
 
     Idempotent — subsequent calls are no-ops.  Returns ``True`` on the
     call that performs registration, ``False`` if registration was

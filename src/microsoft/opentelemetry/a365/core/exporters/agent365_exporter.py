@@ -400,8 +400,6 @@ class _Agent365Exporter(SpanExporter):
                     headers=headers,
                     timeout=DEFAULT_HTTP_TIMEOUT_SECONDS,
                 )
-                if record_a365_sdkstats:
-                    record_duration(ENDPOINT_A365, host, time.time() - start_time)
 
                 correlation_id = resp.headers.get("x-ms-correlation-id") or resp.headers.get("request-id") or "N/A"
 
@@ -462,7 +460,6 @@ class _Agent365Exporter(SpanExporter):
 
             except requests.RequestException as e:
                 if record_a365_sdkstats:
-                    record_duration(ENDPOINT_A365, host, time.time() - start_time)
                     record_exception(ENDPOINT_A365, host, type(e).__name__)
                 if attempt < DEFAULT_MAX_RETRIES:
                     time.sleep(0.5 * (2**attempt))
@@ -470,6 +467,10 @@ class _Agent365Exporter(SpanExporter):
                 logger.error("Request failed after %d attempts: %s", DEFAULT_MAX_RETRIES + 1, e)
                 self._circuit_breaker.record_failure()
                 return False
+            finally:
+                # Record duration for every status
+                if record_a365_sdkstats:
+                    record_duration(ENDPOINT_A365, host, time.time() - start_time)
         return False  # pragma: no cover
 
     # ------------- Payload mapping ------------------
