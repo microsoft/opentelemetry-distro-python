@@ -32,9 +32,20 @@ from microsoft.opentelemetry._sdkstats._state import (
     set_sdkstats_shutdown,
 )
 from microsoft.opentelemetry._sdkstats._utils import (
+    REQUEST_DURATION_NAME,
+    REQUEST_EXCEPTION_NAME,
+    REQUEST_FAILURE_NAME,
+    REQUEST_RETRY_NAME,
     REQUEST_SUCCESS_NAME,
+    REQUEST_THROTTLE_NAME,
+    THROTTLE_STATUS_CODES,
     drain,
+    record_duration,
+    record_exception,
+    record_failure,
+    record_retry,
     record_success,
+    record_throttle,
     reset_all,
 )
 from microsoft.opentelemetry._sdkstats._otlp_wrapper import (
@@ -377,6 +388,295 @@ class TestObserveRequestSuccessCount(unittest.TestCase):
         self.assertEqual(obs, [])
 
 
+class TestRecordHelpers(unittest.TestCase):
+    """Verify each ``record_*`` helper bumps the correct bucket / key shape."""
+
+    def setUp(self):
+        _reset_state()
+
+    def test_record_duration_accumulates_sum_and_count(self):
+        record_duration("a365", "a.example", 0.1)
+        record_duration("a365", "a.example", 0.4)
+        record_duration("otlp", "o.example", 0.2)
+
+        snap = drain(REQUEST_DURATION_NAME)
+        self.assertEqual(set(snap.keys()), {("a365", "a.example"), ("otlp", "o.example")})
+
+        a_sum, a_count = snap[("a365", "a.example")]
+        self.assertAlmostEqual(a_sum, 0.5)
+        self.assertEqual(a_count, 2)
+
+        o_sum, o_count = snap[("otlp", "o.example")]
+        self.assertAlmostEqual(o_sum, 0.2)
+        self.assertEqual(o_count, 1)
+
+    def test_record_failure_keys_include_int_status_code(self):
+        record_failure("a365", "a.example", 401)
+        record_failure("a365", "a.example", 401)
+        record_failure("a365", "a.example", 403)
+
+        self.assertEqual(
+            drain(REQUEST_FAILURE_NAME),
+            {("a365", "a.example", 401): 2, ("a365", "a.example", 403): 1},
+        )
+
+    def test_record_retry_keys_include_int_status_code(self):
+        record_retry("a365", "a.example", 429)
+        record_retry("a365", "a.example", 503)
+
+        self.assertEqual(
+            drain(REQUEST_RETRY_NAME),
+            {("a365", "a.example", 429): 1, ("a365", "a.example", 503): 1},
+        )
+
+    def test_record_throttle_keys_include_int_status_code(self):
+        record_throttle("a365", "a.example", 402)
+        record_throttle("a365", "a.example", 439)
+
+        self.assertEqual(
+            drain(REQUEST_THROTTLE_NAME),
+            {("a365", "a.example", 402): 1, ("a365", "a.example", 439): 1},
+        )
+
+    def test_record_exception_keys_include_exception_type(self):
+        record_exception("a365", "a.example", "ConnectionError")
+        record_exception("a365", "a.example", "ConnectionError")
+        record_exception("a365", "a.example", "Timeout")
+
+        self.assertEqual(
+            drain(REQUEST_EXCEPTION_NAME),
+            {
+                ("a365", "a.example", "ConnectionError"): 2,
+                ("a365", "a.example", "Timeout"): 1,
+            },
+        )
+
+    def test_throttle_status_codes_match_upstream(self):
+        # Upstream owns this list; the distro re-exports it.  Guard against
+        # an accidental local override.
+        from azure.monitor.opentelemetry.exporter._constants import (
+            _THROTTLE_STATUS_CODES,
+        )
+
+        self.assertEqual(THROTTLE_STATUS_CODES, _THROTTLE_STATUS_CODES)
+
+
+class TestObserveRequestDuration(unittest.TestCase):
+    def setUp(self):
+        _reset_state()
+
+    def test_empty_when_no_samples(self):
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            _observe_request_duration,
+        )
+
+        self.assertEqual(list(_observe_request_duration(MagicMock())), [])
+
+    def test_emits_average_in_milliseconds(self):
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            _observe_request_duration,
+        )
+
+        record_duration("a365", "a.example", 0.1)  # 100 ms
+        record_duration("a365", "a.example", 0.3)  # 300 ms — avg should be 200 ms
+
+        obs = list(_observe_request_duration(MagicMock()))
+        self.assertEqual(len(obs), 1)
+        o = obs[0]
+        assert o.attributes is not None
+        self.assertEqual(o.attributes["endpoint"], "a365")
+        self.assertEqual(o.attributes["host"], "a.example")
+        self.assertAlmostEqual(o.value, 200.0)
+
+    def test_callback_drains_state(self):
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            _observe_request_duration,
+        )
+
+        record_duration("a365", "a.example", 0.1)
+        list(_observe_request_duration(MagicMock()))
+        self.assertEqual(list(_observe_request_duration(MagicMock())), [])
+
+
+class TestObserveRequestFailureCount(unittest.TestCase):
+    def setUp(self):
+        _reset_state()
+
+    def test_empty_when_no_failures(self):
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            _observe_request_failure_count,
+        )
+
+        self.assertEqual(list(_observe_request_failure_count(MagicMock())), [])
+
+    def test_emits_one_per_status(self):
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            _observe_request_failure_count,
+        )
+
+        record_failure("a365", "a.example", 401)
+        record_failure("a365", "a.example", 401)
+        record_failure("a365", "a.example", 403)
+
+        obs = list(_observe_request_failure_count(MagicMock()))
+        self.assertEqual(len(obs), 2)
+        by_status = {}
+        for o in obs:
+            assert o.attributes is not None
+            self.assertEqual(o.attributes["endpoint"], "a365")
+            self.assertEqual(o.attributes["host"], "a.example")
+            by_status[o.attributes["statusCode"]] = o.value
+        self.assertEqual(by_status, {401: 2, 403: 1})
+
+    def test_callback_drains_state(self):
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            _observe_request_failure_count,
+        )
+
+        record_failure("a365", "a.example", 401)
+        list(_observe_request_failure_count(MagicMock()))
+        self.assertEqual(list(_observe_request_failure_count(MagicMock())), [])
+
+
+class TestObserveRequestRetryCount(unittest.TestCase):
+    def setUp(self):
+        _reset_state()
+
+    def test_emits_one_per_status(self):
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            _observe_request_retry_count,
+        )
+
+        record_retry("a365", "a.example", 429)
+        record_retry("a365", "a.example", 503)
+        record_retry("a365", "a.example", 503)
+
+        obs = list(_observe_request_retry_count(MagicMock()))
+        self.assertEqual(len(obs), 2)
+        by_status = {o.attributes["statusCode"]: o.value for o in obs if o.attributes}
+        self.assertEqual(by_status, {429: 1, 503: 2})
+
+    def test_callback_drains_state(self):
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            _observe_request_retry_count,
+        )
+
+        record_retry("a365", "a.example", 429)
+        list(_observe_request_retry_count(MagicMock()))
+        self.assertEqual(list(_observe_request_retry_count(MagicMock())), [])
+
+
+class TestObserveRequestThrottleCount(unittest.TestCase):
+    def setUp(self):
+        _reset_state()
+
+    def test_emits_one_per_status(self):
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            _observe_request_throttle_count,
+        )
+
+        record_throttle("a365", "a.example", 402)
+        record_throttle("a365", "a.example", 439)
+
+        obs = list(_observe_request_throttle_count(MagicMock()))
+        self.assertEqual(len(obs), 2)
+        by_status = {o.attributes["statusCode"]: o.value for o in obs if o.attributes}
+        self.assertEqual(by_status, {402: 1, 439: 1})
+
+    def test_callback_drains_state(self):
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            _observe_request_throttle_count,
+        )
+
+        record_throttle("a365", "a.example", 402)
+        list(_observe_request_throttle_count(MagicMock()))
+        self.assertEqual(list(_observe_request_throttle_count(MagicMock())), [])
+
+
+class TestObserveRequestExceptionCount(unittest.TestCase):
+    def setUp(self):
+        _reset_state()
+
+    def test_emits_one_per_exception_type(self):
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            _observe_request_exception_count,
+        )
+
+        record_exception("a365", "a.example", "ConnectionError")
+        record_exception("a365", "a.example", "ConnectionError")
+        record_exception("a365", "a.example", "Timeout")
+
+        obs = list(_observe_request_exception_count(MagicMock()))
+        self.assertEqual(len(obs), 2)
+        by_type = {o.attributes["exceptionType"]: o.value for o in obs if o.attributes}
+        self.assertEqual(by_type, {"ConnectionError": 2, "Timeout": 1})
+
+    def test_callback_drains_state(self):
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            _observe_request_exception_count,
+        )
+
+        record_exception("a365", "a.example", "ConnectionError")
+        list(_observe_request_exception_count(MagicMock()))
+        self.assertEqual(list(_observe_request_exception_count(MagicMock())), [])
+
+
+class TestRegisterNetworkGaugesAttachesAllSix(unittest.TestCase):
+    """``register_network_gauges`` must attach a callback to every upstream
+    network statsbeat gauge, not just success."""
+
+    def setUp(self):
+        _reset_state()
+        _reset_upstream_singleton()
+        _reset_network_metrics_guard()
+
+    def tearDown(self):
+        _reset_upstream_singleton()
+        _reset_network_metrics_guard()
+
+    def test_attaches_to_all_six_gauges(self):
+        from azure.monitor.opentelemetry.exporter.statsbeat._manager import (
+            StatsbeatManager,
+        )
+        from microsoft.opentelemetry._sdkstats._config import (
+            _build_default_sdkstats_config,
+        )
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            register_network_gauges,
+        )
+
+        config = _build_default_sdkstats_config()
+        self.assertTrue(StatsbeatManager().initialize(config))
+
+        # The six upstream gauges the distro must attach to.
+        gauge_attrs = [
+            "_success_count",
+            "_average_duration",
+            "_failure_count",
+            "_retry_count",
+            "_throttle_count",
+            "_exception_count",
+        ]
+
+        # Snapshot pre-registration callback counts so we can assert exactly
+        # one new callback per gauge.
+        metrics = StatsbeatManager()._metrics  # pylint: disable=protected-access
+        assert metrics is not None
+        before = {
+            name: len(getattr(metrics, name)._callbacks) for name in gauge_attrs  # pylint: disable=protected-access
+        }
+
+        self.assertTrue(register_network_gauges())
+
+        for name in gauge_attrs:
+            after = len(getattr(metrics, name)._callbacks)  # pylint: disable=protected-access
+            self.assertEqual(
+                after,
+                before[name] + 1,
+                f"Expected one distro callback appended to {name}",
+            )
+
+
 class TestInitializeSdkStats(unittest.TestCase):
     """Tests for _initialize_sdkstats in _distro.py."""
 
@@ -395,9 +695,7 @@ class TestInitializeSdkStats(unittest.TestCase):
 
         os.environ[_SDKSTATS_DISABLED_ENV] = "true"
         try:
-            with patch(
-                "azure.monitor.opentelemetry.exporter.statsbeat._manager.StatsbeatManager"
-            ) as mock_cls:
+            with patch("azure.monitor.opentelemetry.exporter.statsbeat._manager.StatsbeatManager") as mock_cls:
                 _initialize_sdkstats(enable_azure_monitor=False)
                 mock_cls.assert_not_called()
         finally:
@@ -408,9 +706,7 @@ class TestInitializeSdkStats(unittest.TestCase):
         manager from customer config; the distro must NOT call initialize()."""
         from microsoft.opentelemetry._distro import _initialize_sdkstats
 
-        with patch(
-            "azure.monitor.opentelemetry.exporter.statsbeat._manager.StatsbeatManager"
-        ) as mock_cls:
+        with patch("azure.monitor.opentelemetry.exporter.statsbeat._manager.StatsbeatManager") as mock_cls:
             mock_instance = MagicMock()
             mock_cls.return_value = mock_instance
             _initialize_sdkstats(enable_azure_monitor=True)
@@ -419,11 +715,10 @@ class TestInitializeSdkStats(unittest.TestCase):
     def test_standalone_path_initializes_manager_with_default_config(self):
         from microsoft.opentelemetry._distro import _initialize_sdkstats
 
-        with patch(
-            "microsoft.opentelemetry._sdkstats._config._build_default_sdkstats_config"
-        ) as mock_build, patch(
-            "azure.monitor.opentelemetry.exporter.statsbeat._manager.StatsbeatManager"
-        ) as mock_cls:
+        with (
+            patch("microsoft.opentelemetry._sdkstats._config._build_default_sdkstats_config") as mock_build,
+            patch("azure.monitor.opentelemetry.exporter.statsbeat._manager.StatsbeatManager") as mock_cls,
+        ):
             fake_config = MagicMock(name="StatsbeatConfig")
             mock_build.return_value = fake_config
             mock_instance = MagicMock()
@@ -437,12 +732,13 @@ class TestInitializeSdkStats(unittest.TestCase):
     def test_standalone_skips_manager_when_config_is_none(self):
         from microsoft.opentelemetry._distro import _initialize_sdkstats
 
-        with patch(
-            "microsoft.opentelemetry._sdkstats._config._build_default_sdkstats_config",
-            return_value=None,
-        ), patch(
-            "azure.monitor.opentelemetry.exporter.statsbeat._manager.StatsbeatManager"
-        ) as mock_cls:
+        with (
+            patch(
+                "microsoft.opentelemetry._sdkstats._config._build_default_sdkstats_config",
+                return_value=None,
+            ),
+            patch("azure.monitor.opentelemetry.exporter.statsbeat._manager.StatsbeatManager") as mock_cls,
+        ):
             mock_instance = MagicMock()
             mock_cls.return_value = mock_instance
             _initialize_sdkstats(enable_azure_monitor=False)
@@ -451,10 +747,9 @@ class TestInitializeSdkStats(unittest.TestCase):
     def test_always_calls_register_network_gauges(self):
         from microsoft.opentelemetry._distro import _initialize_sdkstats
 
-        with patch(
-            "microsoft.opentelemetry._sdkstats._network_metrics.register_network_gauges"
-        ) as mock_register, patch(
-            "azure.monitor.opentelemetry.exporter.statsbeat._manager.StatsbeatManager"
+        with (
+            patch("microsoft.opentelemetry._sdkstats._network_metrics.register_network_gauges") as mock_register,
+            patch("azure.monitor.opentelemetry.exporter.statsbeat._manager.StatsbeatManager"),
         ):
             _initialize_sdkstats(enable_azure_monitor=True)
             _initialize_sdkstats(enable_azure_monitor=False)
@@ -463,10 +758,9 @@ class TestInitializeSdkStats(unittest.TestCase):
     def test_always_bridges_feature_and_instrumentation_bits(self):
         from microsoft.opentelemetry._distro import _initialize_sdkstats
 
-        with patch(
-            "microsoft.opentelemetry._distro._bridge_sdkstats_to_azure_monitor"
-        ) as mock_bridge, patch(
-            "azure.monitor.opentelemetry.exporter.statsbeat._manager.StatsbeatManager"
+        with (
+            patch("microsoft.opentelemetry._distro._bridge_sdkstats_to_azure_monitor") as mock_bridge,
+            patch("azure.monitor.opentelemetry.exporter.statsbeat._manager.StatsbeatManager"),
         ):
             _initialize_sdkstats(enable_azure_monitor=True)
             _initialize_sdkstats(enable_azure_monitor=False)
