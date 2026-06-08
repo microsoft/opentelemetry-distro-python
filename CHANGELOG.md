@@ -1,13 +1,5 @@
 # Release History
 
-# Unreleased
-
-### Bugs Fixed
-- Flatten LangChain/LangGraph multi-part message ``content`` into a plain
-  ``TextPart.content`` string so ``gen_ai.output.messages`` no longer contains
-  a Python-``repr`` blob on ``invoke_agent`` wrapper spans
-  ([#189](https://github.com/microsoft/opentelemetry-distro-python/issues/189))
-
 # 1.3.2 (2026-05-29)
 
 ### Bugs Fixed
