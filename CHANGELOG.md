@@ -1,6 +1,6 @@
 # Release History
 
-# 1.3.3 (2026-06-04)
+# 1.3.3 (2026-06-08)
 
 ### Features Added
 - Add `ContextualTokenResolver` with agentic user ID support
@@ -15,6 +15,10 @@
 ### Other Changes
 - ci(perf): post sticky comment for fork PRs via `workflow_run`
   ([#186](https://github.com/microsoft/opentelemetry-distro-python/pull/186))
+- Refactor code to use upstream `SDKStatsManager`
+  ([#182](https://github.com/microsoft/opentelemetry-distro-python/pull/182))
+- Update docs with the contextual token resolver config
+  ([#190](https://github.com/microsoft/opentelemetry-distro-python/pull/190))
 
 # 1.3.2 (2026-05-29)
 
