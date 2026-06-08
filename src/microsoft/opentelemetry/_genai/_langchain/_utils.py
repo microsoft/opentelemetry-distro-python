@@ -1134,18 +1134,69 @@ def _langchain_role(message: Any) -> str:
     return "unknown"
 
 
+def _flatten_lc_content_blocks(content: Any) -> str | None:
+    """Normalize a LangChain message ``content`` value to a plain text string.
+
+    LangChain/LangGraph ``AIMessage.content`` may be either a plain string or a
+    list of content-block dicts (e.g. ``[{"type": "text", "text": "...",
+    "phase": "final_answer", "id": "..."}]``).  The GenAI semantic-conventions
+    ``TextPart.content`` field must be a plain string, so we concatenate the
+    ``text`` of every ``type=="text"`` block (joined with ``\n``) and drop the
+    rest.  Non-text blocks (e.g. ``tool_use`` / ``tool_result``) are surfaced
+    elsewhere as typed parts, so it is correct to omit them from the text.
+
+    Returns ``None`` when there is no meaningful text content.
+    """
+    if content is None:
+        return None
+    if isinstance(content, str):
+        return content or None
+    if isinstance(content, list):
+        chunks: list[str] = []
+        for block in content:
+            if isinstance(block, Mapping):
+                block_type = block.get("type")
+                # Accept both spec-typed text blocks and untyped {"text": "..."} entries.
+                if block_type in (None, "text"):
+                    text = block.get("text")
+                    if isinstance(text, str) and text:
+                        chunks.append(text)
+            elif isinstance(block, str) and block:
+                chunks.append(block)
+        if chunks:
+            return "\n".join(chunks)
+        return None
+    return str(content) or None
+
+
 def _langchain_content(message: Any) -> str | None:
     """Extract text content from a LangChain message."""
     if isinstance(message, BaseMessage):
-        c = getattr(message, "content", None)
-        return str(c) if c else None
+        return _flatten_lc_content_blocks(getattr(message, "content", None))
     if hasattr(message, "get"):
-        if c := message.get("content"):
-            return str(c)
+        if (c := message.get("content")) is not None:
+            flat = _flatten_lc_content_blocks(c)
+            if flat is not None:
+                return flat
         if kwargs := message.get("kwargs"):
-            if hasattr(kwargs, "get") and (c := kwargs.get("content")):
-                return str(c)
+            if hasattr(kwargs, "get") and (c := kwargs.get("content")) is not None:
+                return _flatten_lc_content_blocks(c)
     return None
+
+
+def _lc_content_blocks(message: Any) -> list[Any] | None:
+    """Return the raw ``content`` value of a LangChain message if it is a list
+    of content blocks, otherwise ``None``."""
+    raw: Any = None
+    if isinstance(message, BaseMessage):
+        raw = getattr(message, "content", None)
+    elif hasattr(message, "get"):
+        raw = message.get("content")
+        if raw is None:
+            kwargs = message.get("kwargs") or {}
+            if hasattr(kwargs, "get"):
+                raw = kwargs.get("content")
+    return raw if isinstance(raw, list) else None
 
 
 def _langchain_tool_calls(message: Any) -> list[ToolCall]:
@@ -1165,6 +1216,34 @@ def _langchain_tool_calls(message: Any) -> list[ToolCall]:
                 additional = kwargs.get("additional_kwargs") or {}
                 raw_calls = additional.get("tool_calls")
     if not raw_calls or not isinstance(raw_calls, list):
+        raw_calls = []
+    else:
+        # Copy before mutation so we never alter the caller's message object.
+        raw_calls = list(raw_calls)
+    # Anthropic / LangGraph models often emit tool calls only as
+    # ``{"type": "tool_use", "id": "...", "name": "...", "input": {...}}``
+    # entries inside a list-shaped ``content`` field, with
+    # ``message.tool_calls`` and ``additional_kwargs["tool_calls"]`` empty.
+    # Without this loop those calls would never reach ``parts``: the
+    # ``tool_calls`` lookup above returns nothing, and ``_langchain_content``
+    # (via ``_flatten_lc_content_blocks``) only keeps ``type=="text"`` blocks
+    # and discards the rest.  Harvest them here so they surface as spec
+    # ``ToolCallRequest`` parts.
+    content_blocks = _lc_content_blocks(message)
+    if content_blocks:
+        for block in content_blocks:
+            if not isinstance(block, Mapping):
+                continue
+            if block.get("type") != "tool_use":
+                continue
+            raw_calls.append(
+                {
+                    "name": block.get("name"),
+                    "id": block.get("id"),
+                    "args": block.get("input"),
+                }
+            )
+    if not raw_calls:
         return calls
     for tc in raw_calls:
         if not isinstance(tc, Mapping):

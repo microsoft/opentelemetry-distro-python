@@ -976,6 +976,107 @@ class TestExtractAgentOutputMessages(TestCase):
         self.assertEqual(len(result), 1)
         self.assertEqual(result[0].parts[0].content, "Nested answer")
 
+    def test_flattens_langgraph_content_blocks(self):
+        """LangGraph ``AIMessage.content`` may be a list of content-block dicts.
+
+        Per the GenAI semconv ``TextPart.content`` must be a plain string; the
+        instrumentation must concatenate the ``text`` of every ``type=="text"``
+        block instead of stringifying the list (which produced a Python-repr
+        blob with single quotes and extra ``phase``/``index``/``id`` keys).
+        Regression test for issue #189.
+        """
+        outputs = {
+            "messages": [
+                {
+                    "role": "ai",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "# One-Day Food Walk in Vancouver\n\n## Assumptions",
+                            "phase": "final_answer",
+                            "index": 0,
+                            "id": "msg_045afd",
+                        }
+                    ],
+                }
+            ]
+        }
+        result = _extract_agent_output_messages(outputs)
+        self.assertEqual(len(result), 1)
+        self.assertEqual(len(result[0].parts), 1)
+        part = result[0].parts[0]
+        self.assertEqual(part.type, "text")
+        self.assertEqual(part.content, "# One-Day Food Walk in Vancouver\n\n## Assumptions")
+        # The Python-repr giveaways from issue #189 must be absent.
+        self.assertNotIn("'type'", part.content)
+        self.assertNotIn("phase", part.content)
+
+    def test_joins_multiple_text_content_blocks(self):
+        outputs = {
+            "messages": [
+                {
+                    "role": "ai",
+                    "content": [
+                        {"type": "text", "text": "first"},
+                        {"type": "text", "text": "second"},
+                    ],
+                }
+            ]
+        }
+        result = _extract_agent_output_messages(outputs)
+        self.assertEqual(result[0].parts[0].content, "first\nsecond")
+
+    def test_extracts_embedded_tool_use_block(self):
+        """``tool_use`` blocks embedded in list-shaped ``content`` should surface
+        as ``ToolCallRequest`` parts, not be dropped or repr-dumped."""
+        outputs = {
+            "messages": [
+                {
+                    "role": "ai",
+                    "content": [
+                        {"type": "text", "text": "calling search"},
+                        {
+                            "type": "tool_use",
+                            "id": "tool_1",
+                            "name": "search",
+                            "input": {"q": "vancouver food"},
+                        },
+                    ],
+                }
+            ]
+        }
+        result = _extract_agent_output_messages(outputs)
+        self.assertEqual(len(result), 1)
+        parts = result[0].parts
+        self.assertEqual(parts[0].content, "calling search")
+        # Tool-call part should have the harvested name/id and JSON-encoded args.
+        self.assertEqual(parts[1].name, "search")
+        self.assertEqual(parts[1].id, "tool_1")
+        self.assertEqual(json.loads(parts[1].arguments), {"q": "vancouver food"})
+
+    def test_extraction_does_not_mutate_input_message(self):
+        """Harvesting ``tool_use`` blocks must not append to the caller's
+        ``tool_calls`` list (which may be ``BaseMessage.tool_calls`` shared by
+        reference)."""
+        original_tool_calls = [
+            {"name": "preexisting", "id": "tc_0", "args": {"x": 1}},
+        ]
+        message = {
+            "role": "ai",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "tool_1",
+                    "name": "search",
+                    "input": {"q": "food"},
+                },
+            ],
+            "tool_calls": original_tool_calls,
+        }
+        snapshot = list(original_tool_calls)
+        _extract_agent_output_messages({"messages": [message]})
+        self.assertEqual(original_tool_calls, snapshot)
+
 
 # ---- Agent metadata extractors -----------------------------------------------
 
