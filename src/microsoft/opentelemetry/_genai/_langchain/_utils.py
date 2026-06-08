@@ -1220,10 +1220,15 @@ def _langchain_tool_calls(message: Any) -> list[ToolCall]:
     else:
         # Copy before mutation so we never alter the caller's message object.
         raw_calls = list(raw_calls)
-    # LangChain/LangGraph may also embed tool calls as ``{"type": "tool_use",
-    # "id": "...", "name": "...", "input": {...}}`` entries inside a list-shaped
-    # ``content`` field.  Harvest those so they surface as ``ToolCallRequest``
-    # parts rather than being silently dropped (or repr-dumped into a TextPart).
+    # Anthropic / LangGraph models often emit tool calls only as
+    # ``{"type": "tool_use", "id": "...", "name": "...", "input": {...}}``
+    # entries inside a list-shaped ``content`` field, with
+    # ``message.tool_calls`` and ``additional_kwargs["tool_calls"]`` empty.
+    # Without this loop those calls would never reach ``parts``: the
+    # ``tool_calls`` lookup above returns nothing, and ``_langchain_content``
+    # (via ``_flatten_lc_content_blocks``) only keeps ``type=="text"`` blocks
+    # and discards the rest.  Harvest them here so they surface as spec
+    # ``ToolCallRequest`` parts.
     content_blocks = _lc_content_blocks(message)
     if content_blocks:
         for block in content_blocks:
