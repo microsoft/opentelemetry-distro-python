@@ -122,66 +122,82 @@ class TestGenAIMainAgentSpanProcessorOnEnd(unittest.TestCase):
     def setUp(self) -> None:
         self.processor = GenAIMainAgentSpanProcessor()
 
-    def test_skipped_when_not_invoke_agent(self):
+    @staticmethod
+    def _make_span(attributes: dict, *, has_internal_attrs: bool = True):
+        """Build a mock ReadableSpan with context.span_id and _attributes."""
         span = MagicMock()
-        span.attributes = {GEN_AI_OPERATION_NAME_KEY: "chat"}
+        span.attributes = dict(attributes)
+        span.context.span_id = id(span)  # unique per mock
+        if has_internal_attrs:
+            span._attributes = dict(attributes)
+        else:
+            del span._attributes
+        return span
+
+    def test_skipped_when_not_invoke_agent(self):
+        span = self._make_span({GEN_AI_OPERATION_NAME_KEY: "chat"})
 
         self.processor.on_end(span)
 
-        span.set_attribute.assert_not_called()
+        # _attributes must remain unchanged
+        self.assertNotIn(GEN_AI_MAIN_AGENT_NAME_KEY, span._attributes)
 
     def test_skipped_when_main_agent_attribute_already_present(self):
-        span = MagicMock()
-        span.attributes = {
-            GEN_AI_OPERATION_NAME_KEY: INVOKE_AGENT_OPERATION_NAME,
-            GEN_AI_MAIN_AGENT_NAME_KEY: "already-set",
-            GEN_AI_AGENT_NAME_KEY: "self",
-        }
+        span = self._make_span(
+            {
+                GEN_AI_OPERATION_NAME_KEY: INVOKE_AGENT_OPERATION_NAME,
+                GEN_AI_MAIN_AGENT_NAME_KEY: "already-set",
+                GEN_AI_AGENT_NAME_KEY: "self",
+            }
+        )
 
         self.processor.on_end(span)
 
-        span.set_attribute.assert_not_called()
+        # Must keep the existing value, not overwrite with "self"
+        self.assertEqual(span._attributes[GEN_AI_MAIN_AGENT_NAME_KEY], "already-set")
 
     def test_copies_self_attributes_when_invoke_agent_and_unenriched(self):
-        span = MagicMock()
-        span.attributes = {
-            GEN_AI_OPERATION_NAME_KEY: INVOKE_AGENT_OPERATION_NAME,
-            GEN_AI_AGENT_NAME_KEY: "self-name",
-            GEN_AI_AGENT_ID_KEY: "self-id",
-            GEN_AI_AGENT_VERSION_KEY: "self-v",
-            GEN_AI_CONVERSATION_ID_KEY: "self-conv",
-        }
+        span = self._make_span(
+            {
+                GEN_AI_OPERATION_NAME_KEY: INVOKE_AGENT_OPERATION_NAME,
+                GEN_AI_AGENT_NAME_KEY: "self-name",
+                GEN_AI_AGENT_ID_KEY: "self-id",
+                GEN_AI_AGENT_VERSION_KEY: "self-v",
+                GEN_AI_CONVERSATION_ID_KEY: "self-conv",
+            }
+        )
 
         self.processor.on_end(span)
 
-        span.set_attribute.assert_any_call(GEN_AI_MAIN_AGENT_NAME_KEY, "self-name")
-        span.set_attribute.assert_any_call(GEN_AI_MAIN_AGENT_ID_KEY, "self-id")
-        span.set_attribute.assert_any_call(GEN_AI_MAIN_AGENT_VERSION_KEY, "self-v")
-        span.set_attribute.assert_any_call(GEN_AI_MAIN_AGENT_CONVERSATION_ID_KEY, "self-conv")
-        self.assertEqual(span.set_attribute.call_count, 4)
+        self.assertEqual(span._attributes[GEN_AI_MAIN_AGENT_NAME_KEY], "self-name")
+        self.assertEqual(span._attributes[GEN_AI_MAIN_AGENT_ID_KEY], "self-id")
+        self.assertEqual(span._attributes[GEN_AI_MAIN_AGENT_VERSION_KEY], "self-v")
+        self.assertEqual(span._attributes[GEN_AI_MAIN_AGENT_CONVERSATION_ID_KEY], "self-conv")
 
     def test_copies_only_present_attributes(self):
-        span = MagicMock()
-        span.attributes = {
-            GEN_AI_OPERATION_NAME_KEY: INVOKE_AGENT_OPERATION_NAME,
-            GEN_AI_AGENT_NAME_KEY: "only-name",
-        }
+        span = self._make_span(
+            {
+                GEN_AI_OPERATION_NAME_KEY: INVOKE_AGENT_OPERATION_NAME,
+                GEN_AI_AGENT_NAME_KEY: "only-name",
+            }
+        )
 
         self.processor.on_end(span)
 
-        span.set_attribute.assert_called_once_with(GEN_AI_MAIN_AGENT_NAME_KEY, "only-name")
+        self.assertEqual(span._attributes[GEN_AI_MAIN_AGENT_NAME_KEY], "only-name")
+        self.assertNotIn(GEN_AI_MAIN_AGENT_ID_KEY, span._attributes)
 
-    def test_noop_when_span_has_no_set_attribute(self):
-        # ReadableSpan-only objects (no ``set_attribute``) must not raise.
-        span = MagicMock(spec=["attributes"])
-        span.attributes = {
-            GEN_AI_OPERATION_NAME_KEY: INVOKE_AGENT_OPERATION_NAME,
-            GEN_AI_AGENT_NAME_KEY: "self-name",
-        }
+    def test_noop_when_span_has_no_internal_attributes(self):
+        # ReadableSpan-only objects without ``_attributes`` must not raise.
+        span = self._make_span(
+            {
+                GEN_AI_OPERATION_NAME_KEY: INVOKE_AGENT_OPERATION_NAME,
+                GEN_AI_AGENT_NAME_KEY: "self-name",
+            },
+            has_internal_attrs=False,
+        )
 
         self.processor.on_end(span)  # must not raise
-
-        self.assertFalse(hasattr(span, "set_attribute"))
 
 
 class TestGenAIMainAgentSpanProcessorLifecycle(unittest.TestCase):
