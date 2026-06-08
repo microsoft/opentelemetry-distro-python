@@ -160,6 +160,22 @@ class TestIsAgentRun(TestCase):
         run = _make_run(run_type="chain", name="RunnableSequence")
         self.assertFalse(tracer._is_agent_run(run))
 
+    def test_deeply_nested_agent_returns_false(self):
+        """Agent-like chain nested under a non-agent chain whose ancestor is
+        already an agent must NOT be treated as a separate agent.  This
+        prevents token aggregation from splitting across multiple agent
+        spans (see token-count mismatch in multi-agent LangGraph setups)."""
+        tracer, _, _ = _make_tracer()
+        agent_id = uuid4()
+        chain_id = uuid4()
+        tracer._agent_run_ids.add(agent_id)
+        # Intermediate non-agent chain between top-level agent and sub-graph.
+        chain_run = _make_run(run_type="chain", name="node_step", id=chain_id, parent_run_id=agent_id)
+        tracer.run_map[str(chain_id)] = chain_run
+        # Sub-graph whose direct parent is the intermediate chain, not the agent.
+        sub_graph = _make_run(run_type="chain", name="SubAgentGraph", parent_run_id=chain_id)
+        self.assertFalse(tracer._is_agent_run(sub_graph))
+
 
 # ---- Agent name resolution ---------------------------------------------------
 
@@ -760,6 +776,7 @@ class TestContextAttachDetach(TestCase):
             self.assertIs(attach_call_args[0][0], inner_span)
         mock_ctx.attach.assert_called_once()
 
+
 # ---- invoke_agent aggregation fixes (issue #172) -----------------------------
 
 
@@ -1070,9 +1087,7 @@ class TestExtractAgentInputMessagesToolRole(TestCase):
                     "id": ["langchain", "schema", "messages", "AIMessage"],
                     "kwargs": {
                         "content": "",
-                        "tool_calls": [
-                            {"name": "get_weather", "args": {"location": "Paris"}, "id": "tc1"}
-                        ],
+                        "tool_calls": [{"name": "get_weather", "args": {"location": "Paris"}, "id": "tc1"}],
                         "type": "ai",
                     },
                 },
@@ -1086,4 +1101,3 @@ class TestExtractAgentInputMessagesToolRole(TestCase):
         self.assertEqual(tool_part.type, "tool_call_response")
         self.assertEqual(tool_part.id, "tc1")
         self.assertEqual(tool_part.response, "rainy")
-
