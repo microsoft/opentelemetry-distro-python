@@ -1217,6 +1217,9 @@ def _langchain_tool_calls(message: Any) -> list[ToolCall]:
                 raw_calls = additional.get("tool_calls")
     if not raw_calls or not isinstance(raw_calls, list):
         raw_calls = []
+    else:
+        # Copy before mutation so we never alter the caller's message object.
+        raw_calls = list(raw_calls)
     # LangChain/LangGraph may also embed tool calls as ``{"type": "tool_use",
     # "id": "...", "name": "...", "input": {...}}`` entries inside a list-shaped
     # ``content`` field.  Harvest those so they surface as ``ToolCallRequest``

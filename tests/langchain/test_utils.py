@@ -1054,6 +1054,29 @@ class TestExtractAgentOutputMessages(TestCase):
         self.assertEqual(parts[1].id, "tool_1")
         self.assertEqual(json.loads(parts[1].arguments), {"q": "vancouver food"})
 
+    def test_extraction_does_not_mutate_input_message(self):
+        """Harvesting ``tool_use`` blocks must not append to the caller's
+        ``tool_calls`` list (which may be ``BaseMessage.tool_calls`` shared by
+        reference)."""
+        original_tool_calls = [
+            {"name": "preexisting", "id": "tc_0", "args": {"x": 1}},
+        ]
+        message = {
+            "role": "ai",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": "tool_1",
+                    "name": "search",
+                    "input": {"q": "food"},
+                },
+            ],
+            "tool_calls": original_tool_calls,
+        }
+        snapshot = list(original_tool_calls)
+        _extract_agent_output_messages({"messages": [message]})
+        self.assertEqual(original_tool_calls, snapshot)
+
 
 # ---- Agent metadata extractors -----------------------------------------------
 

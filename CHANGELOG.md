@@ -1,6 +1,6 @@
 # Release History
 
-## Unreleased
+# Unreleased
 
 ### Bugs Fixed
 - Flatten LangChain/LangGraph multi-part message ``content`` into a plain
