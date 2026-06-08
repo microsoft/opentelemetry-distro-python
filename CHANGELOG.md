@@ -7,10 +7,14 @@
   ([#185](https://github.com/microsoft/opentelemetry-distro-python/pull/185))
 - Network SdkStats: add request success count metric
   ([#144](https://github.com/microsoft/opentelemetry-distro-python/pull/144))
+- Add remaining network sdkstats metrics for A365
+  ([#192](https://github.com/microsoft/opentelemetry-distro-python/pull/192))
 
 ### Bugs Fixed
 - Downgrade LangChain "not installed" log to DEBUG to silence stderr warnings for users not using LangChain
   ([#184](https://github.com/microsoft/opentelemetry-distro-python/pull/184))
+- Fix LangGraph content-block serialization in `gen_ai.output.messages`
+  ([#193](https://github.com/microsoft/opentelemetry-distro-python/pull/193))
 
 ### Other Changes
 - ci(perf): post sticky comment for fork PRs via `workflow_run`
