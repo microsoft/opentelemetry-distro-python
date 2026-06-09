@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   quality:
-    name: Pylint and Mypy
+    name: Black, Pylint, and Mypy
     runs-on: ubuntu-latest
 
     steps:
@@ -24,19 +24,15 @@ jobs:
       - name: Install tox
         run: python -m pip install --upgrade pip tox
 
-      # Black formatting is applied automatically by `pr-autoformat.yml`
-      # (pull_request_target) when GitHub allows the base repo to push to
-      # the PR branch. For fork PRs where the contributor unchecked
-      # "Allow edits by maintainers", auto-push can't run, so we keep a
-      # read-only Black check here as a safety net.
-      - name: Check formatting with Black (fork PRs without maintainer edits)
-        if: >-
-          github.event_name == 'pull_request'
-          && github.event.pull_request.head.repo.full_name != github.repository
-          && github.event.pull_request.maintainer_can_modify != true
-        run: |
-          python -m pip install "black>=24.0,<25.0"
-          python -m black --check --diff src tests samples
+      # Always-on formatting gate. `pr-autoformat.yml`
+      # (pull_request_target) is a convenience that pushes a fix-up
+      # commit when GitHub allows the base repo to push to the PR
+      # branch; this step is the actual check, so formatting cannot be
+      # bypassed if the autoformat workflow is skipped, disabled, or
+      # fails. After the autoformat push, this re-runs on the new SHA
+      # and passes.
+      - name: Check formatting with Black
+        run: tox -e black -- --check --diff
 
       - name: Lint with Pylint
         run: tox -e pylint

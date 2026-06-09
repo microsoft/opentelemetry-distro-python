@@ -14,10 +14,15 @@ name: PR auto-format (Black)
 #     from PyPI with a constrained version range.
 #   * Black does not execute the source it formats — it only parses and
 #     re-emits AST, so reading PR-supplied .py files is safe.
-#   * We invoke Black from a directory outside the PR checkout, so a PR
-#     cannot shadow the installed Black package by adding a top-level
-#     `black.py` / `black/` to the repo.
+#   * We invoke `pip` and `black` from a directory outside the PR
+#     checkout, so a PR cannot shadow the installed `pip` / `black`
+#     package by adding a top-level `pip.py` / `black.py` (or `pip/` /
+#     `black/`) to the repo — Python puts the current working directory
+#     on sys.path.
 #   * We do NOT use `actions/setup-python` caching keyed on PR files.
+#   * The third-party commit/push action is pinned to a full commit SHA
+#     (not a floating tag) to limit supply-chain risk under the
+#     write-scoped token.
 #   * We skip the workflow when the contributor has disabled
 #     `maintainer_can_modify` (push would fail anyway).
 
@@ -27,6 +32,12 @@ on:
 
 permissions:
   contents: read
+
+# Cancel any in-flight run for the same PR so rapid pushes don't race to
+# push competing formatting commits.
+concurrency:
+  group: pr-autoformat-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   autoformat:
@@ -67,6 +78,11 @@ jobs:
           python-version: "3.10"
 
       - name: Install Black (from PyPI — not from PR)
+        # Run from /tmp so a malicious PR adding a top-level `pip.py` /
+        # `pip/` cannot shadow the real pip module via Python's
+        # CWD-on-sys.path behaviour. Same defense applies to the Black
+        # step below.
+        working-directory: /tmp
         run: |
           python -m pip install --upgrade pip
           # Match the minimum version requirement in dev_requirements.txt
@@ -90,7 +106,10 @@ jobs:
             "$GITHUB_WORKSPACE/samples"
 
       - name: Commit and push formatting changes to the PR branch
-        uses: stefanzweifel/git-auto-commit-action@v5
+        # Pinned to the v5.2.0 commit SHA (instead of the floating `v5`
+        # tag) to mitigate supply-chain risk in this write-scoped
+        # `pull_request_target` workflow.
+        uses: stefanzweifel/git-auto-commit-action@b863ae1933cb653a53c021fe36dbb774e1fb9403  # v5.2.0
         with:
           commit_message: "style: auto-format with Black"
           commit_user_name: github-actions[bot]
