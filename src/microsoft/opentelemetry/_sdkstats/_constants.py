@@ -14,7 +14,6 @@ from azure.monitor.opentelemetry.exporter._constants import (  # type: ignore[im
     _REQ_SUCCESS_NAME,
     _REQ_THROTTLE_NAME,
     _THROTTLE_STATUS_CODES,
-    _RETRYABLE_STATUS_CODES,
 )
 
 REQUEST_DURATION_NAME = _REQ_DURATION_NAME[0]
@@ -25,7 +24,12 @@ REQUEST_SUCCESS_NAME = _REQ_SUCCESS_NAME[0]
 REQUEST_THROTTLE_NAME = _REQ_THROTTLE_NAME[0]
 
 THROTTLE_STATUS_CODES = _THROTTLE_STATUS_CODES
-RETRYABLE_STATUS_CODES = _RETRYABLE_STATUS_CODES
+OTLP_RETRYABLE_STATUS_CODES = (
+    429,  # Too Many Requests
+    502,  # Bad Gateway
+    503,  # Service Unavailable
+    504,  # Gateway Timeout
+)
 
 
 # Endpoint type enum values for the ``endpoint`` dimension on network sdkstats

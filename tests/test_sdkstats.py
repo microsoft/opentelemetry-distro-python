@@ -837,30 +837,6 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
         self.assertEqual(drain(REQUEST_THROTTLE_NAME), {})
         self.assertEqual(drain(REQUEST_EXCEPTION_NAME), {})
 
-    def test_export_throttle_402_records_throttle(self):
-        e = self._make_span()
-        with self._patch_super_export(
-            _NetworkStatsSpanExporter, return_value=self._response(402)
-        ):
-            e._export(b"data", 1.0)
-
-        self.assertEqual(
-            drain(REQUEST_THROTTLE_NAME), {self.HOST_KEY + (402,): 1}
-        )
-        self.assertEqual(drain(REQUEST_FAILURE_NAME), {})
-        self.assertEqual(drain(REQUEST_RETRY_NAME), {})
-
-    def test_export_throttle_439_records_throttle(self):
-        e = self._make_span()
-        with self._patch_super_export(
-            _NetworkStatsSpanExporter, return_value=self._response(439)
-        ):
-            e._export(b"data", 1.0)
-
-        self.assertEqual(
-            drain(REQUEST_THROTTLE_NAME), {self.HOST_KEY + (439,): 1}
-        )
-
     def test_export_retryable_429_records_retry(self):
         e = self._make_span()
         with self._patch_super_export(
@@ -973,17 +949,6 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
             e._export(b"data", 1.0)
 
         self.assertEqual(drain(REQUEST_SUCCESS_NAME), {self.HOST_KEY: 1})
-
-    def test_log_export_records_throttle_402(self):
-        e = self._make_log()
-        with self._patch_super_export(
-            _NetworkStatsLogExporter, return_value=self._response(402)
-        ):
-            e._export(b"data", 1.0)
-
-        self.assertEqual(
-            drain(REQUEST_THROTTLE_NAME), {self.HOST_KEY + (402,): 1}
-        )
 
     def test_log_export_records_exception_on_timeout(self):
         import requests

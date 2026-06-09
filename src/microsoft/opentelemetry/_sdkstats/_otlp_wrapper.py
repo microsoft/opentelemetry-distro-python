@@ -12,8 +12,7 @@ returns a ``requests.Response`` -- so we can classify each attempt by its
 actual HTTP status code:
 
 * 2xx                                 -> ``request_success_count``
-* 402, 439 (throttle)                 -> ``request_throttle_count``
-* 408, 429, 500, 502, 503, 504 (retry) -> ``request_retry_count``
+* 429, 502, 503, 504 (retry) -> ``request_retry_count``
 * other 4xx / 5xx                     -> ``request_failure_count``
 * network/SSL/serialization exception -> ``request_exception_count``
 
@@ -31,9 +30,8 @@ from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExp
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
 from microsoft.opentelemetry._sdkstats._constants import (
-    ENDPOINT_OTLP, 
-    THROTTLE_STATUS_CODES, 
-    RETRYABLE_STATUS_CODES,
+    ENDPOINT_OTLP,
+    OTLP_RETRYABLE_STATUS_CODES,
 )
 
 from microsoft.opentelemetry._sdkstats._utils import (
@@ -42,7 +40,6 @@ from microsoft.opentelemetry._sdkstats._utils import (
     record_failure,
     record_retry,
     record_success,
-    record_throttle,
 )
 
 
@@ -57,13 +54,11 @@ def _endpoint_host(exporter: Any) -> str:
 
 
 def _classify(host: str, response: requests.Response) -> None:
-    """Record one success/throttle/retry/failure based on HTTP status."""
+    """Record per-attempt outcome based on HTTP status."""
     code = response.status_code
     if 200 <= code < 300:
         record_success(ENDPOINT_OTLP, host)
-    elif code in THROTTLE_STATUS_CODES:
-        record_throttle(ENDPOINT_OTLP, host, code)
-    elif code in RETRYABLE_STATUS_CODES:
+    elif code in OTLP_RETRYABLE_STATUS_CODES:
         record_retry(ENDPOINT_OTLP, host, code)
     else:
         record_failure(ENDPOINT_OTLP, host, code)
