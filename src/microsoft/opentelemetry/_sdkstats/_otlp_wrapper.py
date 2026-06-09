@@ -22,7 +22,7 @@ actual HTTP status code:
 from __future__ import annotations
 
 import time
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 from urllib.parse import urlparse
 
 import requests
@@ -72,7 +72,7 @@ def _classify(host: str, response: requests.Response) -> None:
 def _record_attempt(
     host: str,
     start: float,
-    super_export,
+    super_export: Callable[[bytes, Optional[float]], requests.Response],
     serialized_data: bytes,
     timeout_sec: Optional[float],
 ) -> requests.Response:
@@ -83,7 +83,7 @@ def _record_attempt(
     """
     try:
         try:
-            response = super_export(serialized_data, timeout_sec)
+            response: requests.Response = super_export(serialized_data, timeout_sec)
         except Exception as exc:  # noqa: BLE001
             record_exception(ENDPOINT_OTLP, host, type(exc).__name__)
             raise

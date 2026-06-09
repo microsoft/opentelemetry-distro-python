@@ -273,5 +273,96 @@ class TestOtlpIntegrationWithDistro(unittest.TestCase):
         self.assertIn(otlp_sp, processors)
 
 
+class TestCreateOtlpComponentsWithSdkstats(unittest.TestCase):
+    """Tests for create_otlp_components() when sdkstats network instrumentation is enabled.
+
+    When ``is_sdkstats_enabled()`` returns True, ``create_otlp_components()`` must wire
+    the ``_NetworkStats{Span,Metric,Log}Exporter`` subclasses (instead of the plain
+    OTLP exporters) into the returned processors/readers so that per-HTTP-attempt
+    network statsbeat is recorded.
+    """
+
+    def setUp(self):
+        import sys
+
+        self._saved_modules = {}
+        fake_modules = [
+            "opentelemetry.exporter",
+            "opentelemetry.exporter.otlp",
+            "opentelemetry.exporter.otlp.proto",
+            "opentelemetry.exporter.otlp.proto.http",
+            "opentelemetry.exporter.otlp.proto.http.trace_exporter",
+            "opentelemetry.exporter.otlp.proto.http.metric_exporter",
+            "opentelemetry.exporter.otlp.proto.http._log_exporter",
+        ]
+        for mod in fake_modules:
+            self._saved_modules[mod] = sys.modules.get(mod)
+        _install_fake_otlp_modules()
+
+    def tearDown(self):
+        import sys
+
+        for mod, original in self._saved_modules.items():
+            if original is None:
+                sys.modules.pop(mod, None)
+            else:
+                sys.modules[mod] = original
+
+    @patch("microsoft.opentelemetry._sdkstats._otlp_wrapper._NetworkStatsLogExporter")
+    @patch("microsoft.opentelemetry._sdkstats._otlp_wrapper._NetworkStatsMetricExporter")
+    @patch("microsoft.opentelemetry._sdkstats._otlp_wrapper._NetworkStatsSpanExporter")
+    @patch("microsoft.opentelemetry._sdkstats.is_sdkstats_enabled", return_value=True)
+    def test_uses_networkstats_exporters_when_sdkstats_enabled(
+        self, mock_enabled, mock_span_cls, mock_metric_cls, mock_log_cls
+    ):
+        """All three signals receive a ``_NetworkStats*Exporter`` instance."""
+        components = create_otlp_components()
+
+        mock_span_cls.assert_called_once_with()
+        mock_metric_cls.assert_called_once_with()
+        mock_log_cls.assert_called_once_with()
+
+        # BatchSpanProcessor stores the exporter as ``span_exporter``.
+        self.assertIs(components.span_processor.span_exporter, mock_span_cls.return_value)
+        # PeriodicExportingMetricReader stores the exporter as ``_exporter``.
+        self.assertIs(components.metric_reader._exporter, mock_metric_cls.return_value)
+        # BatchLogRecordProcessor delegates to an inner ``_batch_processor`` which holds ``_exporter``.
+        self.assertIs(
+            components.log_record_processor._batch_processor._exporter,
+            mock_log_cls.return_value,
+        )
+
+    @patch("microsoft.opentelemetry._sdkstats._otlp_wrapper._NetworkStatsLogExporter")
+    @patch("microsoft.opentelemetry._sdkstats._otlp_wrapper._NetworkStatsMetricExporter")
+    @patch("microsoft.opentelemetry._sdkstats._otlp_wrapper._NetworkStatsSpanExporter")
+    @patch("microsoft.opentelemetry._sdkstats.is_sdkstats_enabled", return_value=False)
+    def test_uses_plain_otlp_exporters_when_sdkstats_disabled(
+        self, mock_enabled, mock_span_cls, mock_metric_cls, mock_log_cls
+    ):
+        """When sdkstats is disabled, the ``_NetworkStats*Exporter`` classes are not used."""
+        create_otlp_components()
+
+        mock_span_cls.assert_not_called()
+        mock_metric_cls.assert_not_called()
+        mock_log_cls.assert_not_called()
+
+    @patch("microsoft.opentelemetry._sdkstats._otlp_wrapper._NetworkStatsLogExporter")
+    @patch("microsoft.opentelemetry._sdkstats._otlp_wrapper._NetworkStatsMetricExporter")
+    @patch("microsoft.opentelemetry._sdkstats._otlp_wrapper._NetworkStatsSpanExporter")
+    @patch("microsoft.opentelemetry._sdkstats.is_sdkstats_enabled", return_value=True)
+    def test_signal_toggles_respected_with_sdkstats(
+        self, mock_enabled, mock_span_cls, mock_metric_cls, mock_log_cls
+    ):
+        """``enable_*`` flags still gate exporter creation when sdkstats is enabled."""
+        components = create_otlp_components(enable_traces=True, enable_metrics=False, enable_logs=False)
+
+        mock_span_cls.assert_called_once_with()
+        mock_metric_cls.assert_not_called()
+        mock_log_cls.assert_not_called()
+        self.assertIsNotNone(components.span_processor)
+        self.assertIsNone(components.metric_reader)
+        self.assertIsNone(components.log_record_processor)
+
+
 if __name__ == "__main__":
     unittest.main()
