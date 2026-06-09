@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-"""Sample: OpenAI and Azure OpenAI Chat Completions with Microsoft OpenTelemetry Distro.
+"""Sample: OpenAI and Azure OpenAI Chat Completions with Microsoft OpenTelemetry.
 
 Prerequisites:
     pip install microsoft-opentelemetry openai

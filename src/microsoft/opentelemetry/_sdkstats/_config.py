@@ -4,9 +4,9 @@
 # license information.
 # --------------------------------------------------------------------------
 
-"""Build a default :class:`StatsbeatConfig` for the distro standalone path.
+"""Build a default :class:`StatsbeatConfig` for the standalone path.
 
-When the distro is configured without Azure Monitor (OTLP-only, A365-only,
+When `use-microsoft-opentelemetry` is configured without Azure Monitor (OTLP-only, A365-only,
 Console-only) the customer never instantiates an
 ``AzureMonitorMetricExporter``, so the upstream :class:`StatsbeatManager`
 has no exporter to derive its config from.  This helper builds a synthetic

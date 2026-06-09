@@ -8,8 +8,8 @@ Agent365 observability SDK for OpenTelemetry-based tracing of AI agent operation
 
 | File | Description |
 |------|-------------|
-| `__init__.py` | Package entry point. Internal — the distro builds A365 components directly. |
-| `constants.py` | Distro-level constants: span operation names, OTel semantic convention keys, feature switches, GenAI conventions, tool/user/agent attribute keys, and environment variable names. |
+| `__init__.py` | Module entry point. Internal — `microsoft-opentelemetry` builds A365 components directly. |
+| `constants.py` | SDK-level constants: span operation names, OTel semantic convention keys, feature switches, GenAI conventions, tool/user/agent attribute keys, and environment variable names. |
 
 ### `core/`
 
@@ -120,14 +120,14 @@ Runtime utilities for environment discovery, error handling, and token operation
 
 ## Public API Reference
 
-All public symbols are organized by package entry point. A365 is initialized through
-the distro: `use_microsoft_opentelemetry(enable_a365=True)`.
+All public symbols are organized by module entry point. A365 is initialized through
+`microsoft-opentelemetry`: `use_microsoft_opentelemetry(enable_a365=True)`.
 
 ### `microsoft.opentelemetry.a365`
 
-Internal to the distro — no public exports. The distro builds A365 span processors
+Internal — no public exports. Microsoft OpenTelemetry builds A365 span processors
 directly in `_append_a365_components()`. Application code should not import from
-this package directly.
+the package directly.
 
 ### `microsoft.opentelemetry.a365.core`
 

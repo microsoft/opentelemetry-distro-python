@@ -7,7 +7,7 @@
 """Constants for Agent365 observability.
 
 Superset of microsoft-agents-a365-observability-core constants plus
-distro-specific environment variable constants.
+package-specific environment variable constants.
 """
 
 # --- Span operation names ---
@@ -142,7 +142,7 @@ TELEMETRY_SDK_VERSION_KEY = "telemetry.sdk.version"
 TELEMETRY_SDK_NAME_VALUE = "microsoft-opentelemetry"
 TELEMETRY_SDK_LANGUAGE_VALUE = "python"
 
-# --- Distro environment variable names ---
+# --- Package-specific environment variable names ---
 ENABLE_A365_OBSERVABILITY_EXPORTER = "ENABLE_A365_OBSERVABILITY_EXPORTER"
 A365_OBSERVABILITY_DOMAIN_OVERRIDE = "A365_OBSERVABILITY_DOMAIN_OVERRIDE"
 A365_TENANT_ID_ENV = "A365_TENANT_ID"

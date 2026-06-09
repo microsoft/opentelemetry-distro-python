@@ -15,7 +15,7 @@ driven by [`pytest-benchmark`](https://pytest-benchmark.readthedocs.io/).
 | `test_otel_log`           | no  | Plain `opentelemetry-sdk` `LoggerProvider` reference |
 
 Non-gating scenarios are informational only — they show how much overhead
-the distro adds on top of upstream and never fail CI.
+the SDK adds on top of upstream and never fail CI.
 
 The gating flag is attached to each benchmark via
 `benchmark.extra_info["gating"]` so `perf/compare.py` can pick it up out of
@@ -23,7 +23,7 @@ the pytest-benchmark JSON.
 
 ## Running locally
 
-From the repo root, with the distro and dev deps installed
+From the repo root, with `microsoft-opentelemetry` and dev deps installed
 (`pip install -e . && pip install -r dev_requirements.txt`):
 
 ```bash

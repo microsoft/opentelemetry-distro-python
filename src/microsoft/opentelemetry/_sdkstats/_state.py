@@ -37,7 +37,7 @@ _APPLICATIONINSIGHTS_STATSBEAT_DISABLED_ALL = "APPLICATIONINSIGHTS_STATSBEAT_DIS
 
 
 class SdkStatsFeature(IntFlag):
-    """Bit flags for distro features tracked by SDKStats."""
+    """Bit flags for microsoft-opentelemetry features tracked by SDKStats."""
 
     NONE = 0
     AZURE_MONITOR_DISK_RETRY = 1
@@ -75,7 +75,7 @@ class SdkStatsInstrumentation(IntFlag):
     URLLIB = 68719476736
     URLLIB3 = 137438953472
     OPENAI_V2 = 4503599627370496
-    # GenAI / agent instrumentations tracked by this distro
+    # GenAI / agent instrumentations tracked by microsoft-opentelemetry
     LANGCHAIN = 1 << 55
     OPENAI_AGENTS = 1 << 56
     SEMANTIC_KERNEL = 1 << 57

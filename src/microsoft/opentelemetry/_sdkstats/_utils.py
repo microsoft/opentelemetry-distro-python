@@ -25,7 +25,7 @@ from microsoft.opentelemetry._sdkstats._constants import (
 # Global state helpers (Azure Monitor exporter statsbeat bridge)
 # ===========================================================================
 #
-# These helpers OR distro-side feature/instrumentation bits into the
+# These helpers OR the feature/instrumentation bits into the
 # Azure Monitor exporter's statsbeat global state so the exporter emits
 # accurate feature/instrumentation statsbeat metrics on our behalf.
 

@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-"""Sample: OpenAI Agents SDK with Microsoft OpenTelemetry Distro.
+"""Sample: OpenAI Agents SDK with Microsoft OpenTelemetry.
 
 Prerequisites:
     pip install microsoft-opentelemetry openai-agents
@@ -54,8 +54,8 @@ use_microsoft_opentelemetry(
 )
 
 # ── Option B: A365 ──────────────────────────────────────────────
-# When enable_a365=True the distro uses the A365-specific instrumentor
-# for openai_agents.  No extra instrumentation_options are needed;
+# When enable_a365=True the A365-specific instrumentor for openai_agents is used.
+# No extra instrumentation_options are needed;
 # agent identity and message content are captured automatically from
 # the Agents SDK runtime context.
 #

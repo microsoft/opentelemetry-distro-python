@@ -77,14 +77,14 @@ class OpenTelemetryScope:
     @classmethod
     def _is_telemetry_enabled(cls) -> bool:
         """Check if telemetry is enabled."""
-        # Env vars always win — explicit false disables even when distro enabled A365.
+        # Env vars always win — explicit false disables even when the config enabled A365.
         env_value = os.getenv(ENABLE_OBSERVABILITY, "").lower()
         enable_observability = os.getenv(ENABLE_A365_OBSERVABILITY, "").lower()
         if env_value in ("false", "0", "no", "off") or enable_observability in ("false", "0", "no", "off"):
             return False
         if (env_value or enable_observability) in ("true", "1", "yes", "on"):
             return True
-        # No env var set — fall back to distro flag
+        # No env var set — fall back to the SDK flag
         return cls._enabled_by_distro
 
     @staticmethod

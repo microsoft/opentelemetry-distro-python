@@ -5,7 +5,7 @@
 Sample: A365 Exporter with LangChain
 
 Demonstrates A365 as an exporter with auto-instrumented LangChain operations.
-The distro instruments LangChain automatically — all LLM calls, tool executions,
+LangChain is auto-instrumented — all LLM calls, tool executions,
 and agent runs produce OTel spans that flow through the A365 span processors.
 
 A365 auto-enables when ENABLE_A365_OBSERVABILITY_EXPORTER=true is set.

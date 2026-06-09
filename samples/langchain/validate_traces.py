@@ -92,7 +92,7 @@ def main():  # pylint: disable=too-many-statements
     # ── Sample 4: Chat model that surfaces response.model / response.id only on
     #     ``message.response_metadata`` — simulates ``AzureChatOpenAI`` and the
     #     OpenAI Responses API path that ``opentelemetry-instrumentation-openai-v2``
-    #     does not patch. The distro's LangChain tracer should still populate
+    #     does not patch. The LangChain tracer should still populate
     #     ``gen_ai.response.model`` and ``gen_ai.response.id``.
     from langchain_core.language_models.chat_models import BaseChatModel
     from langchain_core.messages import AIMessage

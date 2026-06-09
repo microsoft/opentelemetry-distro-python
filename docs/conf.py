@@ -13,7 +13,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 # -- Project information -----------------------------------------------------
 
-project = "Microsoft OpenTelemetry Distro for Python"
+project = "Microsoft OpenTelemetry Python"
 copyright = "Microsoft Corporation"  # pylint: disable=redefined-builtin
 author = "Microsoft"
 

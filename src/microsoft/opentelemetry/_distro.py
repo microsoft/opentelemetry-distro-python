@@ -368,26 +368,26 @@ def _env_bool(name: str, default: bool = False) -> bool:
 def _initialize_sdkstats(enable_azure_monitor: bool) -> None:
     """Set up SDKStats — emits to the Application Insights statsbeat endpoint.
 
-    The distro reuses the upstream ``StatsbeatManager`` singleton from the
+    Microsoft OpenTelemetry reuses the upstream ``StatsbeatManager`` singleton from the
     Azure Monitor exporter package for the feature/instrumentation gauges.
 
     * When Azure Monitor is enabled the exporter already initialises
-      ``StatsbeatManager`` from the customer's exporter config, so the
-      distro only bridges its own feature/instrumentation bits into the
+      ``StatsbeatManager`` from the customer's exporter config, so we
+      only bridge feature/instrumentation bits into the
       exporter's global state.
-    * When Azure Monitor is disabled (OTLP/A365/Console)
-      the distro builds a synthetic :class:`StatsbeatConfig` pointed at the
-      default statsbeat endpoint and initialises ``StatsbeatManager``
-      itself.
+    * When Azure Monitor is disabled (OTLP/A365/Console) a
+      synthetic :class:`StatsbeatConfig` pointed at the
+      default statsbeat endpoint is built and ``StatsbeatManager``
+      is initialized.
 
-    In both cases the distro registers its own network gauge on the
+    In both cases register the network gauge on the
     manager's ``MeterProvider`` so OTLP/A365 per-endpoint success counts
     flow through the same pipeline.
     """
     if not is_sdkstats_enabled():
         return
 
-    # Bridge distro-level feature/instrumentation bits into the
+    # Bridge feature/instrumentation bits into the
     # upstream exporter's global state.
     _bridge_sdkstats_to_azure_monitor()
 
@@ -419,7 +419,7 @@ def _initialize_sdkstats(enable_azure_monitor: bool) -> None:
         # Since azure monitor is disabled, the cikey is not applicable.
         _StatsbeatMetrics._COMMON_ATTRIBUTES["cikey"] = "N/A"  # pylint: disable=protected-access
 
-    # Register distro-owned network gauge on the manager's MeterProvider.
+    # Register the network gauge on the manager's MeterProvider.
     from microsoft.opentelemetry._sdkstats._network_metrics import (
         register_network_gauges,
     )
@@ -428,7 +428,7 @@ def _initialize_sdkstats(enable_azure_monitor: bool) -> None:
 
 
 def _bridge_sdkstats_to_azure_monitor() -> None:
-    """OR distro feature/instrumentation bits into the exporter's statsbeat."""
+    """OR the feature/instrumentation bits into the exporter's statsbeat."""
     # Feature bits — OR our flags into the class-level dict that the
     # exporter's _get_feature_metric callback reads each cycle.
     feature_flags = get_sdkstats_feature_flags()
@@ -460,8 +460,8 @@ def _append_a365_components(
     """Build and append Agent365 span processors to ``otel_kwargs``.
 
     A365 only produces span processors (traces).  They are added to the
-    same list that the distro uses when creating the TracerProvider, so
-    the distro registers a single provider for all exporters.
+    same list used when creating the TracerProvider, so
+    a single provider is registered for all exporters.
 
     Kwargs take precedence over environment variables.
     """
@@ -474,7 +474,7 @@ def _append_a365_components(
 
     # Tell scope classes that telemetry is enabled without env vars.
     # The standalone SDK gates on ENABLE_OBSERVABILITY / ENABLE_A365_OBSERVABILITY
-    # env vars, but when the distro is told enable_a365=True that's sufficient.
+    # env vars, but enable_a365=True is sufficient here.
     from microsoft.opentelemetry.a365.core.opentelemetry_scope import OpenTelemetryScope
 
     OpenTelemetryScope._enabled_by_distro = True

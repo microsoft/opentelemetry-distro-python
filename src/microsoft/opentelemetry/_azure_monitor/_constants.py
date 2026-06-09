@@ -28,7 +28,7 @@ from microsoft.opentelemetry._constants import (  # noqa: F401  pylint: disable=
     _SUPPORTED_INSTRUMENTED_LIBRARIES,
 )
 
-# --------------------Distro Configuration------------------------------------------
+# --------------------SDK Configuration------------------------------------------
 
 CONNECTION_STRING_ARG = "connection_string"
 ENABLE_LIVE_METRICS_ARG = "enable_live_metrics"

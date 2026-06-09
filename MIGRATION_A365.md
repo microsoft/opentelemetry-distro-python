@@ -1,28 +1,28 @@
 ---
-description: "Use when migrating code from the standalone Agent365 Python SDK packages (microsoft-agents-a365-*) to the Microsoft OpenTelemetry Distro (microsoft-opentelemetry). Covers pip dependency changes, import path rewrites, configure() removal, exporter options, and environment variable mappings."
+description: "Use when migrating code from the standalone Agent365 Python SDK packages (microsoft-agents-a365-*) to `microsoft-opentelemetry`. Covers pip dependency changes, import path rewrites, configure() removal, exporter options, and environment variable mappings."
 applyTo: "**/*.py"
 ---
 
-# Agent365 Python SDK → Microsoft OpenTelemetry Distro Migration
+# Agent365 Python SDK → `microsoft-opentelemetry` Migration
 
 > **Official docs:** [Microsoft OpenTelemetry on Microsoft Learn](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/microsoft-opentelemetry?tabs=python)
 
 Users are migrating from the standalone A365 observability PyPI packages under
-`microsoft-agents-a365-observability-*` to a single distro package: `microsoft-opentelemetry`.
+`microsoft-agents-a365-observability-*` to a single package: `microsoft-opentelemetry`.
 
 This migration covers the **observability** packages, along with the related **hosting** and **runtime** packages.
-Other A365 packages, such as notifications and tooling, are not part of this distro.
+Other A365 packages, such as notifications and tooling, are not part of `microsoft-opentelemetry`.
 
-After migrating, see [A365_DOCUMENTATION.md](A365_DOCUMENTATION.md) for the full distro usage guide (configuration, auto-instrumentation, token resolver, baggage, scope classes, troubleshooting).
+After migrating, see [A365_DOCUMENTATION.md](A365_DOCUMENTATION.md) for the full usage guide (configuration, auto-instrumentation, token resolver, baggage, scope classes, troubleshooting).
 
-The distro bundles:
+`microsoft-opentelemetry` bundles:
 - **`a365/core`** — Scope classes, span enrichment, A365 exporter, baggage middleware
 - **`a365/hosting`** — Hosting middleware (baggage, output logging, invoke-agent scope helpers).
 - **`a365/runtime`** — Standalone utilities (Power Platform API discovery, JWT token introspection, environment detection).
 
 ## Step 1 — Replace pip Dependencies
 
-Remove the standalone A365 observability packages and install the distro:
+Remove the standalone A365 observability packages and install `microsoft-opentelemetry`:
 
 ```
 # ❌ Remove old packages
@@ -55,7 +55,7 @@ pip install microsoft-opentelemetry
 ## Step 2 — Rewrite Import Paths
 
 The old packages used `microsoft_agents_a365.*` namespace.
-The new distro uses `microsoft.opentelemetry.*`.
+The new package uses the `microsoft.opentelemetry.*` import path.
 
 ### Core (observability-core)
 
@@ -68,7 +68,7 @@ The new distro uses `microsoft.opentelemetry.*`.
 | `from microsoft_agents_a365.observability.core import get_tracer_provider` | `from opentelemetry import trace; trace.get_tracer_provider()` |
 | `from microsoft_agents_a365.observability.core import Agent365ExporterOptions` | Use kwargs or env vars (see below) |
 | `from microsoft_agents_a365.observability.core import SpectraExporterOptions` | Use OTLP env vars (see below) |
-| `from microsoft_agents_a365.observability.core import SpanProcessor` | Remove — handled internally by distro |
+| `from microsoft_agents_a365.observability.core import SpanProcessor` | Remove — handled internally |
 | `from microsoft_agents_a365.observability.core import register_span_enricher` | Remove — handled internally |
 | `from microsoft_agents_a365.observability.core import unregister_span_enricher` | Remove — handled internally |
 | `from microsoft_agents_a365.observability.core import get_span_enricher` | Remove — handled internally |
@@ -76,7 +76,7 @@ The new distro uses `microsoft.opentelemetry.*`.
 | `from microsoft_agents_a365.observability.core import extract_context_from_headers` | Remove — use OTel propagation APIs |
 | `from microsoft_agents_a365.observability.core import get_traceparent` | Remove — use OTel propagation APIs |
 
-Scope classes, data models, and enums keep working — just change the package prefix:
+Scope classes, data models, and enums keep working — just change the import prefix:
 
 ```python
 # ❌ OLD
@@ -194,7 +194,7 @@ from microsoft_agents_a365.observability.extensions.langchain import CustomLangC
 
 CustomLangChainInstrumentor().instrument()
 
-# ✅ NEW — auto-instrumented by distro, no manual setup needed
+# ✅ NEW — auto-instrumented, no manual setup needed
 # Set ENABLE_A365_OBSERVABILITY_EXPORTER=true in env
 use_microsoft_opentelemetry(enable_a365=True)
 # LangChain is auto-instrumented if installed
@@ -208,11 +208,11 @@ from microsoft_agents_a365.observability.extensions.openai import OpenAIAgentsTr
 
 OpenAIAgentsTraceInstrumentor().instrument()
 
-# ✅ NEW — auto-instrumented by distro, no manual setup needed
+# ✅ NEW — auto-instrumented, no manual setup needed
 # Set ENABLE_A365_OBSERVABILITY_EXPORTER=true in env
 use_microsoft_opentelemetry(enable_a365=True)
-# When enable_a365=True, the distro uses a bundled A365-specific instrumentor
-# (A365OpenAIAgentsInstrumentor) that produces the same A365 versioned envelope
+# When enable_a365=True, a bundled A365-specific instrumentor
+# (A365OpenAIAgentsInstrumentor) is used, producing the same A365 versioned envelope
 # format as the old OpenAIAgentsTraceInstrumentor. The upstream OTel instrumentor
 # (opentelemetry-instrumentation-openai-agents-v2) is skipped automatically.
 # When enable_a365=False, the upstream instrumentor is used instead.
@@ -224,7 +224,7 @@ use_microsoft_opentelemetry(enable_a365=True)
 # ❌ OLD
 from microsoft_agents_a365.observability.extensions.semantic_kernel import ...
 
-# ✅ NEW — auto-instrumented by distro
+# ✅ NEW — auto-instrumented
 # Set ENABLE_A365_OBSERVABILITY_EXPORTER=true in env
 use_microsoft_opentelemetry(enable_a365=True)
 ```
@@ -237,13 +237,13 @@ from microsoft_agents_a365.observability.extensions.agent_framework import Agent
 
 AgentFrameworkTraceInstrumentor().instrument()
 
-# ✅ NEW — auto-instrumented by distro, no manual setup needed
+# ✅ NEW — auto-instrumented, no manual setup needed
 # Set ENABLE_A365_OBSERVABILITY_EXPORTER=true in env
 use_microsoft_opentelemetry(enable_a365=True)
 # Agent Framework is auto-instrumented if the agent-framework package is installed
 ```
 
-## Step 3 — Replace configure() with Distro Entry Point
+## Step 3 — Replace configure() with the new Entry Point
 
 ```python
 # ❌ OLD — standalone SDK
@@ -260,7 +260,7 @@ configure(
     suppress_invoke_agent_input=True,
 )
 
-# ✅ NEW — distro entry point with kwargs.
+# ✅ NEW — entry point with kwargs.
 # Set ENABLE_A365_OBSERVABILITY_EXPORTER=true in env.
 # `service.name` and `service.namespace` are set via an OTel Resource
 # (the old `service_name` / `service_namespace` configure() args).
@@ -334,9 +334,9 @@ tracer = trace.get_tracer("my-module")
 
 ## Default Instrumentations With A365 exporter enabled
 
-The distro auto-discovers and activates supported OTel instrumentations.
-When `enable_a365=True`, the distro **disables web-framework /
-HTTP-client instrumentations by default**. GenAI instrumentations stay enabled.
+The SDK auto-discovers and activates supported OTel instrumentations.
+When `enable_a365=True`, **web-framework /
+HTTP-client instrumentations are disabled by default**. GenAI instrumentations stay enabled.
 
 > **Note:** When both `enable_a365=True` and `enable_azure_monitor=True` are
 > set, the original (non-A365) defaults are used and the libraries below
@@ -504,7 +504,7 @@ configure(
 CustomLangChainInstrumentor().instrument()
 tracer = get_tracer("my-module")
 
-# ✅ NEW — using microsoft-opentelemetry distro
+# ✅ NEW — using Microsoft OpenTelemetry
 from opentelemetry.sdk.resources import Resource
 
 from microsoft.opentelemetry import use_microsoft_opentelemetry
@@ -539,18 +539,18 @@ with BaggageBuilder().tenant_id(agent.tenant_id).agent_id(agent.agent_id).build(
 
 ## Avoiding Duplicate Spans After Migration
 
-The distro auto-instruments supported GenAI frameworks (LangChain, Semantic
+Microsoft OpenTelemetry auto-instruments supported GenAI frameworks (LangChain, Semantic
 Kernel, OpenAI, OpenAI Agents SDK, Microsoft Agent Framework) automatically via
 its OpenTelemetry instrumentor entry points. If your migrated code still calls
 the old standalone instrumentor's `instrument()` method (for example
 `CustomLangChainInstrumentor().instrument()` from
 `microsoft-agents-a365-observability-extensions-langchain`), **you will get
-duplicate spans** — one from the legacy instrumentor and one from the distro.
+duplicate spans** — one from the legacy instrumentor and one from the SDK.
 
 After migrating, remove all explicit `instrument()` calls from your code:
 
 ```python
-# ❌ Remove — the distro handles this automatically
+# ❌ Remove — handled automatically
 from microsoft_agents_a365.observability.extensions.langchain import (
     CustomLangChainInstrumentor,
 )
@@ -571,7 +571,7 @@ by exporting spans to the console.
 Set the exporter toggle to `False` (or set
 `ENABLE_A365_OBSERVABILITY_EXPORTER=false`) while keeping `enable_a365=True`.
 This keeps A365 baggage propagation and span enrichment active but skips the
-HTTP export. With no other exporter configured, the distro automatically enables
+HTTP export. With no other exporter configured, the SDK automatically enables
 the console exporter so you can see enriched spans in your terminal:
 
 ```python
@@ -596,7 +596,7 @@ use_microsoft_opentelemetry(
 )
 ```
 
-To see verbose distro and A365 diagnostic logs while validating, raise the log
+To see verbose A365 and SDK diagnostic logs while validating, raise the log
 level for the relevant Python loggers:
 
 ```python
@@ -628,7 +628,7 @@ attributes, switch the exporter back on for production.
 ### HTTP 403 after upgrading
 
 Your app registration or Managed Identity must have the
-`Agent365.Observability.OtelWrite` permission. Without it, the distro's
+`Agent365.Observability.OtelWrite` permission. Without it, the
 exporter receives HTTP 403 from the A365 ingest endpoint and telemetry is not
 recorded.
 
@@ -680,7 +680,7 @@ Use this checklist to track progress through the migration.
 
 **Auto-instrumentation**
 
-- [ ] Remove explicit `CustomLangChainInstrumentor().instrument()` (and equivalents) calls — the distro handles this automatically
+- [ ] Remove explicit `CustomLangChainInstrumentor().instrument()` (and equivalents) calls — handled automatically
 - [ ] Review which instrumentations are active by default with A365 (GenAI only; HTTP/web frameworks disabled)
 - [ ] Re-enable any non-GenAI instrumentations you still need via `instrumentation_options`
 
@@ -724,7 +724,7 @@ Use this checklist to track progress through the migration.
 
 ## Next Steps
 
-- [A365 Documentation](A365_DOCUMENTATION.md) — full distro usage guide (configuration, auto-instrumentation, baggage, scope classes, validate locally, troubleshooting)
-- [README](README.md) — general distro options (Azure Monitor, OTLP, sampling, console exporter)
+- [A365 Documentation](A365_DOCUMENTATION.md) — full `microsoft-opentelemetry` usage guide (configuration, auto-instrumentation, baggage, scope classes, validate locally, troubleshooting)
+- [README](README.md) — general `microsoft-opentelemetry` options (Azure Monitor, OTLP, sampling, console exporter)
 - [Microsoft OpenTelemetry SDK docs](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/microsoft-opentelemetry?tabs=python) — official documentation on Microsoft Learn
 - [Troubleshooting](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/troubleshooting) — official troubleshooting guide
