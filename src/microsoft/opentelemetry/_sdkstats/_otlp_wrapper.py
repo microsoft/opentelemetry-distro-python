@@ -4,25 +4,43 @@
 # license information.
 # --------------------------------------------------------------------------
 
-"""Network statsbeat wrappers for OTLP exporters.
+"""Network statsbeat wrappers for OTLP HTTP exporters.
 
-The upstream OTLP exporters do not expose HTTP status codes — only the
-``ExportResult`` enum.  These wrappers capture the SUCCESS signal so the
-network statsbeat pipeline can record success/failures/retries per
-endpoint.
+These classes subclass the upstream ``opentelemetry-exporter-otlp-proto-http``
+exporters and override ``_export()`` -- the per-HTTP-attempt seam that
+returns a ``requests.Response`` -- so we can classify each attempt by its
+actual HTTP status code:
+
+* 2xx                                 -> ``request_success_count``
+* 429, 502, 503, 504 (retry) -> ``request_retry_count``
+* other 4xx / 5xx                     -> ``request_failure_count``
+* network/SSL/serialization exception -> ``request_exception_count``
+
 """
 
 from __future__ import annotations
 
-from typing import Any
+import time
+from typing import Any, Callable, Optional
 from urllib.parse import urlparse
 
-from opentelemetry.sdk._logs.export import LogRecordExporter, LogRecordExportResult
-from opentelemetry.sdk.metrics.export import MetricExporter, MetricExportResult, MetricsData
-from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
+import requests
+from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
-from microsoft.opentelemetry._sdkstats._constants import ENDPOINT_OTLP
-from microsoft.opentelemetry._sdkstats._utils import record_success
+from microsoft.opentelemetry._sdkstats._constants import (
+    ENDPOINT_OTLP,
+    OTLP_RETRYABLE_STATUS_CODES,
+)
+
+from microsoft.opentelemetry._sdkstats._utils import (
+    record_duration,
+    record_exception,
+    record_failure,
+    record_retry,
+    record_success,
+)
 
 
 def _endpoint_host(exporter: Any) -> str:
@@ -35,70 +53,90 @@ def _endpoint_host(exporter: Any) -> str:
         return raw
 
 
-class _NetworkStatsSpanExporter(SpanExporter):
-    """Span exporter decorator that records ``request_success_count``."""
-
-    def __init__(self, inner: SpanExporter) -> None:
-        self._inner = inner
-        self._host = _endpoint_host(inner)
-
-    def export(self, spans: Any) -> SpanExportResult:  # type: ignore[override]
-        result = self._inner.export(spans)
-        if result == SpanExportResult.SUCCESS:
-            record_success(ENDPOINT_OTLP, self._host)
-        return result
-
-    def shutdown(self) -> None:
-        self._inner.shutdown()
-
-    def force_flush(self, timeout_millis: int = 30_000) -> bool:
-        return self._inner.force_flush(timeout_millis)
+def _classify(host: str, response: requests.Response) -> None:
+    """Record per-attempt outcome based on HTTP status."""
+    code = response.status_code
+    if 200 <= code < 300:
+        record_success(ENDPOINT_OTLP, host)
+    elif code in OTLP_RETRYABLE_STATUS_CODES:
+        record_retry(ENDPOINT_OTLP, host, code)
+    else:
+        record_failure(ENDPOINT_OTLP, host, code)
 
 
-class _NetworkStatsMetricExporter(MetricExporter):
-    """Metric exporter decorator that records ``request_success_count``."""
+def _record_attempt(
+    host: str,
+    start: float,
+    super_export: Callable[[bytes, Optional[float]], requests.Response],
+    serialized_data: bytes,
+    timeout_sec: Optional[float],
+) -> requests.Response:
+    """Shared per-attempt body: classify outcome, record duration in finally.
 
-    def __init__(self, inner: MetricExporter) -> None:
-        super().__init__(
-            preferred_temporality=getattr(inner, "_preferred_temporality", None),
-            preferred_aggregation=getattr(inner, "_preferred_aggregation", None),
-        )
-        self._inner = inner
-        self._host = _endpoint_host(inner)
+    ``super_export`` is the bound ``super()._export`` of the calling
+    subclass, so all three signal exporters can share this body.
+    """
+    try:
+        try:
+            response: requests.Response = super_export(serialized_data, timeout_sec)
+        except Exception as exc:  # noqa: BLE001
+            record_exception(ENDPOINT_OTLP, host, type(exc).__name__)
+            raise
+        _classify(host, response)
+        return response
+    finally:
+        record_duration(ENDPOINT_OTLP, host, time.time() - start)
 
-    def export(  # type: ignore[override]
+
+class _NetworkStatsSpanExporter(OTLPSpanExporter):
+    """OTLP span exporter that records per-attempt network statsbeat."""
+
+    def _export(  # type: ignore[override]
         self,
-        metrics_data: MetricsData,
-        timeout_millis: float = 10_000,
-        **kwargs: Any,
-    ) -> MetricExportResult:
-        result = self._inner.export(metrics_data, timeout_millis, **kwargs)
-        if result == MetricExportResult.SUCCESS:
-            record_success(ENDPOINT_OTLP, self._host)
-        return result
-
-    def force_flush(self, timeout_millis: float = 10_000) -> bool:  # type: ignore[override]
-        return self._inner.force_flush(timeout_millis)
-
-    def shutdown(self, timeout_millis: float = 30_000, **kwargs: Any) -> None:  # type: ignore[override]
-        self._inner.shutdown(timeout_millis, **kwargs)
+        serialized_data: bytes,
+        timeout_sec: Optional[float] = None,
+    ) -> requests.Response:
+        return _record_attempt(
+            _endpoint_host(self),
+            time.time(),
+            super()._export,
+            serialized_data,
+            timeout_sec,
+        )
 
 
-class _NetworkStatsLogExporter(LogRecordExporter):
-    """Log exporter decorator that records ``request_success_count``."""
+class _NetworkStatsMetricExporter(OTLPMetricExporter):
+    """OTLP metric exporter that records per-attempt network statsbeat."""
 
-    def __init__(self, inner: LogRecordExporter) -> None:
-        self._inner = inner
-        self._host = _endpoint_host(inner)
+    def _export(  # type: ignore[override]
+        self,
+        serialized_data: bytes,
+        timeout_sec: Optional[float] = None,
+    ) -> requests.Response:
+        return _record_attempt(
+            _endpoint_host(self),
+            time.time(),
+            super()._export,
+            serialized_data,
+            timeout_sec,
+        )
 
-    def export(self, batch: Any) -> LogRecordExportResult:  # type: ignore[override]
-        result = self._inner.export(batch)
-        if result == LogRecordExportResult.SUCCESS:
-            record_success(ENDPOINT_OTLP, self._host)
-        return result
 
-    def shutdown(self) -> None:
-        self._inner.shutdown()
+class _NetworkStatsLogExporter(OTLPLogExporter):
+    """OTLP log exporter that records per-attempt network statsbeat."""
+
+    def _export(  # type: ignore[override]
+        self,
+        serialized_data: bytes,
+        timeout_sec: Optional[float] = None,
+    ) -> requests.Response:
+        return _record_attempt(
+            _endpoint_host(self),
+            time.time(),
+            super()._export,
+            serialized_data,
+            timeout_sec,
+        )
 
 
 __all__ = [

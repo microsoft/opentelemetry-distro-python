@@ -377,9 +377,11 @@ class _Agent365Exporter(SpanExporter):
         # Local imports to avoid pulling sdkstats into the exporter module's
         # import graph for non-distro consumers.
         from urllib.parse import urlparse
-        from microsoft.opentelemetry._sdkstats._constants import ENDPOINT_A365
-        from microsoft.opentelemetry._sdkstats._utils import (
+        from microsoft.opentelemetry._sdkstats._constants import (
+            ENDPOINT_A365,
             THROTTLE_STATUS_CODES,
+        )
+        from microsoft.opentelemetry._sdkstats._utils import (
             record_duration,
             record_exception,
             record_failure,

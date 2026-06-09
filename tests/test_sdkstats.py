@@ -31,7 +31,7 @@ from microsoft.opentelemetry._sdkstats._state import (
     set_sdkstats_instrumentation_by_name,
     set_sdkstats_shutdown,
 )
-from microsoft.opentelemetry._sdkstats._utils import (
+from microsoft.opentelemetry._sdkstats._constants import (
     REQUEST_DURATION_NAME,
     REQUEST_EXCEPTION_NAME,
     REQUEST_FAILURE_NAME,
@@ -39,6 +39,8 @@ from microsoft.opentelemetry._sdkstats._utils import (
     REQUEST_SUCCESS_NAME,
     REQUEST_THROTTLE_NAME,
     THROTTLE_STATUS_CODES,
+)
+from microsoft.opentelemetry._sdkstats._utils import (
     drain,
     record_duration,
     record_exception,
@@ -768,86 +770,202 @@ class TestInitializeSdkStats(unittest.TestCase):
 
 
 class TestNetworkStatsExporterWrappers(unittest.TestCase):
-    """Tests for the OTLP NetworkStats* exporter decorators."""
+    """Tests for the OTLP NetworkStats* exporter subclasses.
+
+    These classes subclass the upstream OTLP HTTP exporters and override
+    ``_export()`` -- the per-HTTP-attempt seam.  The tests exercise that
+    override directly with a mocked ``super()._export`` so each HTTP
+    outcome can be classified deterministically without actually
+    speaking HTTP.
+    """
+
+    SPAN_ENDPOINT = "https://otlp.example.com/v1/traces"
+    METRIC_ENDPOINT = "https://otlp.example.com/v1/metrics"
+    LOG_ENDPOINT = "https://otlp.example.com/v1/logs"
+    HOST_KEY = ("otlp", "otlp.example.com")
 
     def setUp(self):
         _reset_state()
 
-    def _inner_span(self, result, endpoint="https://otlp.example.com/v1/traces"):
-        inner = MagicMock()
-        inner._endpoint = endpoint
-        inner.export.return_value = result
-        return inner
+    @staticmethod
+    def _response(status_code: int):
+        import requests
 
-    def test_span_success_records(self):
-        from opentelemetry.sdk.trace.export import SpanExportResult
+        resp = requests.Response()
+        resp.status_code = status_code
+        return resp
 
-        wrapper = _NetworkStatsSpanExporter(self._inner_span(SpanExportResult.SUCCESS))
-        self.assertEqual(wrapper.export([]), SpanExportResult.SUCCESS)
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp", "otlp.example.com"): 1})
+    def _make_span(self):
+        return _NetworkStatsSpanExporter(endpoint=self.SPAN_ENDPOINT)
 
-    def test_span_failure_does_not_record(self):
-        from opentelemetry.sdk.trace.export import SpanExportResult
+    def _make_metric(self):
+        return _NetworkStatsMetricExporter(endpoint=self.METRIC_ENDPOINT)
 
-        wrapper = _NetworkStatsSpanExporter(self._inner_span(SpanExportResult.FAILURE))
-        wrapper.export([])
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
+    def _make_log(self):
+        return _NetworkStatsLogExporter(endpoint=self.LOG_ENDPOINT)
 
-    def test_span_forwards_shutdown_and_force_flush(self):
-        from opentelemetry.sdk.trace.export import SpanExportResult
+    def _patch_super_export(self, cls, return_value=None, side_effect=None):
+        """Patch the upstream parent class's ``_export`` method."""
+        from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+        from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
-        inner = self._inner_span(SpanExportResult.SUCCESS)
-        inner.force_flush.return_value = True
-        wrapper = _NetworkStatsSpanExporter(inner)
-        wrapper.shutdown()
-        self.assertTrue(wrapper.force_flush(1234))
-        inner.shutdown.assert_called_once()
-        inner.force_flush.assert_called_once_with(1234)
+        parent_map = {
+            _NetworkStatsSpanExporter: OTLPSpanExporter,
+            _NetworkStatsMetricExporter: OTLPMetricExporter,
+            _NetworkStatsLogExporter: OTLPLogExporter,
+        }
+        return patch.object(
+            parent_map[cls],
+            "_export",
+            return_value=return_value,
+            side_effect=side_effect,
+        )
 
-    def test_metric_success_records(self):
-        from opentelemetry.sdk.metrics.export import MetricExportResult
+    # --------------------------- per-attempt classification (span exporter)
 
-        inner = MagicMock()
-        inner._endpoint = "https://otlp.example.com/v1/metrics"
-        inner._preferred_temporality = {}
-        inner._preferred_aggregation = {}
-        inner.export.return_value = MetricExportResult.SUCCESS
-        wrapper = _NetworkStatsMetricExporter(inner)
-        wrapper.export(MagicMock())
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp", "otlp.example.com"): 1})
+    def test_export_2xx_records_success(self):
+        e = self._make_span()
+        with self._patch_super_export(
+            _NetworkStatsSpanExporter, return_value=self._response(204)
+        ):
+            e._export(b"data", 1.0)
 
-    def test_metric_failure_does_not_record(self):
-        from opentelemetry.sdk.metrics.export import MetricExportResult
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {self.HOST_KEY: 1})
+        self.assertEqual(drain(REQUEST_FAILURE_NAME), {})
+        self.assertEqual(drain(REQUEST_RETRY_NAME), {})
+        self.assertEqual(drain(REQUEST_THROTTLE_NAME), {})
+        self.assertEqual(drain(REQUEST_EXCEPTION_NAME), {})
 
-        inner = MagicMock()
-        inner._endpoint = "https://otlp.example.com/v1/metrics"
-        inner._preferred_temporality = {}
-        inner._preferred_aggregation = {}
-        inner.export.return_value = MetricExportResult.FAILURE
-        wrapper = _NetworkStatsMetricExporter(inner)
-        wrapper.export(MagicMock())
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
+    def test_export_retryable_429_records_retry(self):
+        e = self._make_span()
+        with self._patch_super_export(
+            _NetworkStatsSpanExporter, return_value=self._response(429)
+        ):
+            e._export(b"data", 1.0)
 
-    def test_log_success_records(self):
-        from opentelemetry.sdk._logs.export import LogRecordExportResult
+        self.assertEqual(drain(REQUEST_RETRY_NAME), {self.HOST_KEY + (429,): 1})
+        self.assertEqual(drain(REQUEST_THROTTLE_NAME), {})
+        self.assertEqual(drain(REQUEST_FAILURE_NAME), {})
 
-        inner = MagicMock()
-        inner._endpoint = "https://otlp.example.com/v1/logs"
-        inner._host = "otlp"
-        inner.export.return_value = LogRecordExportResult.SUCCESS
-        wrapper = _NetworkStatsLogExporter(inner)
-        wrapper.export([])
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {("otlp", "otlp.example.com"): 1})
+    def test_export_retryable_503_records_retry(self):
+        e = self._make_span()
+        with self._patch_super_export(
+            _NetworkStatsSpanExporter, return_value=self._response(503)
+        ):
+            e._export(b"data", 1.0)
 
-    def test_log_failure_does_not_record(self):
-        from opentelemetry.sdk._logs.export import LogRecordExportResult
+        self.assertEqual(drain(REQUEST_RETRY_NAME), {self.HOST_KEY + (503,): 1})
 
-        inner = MagicMock()
-        inner._endpoint = "https://otlp.example.com/v1/logs"
-        inner.export.return_value = LogRecordExportResult.FAILURE
-        wrapper = _NetworkStatsLogExporter(inner)
-        wrapper.export([])
-        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
+    def test_export_4xx_records_failure(self):
+        e = self._make_span()
+        with self._patch_super_export(
+            _NetworkStatsSpanExporter, return_value=self._response(404)
+        ):
+            e._export(b"data", 1.0)
+
+        self.assertEqual(drain(REQUEST_FAILURE_NAME), {self.HOST_KEY + (404,): 1})
+        self.assertEqual(drain(REQUEST_RETRY_NAME), {})
+        self.assertEqual(drain(REQUEST_THROTTLE_NAME), {})
+
+    def test_export_5xx_non_retryable_records_failure(self):
+        e = self._make_span()
+        with self._patch_super_export(
+            _NetworkStatsSpanExporter, return_value=self._response(599)
+        ):
+            e._export(b"data", 1.0)
+
+        self.assertEqual(drain(REQUEST_FAILURE_NAME), {self.HOST_KEY + (599,): 1})
+
+    def test_export_inner_exception_records_exception_type_and_propagates(self):
+        import requests
+
+        e = self._make_span()
+        with self._patch_super_export(
+            _NetworkStatsSpanExporter,
+            side_effect=requests.ConnectionError("refused"),
+        ):
+            with self.assertRaises(requests.ConnectionError):
+                e._export(b"data", 1.0)
+
+        self.assertEqual(
+            drain(REQUEST_EXCEPTION_NAME),
+            {self.HOST_KEY + ("ConnectionError",): 1},
+        )
+        # Duration must still be recorded via the finally block.
+        _, count = drain(REQUEST_DURATION_NAME)[self.HOST_KEY]
+        self.assertEqual(count, 1)
+
+    def test_export_records_duration_per_attempt(self):
+        e = self._make_span()
+        with self._patch_super_export(
+            _NetworkStatsSpanExporter, return_value=self._response(204)
+        ):
+            e._export(b"data", 1.0)
+
+        duration = drain(REQUEST_DURATION_NAME)
+        self.assertEqual(set(duration.keys()), {self.HOST_KEY})
+        _, count = duration[self.HOST_KEY]
+        self.assertEqual(count, 1)
+
+    # ----------------------------------------------------- metric exporter
+
+    def test_metric_export_records_success(self):
+        e = self._make_metric()
+        with self._patch_super_export(
+            _NetworkStatsMetricExporter, return_value=self._response(204)
+        ):
+            e._export(b"data", 1.0)
+
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {self.HOST_KEY: 1})
+        _, count = drain(REQUEST_DURATION_NAME)[self.HOST_KEY]
+        self.assertEqual(count, 1)
+
+    def test_metric_export_records_retry_429(self):
+        e = self._make_metric()
+        with self._patch_super_export(
+            _NetworkStatsMetricExporter, return_value=self._response(429)
+        ):
+            e._export(b"data", 1.0)
+
+        self.assertEqual(drain(REQUEST_RETRY_NAME), {self.HOST_KEY + (429,): 1})
+
+    def test_metric_export_records_failure_400(self):
+        e = self._make_metric()
+        with self._patch_super_export(
+            _NetworkStatsMetricExporter, return_value=self._response(400)
+        ):
+            e._export(b"data", 1.0)
+
+        self.assertEqual(drain(REQUEST_FAILURE_NAME), {self.HOST_KEY + (400,): 1})
+
+    # -------------------------------------------------------- log exporter
+
+    def test_log_export_records_success(self):
+        e = self._make_log()
+        with self._patch_super_export(
+            _NetworkStatsLogExporter, return_value=self._response(204)
+        ):
+            e._export(b"data", 1.0)
+
+        self.assertEqual(drain(REQUEST_SUCCESS_NAME), {self.HOST_KEY: 1})
+
+    def test_log_export_records_exception_on_timeout(self):
+        import requests
+
+        e = self._make_log()
+        with self._patch_super_export(
+            _NetworkStatsLogExporter,
+            side_effect=requests.Timeout("timed out"),
+        ):
+            with self.assertRaises(requests.Timeout):
+                e._export(b"data", 1.0)
+
+        self.assertEqual(
+            drain(REQUEST_EXCEPTION_NAME),
+            {self.HOST_KEY + ("Timeout",): 1},
+        )
+
 
 
 if __name__ == "__main__":

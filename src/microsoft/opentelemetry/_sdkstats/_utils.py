@@ -18,7 +18,6 @@ from microsoft.opentelemetry._sdkstats._constants import (
     REQUEST_RETRY_NAME,
     REQUEST_SUCCESS_NAME,
     REQUEST_THROTTLE_NAME,
-    THROTTLE_STATUS_CODES,
 )
 
 # ===========================================================================
@@ -58,13 +57,6 @@ def update_global_state_instrumentation_bits(instrumentation_bits: int) -> None:
 # export interval.
 
 __all__ = [
-    "THROTTLE_STATUS_CODES",
-    "REQUEST_SUCCESS_NAME",
-    "REQUEST_DURATION_NAME",
-    "REQUEST_FAILURE_NAME",
-    "REQUEST_RETRY_NAME",
-    "REQUEST_THROTTLE_NAME",
-    "REQUEST_EXCEPTION_NAME",
     "record_success",
     "record_duration",
     "record_failure",
