@@ -9,8 +9,8 @@ Your Python app doesn't connect to Fabric directly. Instead, it sends telemetry 
 ```
 ┌──────────────┐     OTLP/HTTP     ┌──────────────────┐     Kusto Ingest    ┌─────────────────────────┐
 │  Python App  │ ───────────────►  │  OTel Collector  │ ──────────────────► │  Fabric / Azure Data    │
-│  (microsoft- |                   |                  |                     |                         |
-|opentelemetry)│    :4318          │  (ADX exporter)  │                     │  Explorer               │
+│  (microsoft- │                   │                  │                     │                         │
+│opentelemetry)│    :4318          │  (ADX exporter)  │                     │  Explorer               │
 └──────────────┘                   └──────────────────┘                     └─────────────────────────┘
 ```
 
