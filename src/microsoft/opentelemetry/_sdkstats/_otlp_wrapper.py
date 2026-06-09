@@ -30,7 +30,12 @@ from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
 from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
 from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
 
-from microsoft.opentelemetry._sdkstats._constants import ENDPOINT_OTLP, THROTTLE_STATUS_CODES, RETRYABLE_STATUS_CODES
+from microsoft.opentelemetry._sdkstats._constants import (
+    ENDPOINT_OTLP, 
+    THROTTLE_STATUS_CODES, 
+    RETRYABLE_STATUS_CODES,
+)
+
 from microsoft.opentelemetry._sdkstats._utils import (
     record_duration,
     record_exception,
