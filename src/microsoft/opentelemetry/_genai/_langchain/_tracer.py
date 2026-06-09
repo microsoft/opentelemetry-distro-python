@@ -394,8 +394,8 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         """Detect whether a LangChain run should be the top-level agent span."""
         if not self._is_agent_like_chain(run):
             return False
-        # Don't nest agents — if a parent is already an agent, this is internal
-        if run.parent_run_id and run.parent_run_id in self._agent_run_ids:
+        # Don't nest agents — if any ancestor is already an agent, this is internal
+        if self._find_agent_ancestor(run) is not None:
             return False
         return True
 
