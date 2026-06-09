@@ -207,13 +207,14 @@ class TestSDKPropagation(unittest.TestCase):
 
     # ---- Timing: attributes set AFTER child creation → broken ----------------
 
-    def test_attrs_set_after_child_creation_breaks_propagation(self):
+    def test_attrs_set_after_child_creation_recovered_on_end(self):
         """If agent attributes are set AFTER creating the child span,
-        on_start cannot propagate them. This is the timing bug."""
+        on_start cannot propagate them — but on_end fallback re-reads
+        from the (now enriched) parent and fills in the gap."""
         root_ctx = trace_api.set_span_in_context(trace_api.INVALID_SPAN)
         agent_span = self.tracer.start_span("invoke_agent TravelBot", context=root_ctx)
 
-        # BUG: create child BEFORE setting attributes on parent
+        # Create child BEFORE setting attributes on parent
         child_ctx = trace_api.set_span_in_context(agent_span)
         child = self.tracer.start_span("chat gpt-4", context=child_ctx)
 
@@ -225,9 +226,10 @@ class TestSDKPropagation(unittest.TestCase):
         agent_span.end()
 
         spans = self._get_exported_spans()
-        self.assertIsNone(
+        self.assertEqual(
             spans["chat gpt-4"].attributes.get(GEN_AI_MAIN_AGENT_NAME_KEY),
-            "on_start fired before attrs were set — propagation must fail",
+            "TravelBot",
+            "on_end fallback should recover propagation from the parent",
         )
 
     # ---- Partial attributes: only name set -----------------------------------
@@ -246,6 +248,60 @@ class TestSDKPropagation(unittest.TestCase):
         spans = self._get_exported_spans()
         self.assertEqual(spans["chat gpt-4"].attributes.get(GEN_AI_MAIN_AGENT_NAME_KEY), "Bot")
         self.assertIsNone(spans["chat gpt-4"].attributes.get(GEN_AI_MAIN_AGENT_ID_KEY))
+
+    # ---- On-end self-promotion for root invoke_agent -------------------------
+
+    def test_root_invoke_agent_self_promotes_on_end(self):
+        """A root invoke_agent span with no parent must self-promote
+        its gen_ai.agent.* to microsoft.gen_ai.main_agent.* on end."""
+        root_ctx = trace_api.set_span_in_context(trace_api.INVALID_SPAN)
+        agent = self.tracer.start_span("invoke_agent TravelBot", context=root_ctx)
+        agent.set_attribute(GEN_AI_OPERATION_NAME_KEY, INVOKE_AGENT_OPERATION_NAME)
+        agent.set_attribute(GEN_AI_AGENT_NAME_KEY, "TravelBot")
+        agent.set_attribute(GEN_AI_AGENT_ID_KEY, "agent-1")
+        agent.set_attribute(GEN_AI_AGENT_VERSION_KEY, "2.0")
+        agent.set_attribute(GEN_AI_CONVERSATION_ID_KEY, "conv-1")
+        agent.end()
+
+        spans = self._get_exported_spans()
+        exported = spans["invoke_agent TravelBot"]
+        self.assertEqual(exported.attributes.get(GEN_AI_MAIN_AGENT_NAME_KEY), "TravelBot")
+        self.assertEqual(exported.attributes.get(GEN_AI_MAIN_AGENT_ID_KEY), "agent-1")
+        self.assertEqual(exported.attributes.get(GEN_AI_MAIN_AGENT_VERSION_KEY), "2.0")
+        self.assertEqual(exported.attributes.get(GEN_AI_MAIN_AGENT_CONVERSATION_ID_KEY), "conv-1")
+
+    def test_nested_invoke_agent_does_not_self_promote(self):
+        """A nested invoke_agent span enriched by on_start propagation
+        must NOT self-promote (main_agent.* already set from parent)."""
+        root_ctx = trace_api.set_span_in_context(trace_api.INVALID_SPAN)
+        main = self.tracer.start_span("invoke_agent MainBot", context=root_ctx)
+        main.set_attribute(GEN_AI_OPERATION_NAME_KEY, INVOKE_AGENT_OPERATION_NAME)
+        main.set_attribute(GEN_AI_AGENT_NAME_KEY, "MainBot")
+        main.set_attribute(GEN_AI_AGENT_ID_KEY, "main-1")
+
+        sub_ctx = trace_api.set_span_in_context(main)
+        sub = self.tracer.start_span("invoke_agent SubBot", context=sub_ctx)
+        sub.set_attribute(GEN_AI_OPERATION_NAME_KEY, INVOKE_AGENT_OPERATION_NAME)
+        sub.set_attribute(GEN_AI_AGENT_NAME_KEY, "SubBot")
+        sub.set_attribute(GEN_AI_AGENT_ID_KEY, "sub-1")
+        sub.end()
+        main.end()
+
+        spans = self._get_exported_spans()
+        sub_exported = spans["invoke_agent SubBot"]
+        # main_agent must be MainBot (from parent), not SubBot (own)
+        self.assertEqual(sub_exported.attributes.get(GEN_AI_MAIN_AGENT_NAME_KEY), "MainBot")
+        self.assertEqual(sub_exported.attributes.get(GEN_AI_MAIN_AGENT_ID_KEY), "main-1")
+
+    def test_self_promotion_only_for_invoke_agent(self):
+        """Non-invoke_agent root spans must NOT self-promote."""
+        root_ctx = trace_api.set_span_in_context(trace_api.INVALID_SPAN)
+        chat = self.tracer.start_span("chat gpt-4", context=root_ctx)
+        chat.set_attribute(GEN_AI_AGENT_NAME_KEY, "Bot")
+        chat.end()
+
+        spans = self._get_exported_spans()
+        self.assertIsNone(spans["chat gpt-4"].attributes.get(GEN_AI_MAIN_AGENT_NAME_KEY))
 
 
 if __name__ == "__main__":

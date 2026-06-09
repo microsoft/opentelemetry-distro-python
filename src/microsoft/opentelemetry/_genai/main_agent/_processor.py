@@ -27,6 +27,7 @@ from opentelemetry import trace
 from opentelemetry.sdk._logs import LogRecordProcessor, ReadWriteLogRecord
 from opentelemetry.sdk.trace import ReadableSpan, Span
 from opentelemetry.sdk.trace.export import SpanProcessor
+from opentelemetry.trace import Span as SpanAPI
 
 # Each row: (target attribute on current span,
 #            primary source attribute on parent span,
@@ -55,18 +56,32 @@ class GenAIMainAgentSpanProcessor(SpanProcessor):
 
     On ``on_start``: copies main-agent attributes from the parent span (or
     falls back to the parent's ``gen_ai.agent.*`` / ``gen_ai.conversation.id``
-    attributes) onto the new span.
+    attributes) onto the new span.  Also stores a reference to the parent
+    ``Span`` so that ``on_end`` can retry propagation for children whose
+    parent attributes were not yet available at ``on_start`` time.
 
     On ``on_end``: when the span is itself an ``invoke_agent`` operation and
     has not already been enriched, copies its own ``gen_ai.agent.*`` /
     ``gen_ai.conversation.id`` attributes onto ``microsoft.gen_ai.main_agent.*``
-    so the top-level agent identifies itself as the main agent.
+    so the top-level agent identifies itself as the main agent.  For other
+    spans that still lack ``microsoft.gen_ai.main_agent.*`` attributes, a
+    fallback read from the (now potentially enriched) parent is attempted.
     """
+
+    def __init__(self) -> None:
+        # span-id → parent Span, used for on_end fallback propagation
+        self._parent_spans: dict[int, SpanAPI] = {}
 
     def on_start(self, span: Span, parent_context: context_api.Context | None = None) -> None:
         parent = trace.get_current_span(parent_context)
         if not parent.get_span_context().is_valid:
             return
+
+        # Store parent reference for on_end fallback when on_start misses
+        # attributes that are set on the parent after this child is created.
+        span_ctx = span.get_span_context()
+        if span_ctx.is_valid:
+            self._parent_spans[span_ctx.span_id] = parent
 
         parent_attributes = getattr(parent, "attributes", None) or {}
         for target, primary, fallback in _PROPAGATION_TABLE:
@@ -77,23 +92,44 @@ class GenAIMainAgentSpanProcessor(SpanProcessor):
                 span.set_attribute(target, value)
 
     def on_end(self, span: ReadableSpan) -> None:
+        span_id = span.context.span_id
+        parent = self._parent_spans.pop(span_id, None)
+
         attributes = span.attributes or {}
-        if attributes.get(GEN_AI_OPERATION_NAME_KEY) != INVOKE_AGENT_OPERATION_NAME:
+
+        # Already enriched — nothing to do.
+        if any(k.startswith(GEN_AI_MAIN_AGENT_ATTRIBUTE_PREFIX) for k in attributes):
             return
 
-        for key in attributes:
-            if key.startswith(GEN_AI_MAIN_AGENT_ATTRIBUTE_PREFIX):
-                return
-
-        if not hasattr(span, "set_attribute"):
+        # Access the internal mutable attributes dict.  ``on_end`` receives a
+        # ``ReadableSpan`` which lacks ``set_attribute``, so we write to the
+        # underlying ``BoundedAttributes`` mapping directly.
+        mutable = getattr(span, "_attributes", None)
+        if mutable is None:
             return
-        for target, source in _SELF_COPY_TABLE:
-            value = attributes.get(source)
-            if value is not None:
-                span.set_attribute(target, value)  # type: ignore[attr-defined]
+
+        # Self-promotion: top-level invoke_agent spans copy their own
+        # gen_ai.agent.* → microsoft.gen_ai.main_agent.*
+        if attributes.get(GEN_AI_OPERATION_NAME_KEY) == INVOKE_AGENT_OPERATION_NAME:
+            for target, source in _SELF_COPY_TABLE:
+                value = attributes.get(source)
+                if value is not None:
+                    mutable[target] = value
+            return
+
+        # Fallback propagation: re-read from the parent span whose attributes
+        # may have been set after this child was created (timing issue).
+        if parent is not None:
+            parent_attributes = getattr(parent, "attributes", None) or {}
+            for target, primary, fallback in _PROPAGATION_TABLE:
+                value = parent_attributes.get(primary)
+                if value is None:
+                    value = parent_attributes.get(fallback)
+                if value is not None:
+                    mutable[target] = value
 
     def shutdown(self) -> None:
-        pass
+        self._parent_spans.clear()
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
         return True

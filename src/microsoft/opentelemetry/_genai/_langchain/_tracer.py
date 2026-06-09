@@ -174,10 +174,14 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         start_time_utc_nano = as_utc_nano(run.start_time)
 
         is_agent = self._is_agent_run(run)
+        # Nested agents (sub-agents with an agent ancestor) must NOT inherit
+        # their identity from the shared ``_agent_config`` — that describes
+        # the top-level agent only.
+        is_nested_agent = is_agent and self._find_agent_ancestor(run) is not None
 
         # Determine span name based on run type
         if is_agent:
-            agent_name = self._resolve_agent_name(run)
+            agent_name = self._resolve_agent_name(run, use_config=not is_nested_agent)
             span_name = (
                 f"{INVOKE_AGENT_OPERATION_NAME} {agent_name}"
                 if agent_name
@@ -193,7 +197,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         # The inner span shows the framework name (e.g. "invoke_agent LangGraph").
         wrapper_span: Span | None = None
         if is_agent:
-            agent_name = self._resolve_agent_name(run)
+            agent_name = self._resolve_agent_name(run, use_config=not is_nested_agent)
             wrapper_label = agent_name or run.name
             wrapper_span = self._tracer.start_span(
                 name=f"{INVOKE_AGENT_OPERATION_NAME} {wrapper_label}",
@@ -207,15 +211,18 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             wrapper_span.set_attribute(GEN_AI_OPERATION_NAME_KEY, INVOKE_AGENT_OPERATION_NAME)
             if agent_name:
                 wrapper_span.set_attribute(GEN_AI_AGENT_NAME_KEY, agent_name)
-            agent_id = self._agent_config.get("agent_id")
-            if agent_id:
-                wrapper_span.set_attribute(GEN_AI_AGENT_ID_KEY, agent_id)
-            agent_desc = self._agent_config.get("agent_description")
-            if agent_desc:
-                wrapper_span.set_attribute(GEN_AI_AGENT_DESCRIPTION_KEY, agent_desc)
-            agent_version = self._agent_config.get("agent_version")
-            if agent_version:
-                wrapper_span.set_attribute(GEN_AI_AGENT_VERSION_KEY, agent_version)
+            # Apply agent identity from config only for the top-level agent.
+            # Nested agents derive identity solely from run metadata.
+            if not is_nested_agent:
+                agent_id = self._agent_config.get("agent_id")
+                if agent_id:
+                    wrapper_span.set_attribute(GEN_AI_AGENT_ID_KEY, agent_id)
+                agent_desc = self._agent_config.get("agent_description")
+                if agent_desc:
+                    wrapper_span.set_attribute(GEN_AI_AGENT_DESCRIPTION_KEY, agent_desc)
+                agent_version = self._agent_config.get("agent_version")
+                if agent_version:
+                    wrapper_span.set_attribute(GEN_AI_AGENT_VERSION_KEY, agent_version)
             wrapper_span.set_attributes(dict(flatten(extract_agent_metadata(run))))
             server_addr = self._agent_config.get("server_address")
             if server_addr:
@@ -399,11 +406,20 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             return False
         return True
 
-    def _resolve_agent_name(self, run: Run) -> str | None:
-        """Resolve agent name from config override, run metadata, or run name."""
-        # 1. Explicit config override
-        if name := self._agent_config.get("agent_name"):
-            return str(name)
+    def _resolve_agent_name(self, run: Run, *, use_config: bool = True) -> str | None:
+        """Resolve agent name from config override, run metadata, or run name.
+
+        Args:
+            run: The LangChain run.
+            use_config: Whether to check ``_agent_config`` first.  Pass
+                ``False`` for nested (sub-) agents so their identity is
+                derived from the run's own metadata rather than the shared
+                top-level config.
+        """
+        # 1. Explicit config override (top-level agent only)
+        if use_config:
+            if name := self._agent_config.get("agent_name"):
+                return str(name)
         # 2. From run metadata (agent_name or lc_agent_name)
         if run.extra and isinstance(run.extra, dict):
             meta = run.extra.get("metadata")
