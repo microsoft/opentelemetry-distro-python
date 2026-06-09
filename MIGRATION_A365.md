@@ -539,7 +539,7 @@ with BaggageBuilder().tenant_id(agent.tenant_id).agent_id(agent.agent_id).build(
 
 ## Avoiding Duplicate Spans After Migration
 
-Microsoft Opentelemetry auto-instruments supported GenAI frameworks (LangChain, Semantic
+Microsoft OpenTelemetry auto-instruments supported GenAI frameworks (LangChain, Semantic
 Kernel, OpenAI, OpenAI Agents SDK, Microsoft Agent Framework) automatically via
 its OpenTelemetry instrumentor entry points. If your migrated code still calls
 the old standalone instrumentor's `instrument()` method (for example

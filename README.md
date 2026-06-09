@@ -234,7 +234,7 @@ use_microsoft_opentelemetry(
 
 ### Default Instrumentations When `enable_a365=True`
 
-Microsoft Opentelemetry **automatically disables the
+Microsoft OpenTelemetry **automatically disables the
 following instrumentations by default** when `enable_a365=True`:
 
 | Library | Default with A365 |

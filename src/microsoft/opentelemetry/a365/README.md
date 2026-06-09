@@ -125,7 +125,7 @@ All public symbols are organized by module entry point. A365 is initialized thro
 
 ### `microsoft.opentelemetry.a365`
 
-Internal — no public exports. Microsoft Opentelemetry builds A365 span processors
+Internal — no public exports. Microsoft OpenTelemetry builds A365 span processors
 directly in `_append_a365_components()`. Application code should not import from
 the package directly.
 
