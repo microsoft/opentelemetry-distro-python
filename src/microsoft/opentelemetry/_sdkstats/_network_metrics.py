@@ -22,15 +22,15 @@ from typing import Iterable, List
 
 from opentelemetry.metrics import CallbackOptions, Observation
 
-from microsoft.opentelemetry._sdkstats._utils import (
+from microsoft.opentelemetry._sdkstats._constants import (
     REQUEST_DURATION_NAME,
     REQUEST_EXCEPTION_NAME,
     REQUEST_FAILURE_NAME,
     REQUEST_RETRY_NAME,
     REQUEST_SUCCESS_NAME,
     REQUEST_THROTTLE_NAME,
-    drain,
 )
+from microsoft.opentelemetry._sdkstats._utils import drain
 
 try:
     from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (
