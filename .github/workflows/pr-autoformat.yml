@@ -1,0 +1,82 @@
+name: PR auto-format (Black)
+
+# Auto-formats PR branches with Black and pushes a single commit back to
+# the PR's head branch — including PRs opened from forks.
+#
+# This uses `pull_request_target` so the workflow runs in the *base* repo
+# context with a writable token. GitHub grants that token push access to
+# the fork's PR branch when the contributor leaves "Allow edits by
+# maintainers" checked (default for new PRs).
+#
+# Security model:
+#   * We never invoke PR-controlled scripts (no `tox.ini`, no setup.py,
+#     no Makefile, no pre-commit hooks). Black is installed directly from
+#     PyPI at a pinned version.
+#   * Black does not execute the source it formats — it only parses and
+#     re-emits AST, so reading PR-supplied .py files is safe.
+#   * We do NOT use `actions/setup-python` caching keyed on PR files.
+#   * We skip the workflow when the contributor has disabled
+#     `maintainer_can_modify` (push would fail anyway).
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  autoformat:
+    name: Run Black and push fix-up commit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    # Always run for same-repo PRs (token has push access). For fork
+    # PRs, only run when the contributor has left "Allow edits by
+    # maintainers" checked — otherwise the push would fail.
+    if: >-
+      (github.event.pull_request.head.repo.full_name == github.repository
+        || github.event.pull_request.maintainer_can_modify == true)
+      && github.event.pull_request.user.login != 'github-actions[bot]'
+
+    steps:
+      - name: Check out PR head branch
+        uses: actions/checkout@v4
+        with:
+          # Check out the PR's source branch, on the contributor's repo,
+          # using the base repo's GITHUB_TOKEN (which has push access to
+          # the head branch when maintainer_can_modify is true).
+          ref: ${{ github.event.pull_request.head.ref }}
+          repository: ${{ github.event.pull_request.head.repo.full_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          # We need full history so the auto-commit can fast-forward.
+          fetch-depth: 0
+          # Defense-in-depth: prevent any post-checkout hooks from
+          # silently pulling more refs.
+          persist-credentials: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Black (pinned, from PyPI — not from PR)
+        run: |
+          python -m pip install --upgrade pip
+          # Match the version pin in dev_requirements.txt / tox.ini.
+          python -m pip install "black>=24.0,<25.0"
+
+      - name: Run Black
+        # Run black directly — do NOT go through tox / pyproject scripts,
+        # since those could be PR-modified and executed under a write token.
+        # Black reads `[tool.black]` config from pyproject.toml, but that
+        # config is data only (no code execution).
+        run: python -m black src tests samples
+
+      - name: Commit and push formatting changes to the PR branch
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "style: auto-format with Black"
+          commit_user_name: github-actions[bot]
+          commit_user_email: 41898282+github-actions[bot]@users.noreply.github.com
+          commit_author: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>

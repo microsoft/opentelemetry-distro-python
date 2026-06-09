@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   quality:
-    name: Black, Pylint, and Mypy
+    name: Pylint and Mypy
     runs-on: ubuntu-latest
 
     steps:
@@ -24,8 +24,8 @@ jobs:
       - name: Install tox
         run: python -m pip install --upgrade pip tox
 
-      - name: Check formatting with Black
-        run: tox -e black
+      # Black formatting is applied automatically by `pr-autoformat.yml`
+      # (pull_request_target) for both same-repo and fork PRs.
 
       - name: Lint with Pylint
         run: tox -e pylint
