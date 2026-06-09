@@ -4,7 +4,7 @@
 # license information.
 # -------------------------------------------------------------------------
 
-"""Microsoft OpenTelemetry Distro for Python.
+"""Microsoft OpenTelemetry Python.
 
 Provides a single entry-point — :func:`use_microsoft_opentelemetry` —
 that initialises OpenTelemetry global providers (tracing, metrics, logging)

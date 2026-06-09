@@ -63,9 +63,9 @@ def _append_console_components(otel_kwargs: Dict[str, Any], enable_console: bool
     """Append console exporters to otel_kwargs when console export is enabled.
 
     Console export is enabled when ``enable_console=True`` is passed as a
-    kwarg or auto-enabled by the distro when no other exporter is active.
-    This mirrors the ``ExportTarget.Console`` flag from the .NET distro
-    and is intended for local development and debugging.
+    kwarg or auto-enabled when no other exporter is active.
+    This mirrors the ``ExportTarget.Console`` flag from the .NET
+    distro and is intended for local development and debugging.
 
     Respects per-signal disable flags so that disabled pipelines do not
     get unnecessary exporters.

@@ -4,7 +4,7 @@
 # license information.
 # --------------------------------------------------------------------------
 
-"""Shared constants for the Microsoft OpenTelemetry Distro.
+"""Shared constants for Microsoft OpenTelemetry.
 
 Defines configuration argument names used by :func:`use_microsoft_opentelemetry`,
 the mapping of public kwarg names to Azure Monitor internal keys, and the list
@@ -63,7 +63,7 @@ _A365_DISABLED_INSTRUMENTATIONS = (
 
 ENABLE_CONSOLE_ARG = "enable_console"
 
-# --- Microsoft Distro Constants ---
+# --- Microsoft OpenTelemetry Constants ---
 
 ENABLE_AZURE_MONITOR_ARG = "enable_azure_monitor"
 
@@ -125,5 +125,5 @@ GEN_AI_MAIN_AGENT_VERSION_KEY = "microsoft.gen_ai.main_agent.version"
 GEN_AI_MAIN_AGENT_CONVERSATION_ID_KEY = "microsoft.gen_ai.main_agent.conversation_id"
 GEN_AI_MAIN_AGENT_ATTRIBUTE_PREFIX = "microsoft.gen_ai.main_agent."
 
-# --- Version propagation for distro to exporter ---
+# --- Version propagation to the exporter ---
 MICROSOFT_OPENTELEMETRY_VERSION_ENV = "MICROSOFT_OPENTELEMETRY_VERSION"

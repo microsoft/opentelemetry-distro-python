@@ -149,7 +149,7 @@ export OTEL_TRACES_SAMPLER_ARG=0.1
 
 ### A365 Exporter Environment Variables
 
-When `enable_a365=True`, the distro adds A365 span processors to the tracing pipeline. A365 exporter behavior is configured via environment variables:
+When `enable_a365=True`, the SDK adds A365 span processors to the tracing pipeline. A365 exporter behavior is configured via environment variables:
 
 | Environment variable | Default | Description |
 |---|---|---|
@@ -219,7 +219,7 @@ Microsoft OpenTelemetry automatically instruments the following libraries when i
 | `agent_framework` | GenAI |
 | `azure_sdk` | Azure (enabled when Azure Monitor is active) |
 
-> **OpenAI Agents SDK:** The distro includes two instrumentors for `openai_agents`. When `enable_a365=True`, a bundled A365-specific instrumentor (`A365OpenAIAgentsInstrumentor`) is used, producing spans with the A365 versioned envelope format. When A365 is not enabled, the upstream `opentelemetry-instrumentation-openai-agents-v2` instrumentor is used with standard OTel semantic conventions. See [A365_DOCUMENTATION.md](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md) for details.
+> **OpenAI Agents SDK:** the SDK includes two instrumentors for `openai_agents`. When `enable_a365=True`, a bundled A365-specific instrumentor (`A365OpenAIAgentsInstrumentor`) is used, producing spans with the A365 versioned envelope format. When A365 is not enabled, the upstream `opentelemetry-instrumentation-openai-agents-v2` instrumentor is used with standard OTel semantic conventions. See [A365_DOCUMENTATION.md](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md) for details.
 
 Toggle individual instrumentations:
 
@@ -234,7 +234,7 @@ use_microsoft_opentelemetry(
 
 ### Default Instrumentations When `enable_a365=True`
 
-The distro **automatically disables the
+Microsoft Opentelemetry **automatically disables the
 following instrumentations by default** when `enable_a365=True`:
 
 | Library | Default with A365 |

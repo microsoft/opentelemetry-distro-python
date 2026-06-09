@@ -49,7 +49,7 @@ from microsoft.opentelemetry.a365.core import (
 
 def main():
     # ------------------------------------------------------------------ #
-    # 1. Configure telemetry through the distro
+    # 1. Configure telemetry
     # ------------------------------------------------------------------ #
     use_microsoft_opentelemetry(
         enable_a365=True,

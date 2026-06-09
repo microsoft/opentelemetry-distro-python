@@ -21,7 +21,7 @@ use_microsoft_opentelemetry(
             "enabled": True,
             # Optional: set static agent identity on all LangChain spans.
             # These appear as gen_ai.agent.* attributes in your telemetry.
-            # If omitted, the distro infers agent_name from LangChain's
+            # If omitted, agent_name is inferred from LangChain's
             # runtime metadata when available.
             "agent_id": "travel-assistant-001",
             "agent_name": "Travel_Assistant",

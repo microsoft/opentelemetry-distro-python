@@ -4,7 +4,7 @@
 # license information.
 # --------------------------------------------------------------------------
 
-"""Agent365 observability for the Microsoft OpenTelemetry Distro.
+"""Agent365 observability for Microsoft OpenTelemetry.
 
 Use ``use_microsoft_opentelemetry(enable_a365=True)`` to enable A365
 telemetry.  Import scope classes and data models from
@@ -20,5 +20,5 @@ from microsoft.opentelemetry.a365.core.exporters.utils import (  # noqa: F401
     is_a365_enabled,
 )
 
-# Nothing is public — all integration goes through the distro entry point.
+# Nothing is public — all integration goes through the package entry point.
 __all__: list[str] = []

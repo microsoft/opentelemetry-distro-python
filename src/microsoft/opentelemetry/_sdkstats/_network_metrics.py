@@ -4,12 +4,12 @@
 # license information.
 # --------------------------------------------------------------------------
 
-"""Distro-owned network SDKStats gauges.
+"""Network SDKStats gauges.
 
 The upstream statsbeat metrics only count requests sent to the Breeze
-endpoint (the Azure Monitor exporter's destination).  This distro also
+endpoint (the Azure Monitor exporter's destination).  Microsoft OpenTelemetry also
 ships OTLP and Agent365 exporters, whose per-export success counters
-live in the distro's own ``_REQUESTS_MAP``.  This module registers an
+live in its own ``_REQUESTS_MAP``.  This module registers an
 observable gauge on the upstream ``StatsbeatManager``'s ``MeterProvider``
 so those counters are exported on the same statsbeat pipeline.
 """
@@ -149,9 +149,9 @@ def _observe_request_exception_count(options: CallbackOptions) -> Iterable[Obser
 
 
 def register_network_gauges() -> bool:
-    """Attach distro network-stats callbacks to upstream's gauges.
+    """Attach our network-stats callbacks to upstream's gauges.
 
-    The distro emits per-endpoint (``Request_Success_Count``, ``Request_Duration``,
+    We emit per-endpoint (``Request_Success_Count``, ``Request_Duration``,
     ``Request_Failure_Count``, ``Retry_Count``, ``Throttle_Count``,
     ``Exception_Count``) observations via the upstream statsbeat pipeline.  We cannot
     create separate gauges with the same names because the stats backend identifies

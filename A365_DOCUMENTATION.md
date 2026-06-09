@@ -2,8 +2,8 @@
 
 > **Official docs:** [Microsoft OpenTelemetry on Microsoft Learn](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/microsoft-opentelemetry?tabs=python)
 
-This guide covers A365-specific setup, configuration, and concepts for the `microsoft-opentelemetry` distro.
-For general distro options (Azure Monitor, OTLP, sampling), see the [main README](README.md).
+This guide covers A365-specific setup, configuration, and concepts for the `microsoft-opentelemetry` package.
+For general config options (Azure Monitor, OTLP, sampling), see the [main README](README.md).
 For migrating from standalone A365 packages, see [MIGRATION_A365.md](MIGRATION_A365.md).
 
 ## Installation
@@ -16,7 +16,7 @@ If you are migrating from the standalone `microsoft-agents-a365-observability-*`
 
 ## Configuration
 
-Call `use_microsoft_opentelemetry()` once at startup to initialize the distro. All keyword arguments are optional; any passed-in value takes priority over the corresponding environment variable.
+Call `use_microsoft_opentelemetry()` once at startup to initialize Microsoft OpenTelemetry. All keyword arguments are optional; any passed-in value takes priority over the corresponding environment variable.
 
 ```python
 from microsoft.opentelemetry import use_microsoft_opentelemetry
@@ -85,20 +85,20 @@ use_microsoft_opentelemetry(
 
 ## Auto-Instrumented Libraries
 
-The distro auto-discovers and activates supported instrumentors via OpenTelemetry entry points. No manual `instrument()` calls are needed.
+It auto-discovers and activates supported instrumentors via OpenTelemetry entry points. No manual `instrument()` calls are needed.
 
 Supported instrumentors:
 
 | Library | Instrumentor | Package |
 |---|---|---|
-| Semantic Kernel | `SemanticKernelInstrumentor` | Bundled in distro |
+| Semantic Kernel | `SemanticKernelInstrumentor` | Bundled |
 | OpenAI Agents SDK | `A365OpenAIAgentsInstrumentor` (A365) / `opentelemetry-instrumentation-openai-agents-v2` (non-A365) | Bundled / Dependency |
-| Agent Framework | `AgentFrameworkInstrumentor` | Bundled in distro |
-| LangChain | `LangChainInstrumentor` | Bundled in distro |
+| Agent Framework | `AgentFrameworkInstrumentor` | Bundled |
+| LangChain | `LangChainInstrumentor` | Bundled |
 
 ### OpenAI Agents SDK — Dual Instrumentation
 
-The distro ships **two** instrumentors for the OpenAI Agents SDK, selected automatically based on whether A365 is enabled:
+**Two** instrumentors for the OpenAI Agents SDK, selected automatically based on whether A365 is enabled:
 
 | Mode | Instrumentor | Span format |
 |---|---|---|
@@ -111,7 +111,7 @@ The selection is automatic — no manual `instrument()` calls are needed. When `
 
 ### Noisy Spans — A365-Only Mode
 
-When `enable_a365=True` (and `enable_azure_monitor` is **not** set), the distro **disables web-framework and HTTP-client instrumentations by default** so only GenAI-related spans appear:
+When `enable_a365=True` (and `enable_azure_monitor` is **not** set), the **web-framework and HTTP-client instrumentations are disabled by default** so only GenAI-related spans appear:
 
 | Library | Default with A365 only |
 |---|---|

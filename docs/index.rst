@@ -1,7 +1,7 @@
-Microsoft OpenTelemetry Distro for Python
-==========================================
+Microsoft OpenTelemetry Python
+==================================
 
-Welcome to the API reference for the Microsoft OpenTelemetry Distro for Python.
+Welcome to the API reference for Microsoft OpenTelemetry Python.
 
 .. toctree::
    :maxdepth: 4

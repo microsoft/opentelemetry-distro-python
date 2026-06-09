@@ -4,21 +4,21 @@
 # license information.
 # --------------------------------------------------------------------------
 
-"""SDK self-telemetry (SDKStats) for the Microsoft OpenTelemetry Distro.
+"""SDK self-telemetry (SDKStats) for `microsoft-opentelemetry`.
 
 This module provides backend-agnostic SDK health and usage telemetry that
 works regardless of which export backends are enabled (Azure Monitor, OTLP,
 A365, Console).  It tracks:
 
-- **Features**: which distro features are active (disk retry, AAD, live
+- **Features**: which package features are active (disk retry, AAD, live
   metrics, browser SDK loader, etc.)
 - **Instrumentations**: which library instrumentations are enabled (Django,
   FastAPI, OpenAI, LangChain, etc.)
 
 The module is initialised by :func:`use_microsoft_opentelemetry` during
-distro setup.  Feature/instrumentation gauges are emitted by the upstream
-``StatsbeatManager`` from ``azure-monitor-opentelemetry-exporter``; the
-distro registers its own network gauge on the manager's ``MeterProvider``
+setup.  Feature/instrumentation gauges are emitted by the upstream
+``StatsbeatManager`` from ``azure-monitor-opentelemetry-exporter``;
+we register our own network gauge on the manager's ``MeterProvider``
 for OTLP and Agent365 per-endpoint success counts.
 """
 

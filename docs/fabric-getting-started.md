@@ -9,7 +9,8 @@ Your Python app doesn't connect to Fabric directly. Instead, it sends telemetry 
 ```
 ┌──────────────┐     OTLP/HTTP     ┌──────────────────┐     Kusto Ingest    ┌─────────────────────────┐
 │  Python App  │ ───────────────►  │  OTel Collector  │ ──────────────────► │  Fabric / Azure Data    │
-│  (distro)    │    :4318          │  (ADX exporter)  │                     │  Explorer               │
+│  (microsoft- |                   |                  |                     |                         |
+|opentelemetry)│    :4318          │  (ADX exporter)  │                     │  Explorer               │
 └──────────────┘                   └──────────────────┘                     └─────────────────────────┘
 ```
 
@@ -63,9 +64,9 @@ The collector needs permission to write data into your database. Run one of thes
 
 > Replace `<yourdbname>` with your actual database name, and `<ApplicationID>` with the client ID from your [Entra app registration](https://learn.microsoft.com/en-us/azure/data-explorer/provision-entra-id-app?tabs=portal).
 
-## Step 3: Create a Python app with the distro
+## Step 3: Create a Python app with `microsoft-opentelemetry`
 
-Create a new directory and install the distro:
+Create a new directory and install `microsoft-opentelemetry`:
 
 ```bash
 mkdir fabric-demo && cd fabric-demo
@@ -116,7 +117,7 @@ time.sleep(5)
 
 That's it for the app. `use_microsoft_opentelemetry()` automatically instruments HTTP clients, collects metrics, and — when `logger_name` is provided — captures log records from that logger via the OpenTelemetry logging pipeline. The OTLP exporter is auto-enabled when the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable is set.
 
-By default, the Python distro uses OTLP/HTTP (port 4318). To point at the collector:
+By default, the SDK uses OTLP/HTTP (port 4318). To point at the collector:
 
 ```bash
 # Windows
