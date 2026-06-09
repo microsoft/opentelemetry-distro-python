@@ -10,10 +10,13 @@ name: PR auto-format (Black)
 #
 # Security model:
 #   * We never invoke PR-controlled scripts (no `tox.ini`, no setup.py,
-#     no Makefile, no pre-commit hooks). Black is installed directly from
-#     PyPI at a pinned version.
+#     no Makefile, no pre-commit hooks). Black is installed directly
+#     from PyPI with a constrained version range.
 #   * Black does not execute the source it formats — it only parses and
 #     re-emits AST, so reading PR-supplied .py files is safe.
+#   * We invoke Black from a directory outside the PR checkout, so a PR
+#     cannot shadow the installed Black package by adding a top-level
+#     `black.py` / `black/` to the repo.
 #   * We do NOT use `actions/setup-python` caching keyed on PR files.
 #   * We skip the workflow when the contributor has disabled
 #     `maintainer_can_modify` (push would fail anyway).
@@ -34,10 +37,13 @@ jobs:
     # Always run for same-repo PRs (token has push access). For fork
     # PRs, only run when the contributor has left "Allow edits by
     # maintainers" checked — otherwise the push would fail.
+    # Use `github.actor` (not `pull_request.user.login`) so our own
+    # auto-format push, which fires another `synchronize` event under
+    # github-actions[bot], does not loop.
     if: >-
       (github.event.pull_request.head.repo.full_name == github.repository
         || github.event.pull_request.maintainer_can_modify == true)
-      && github.event.pull_request.user.login != 'github-actions[bot]'
+      && github.actor != 'github-actions[bot]'
 
     steps:
       - name: Check out PR head branch
@@ -51,8 +57,8 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           # We need full history so the auto-commit can fast-forward.
           fetch-depth: 0
-          # Defense-in-depth: prevent any post-checkout hooks from
-          # silently pulling more refs.
+          # Keep credentials in the local git config so the auto-commit
+          # action can push the formatting commit back to the PR branch.
           persist-credentials: true
 
       - name: Set up Python
@@ -60,10 +66,11 @@ jobs:
         with:
           python-version: "3.10"
 
-      - name: Install Black (pinned, from PyPI — not from PR)
+      - name: Install Black (from PyPI — not from PR)
         run: |
           python -m pip install --upgrade pip
-          # Match the version pin in dev_requirements.txt / tox.ini.
+          # Match the minimum version requirement in dev_requirements.txt
+          # / tox.ini, constrained to the major version.
           python -m pip install "black>=24.0,<25.0"
 
       - name: Run Black
@@ -71,7 +78,16 @@ jobs:
         # since those could be PR-modified and executed under a write token.
         # Black reads `[tool.black]` config from pyproject.toml, but that
         # config is data only (no code execution).
-        run: python -m black src tests samples
+        #
+        # Run from /tmp so a PR adding a top-level `black.py` / `black/`
+        # cannot shadow the PyPI-installed Black package via Python's
+        # CWD-on-sys.path behaviour. Target the workspace by absolute path.
+        working-directory: /tmp
+        run: |
+          python -m black \
+            "$GITHUB_WORKSPACE/src" \
+            "$GITHUB_WORKSPACE/tests" \
+            "$GITHUB_WORKSPACE/samples"
 
       - name: Commit and push formatting changes to the PR branch
         uses: stefanzweifel/git-auto-commit-action@v5
