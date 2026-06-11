@@ -13,9 +13,8 @@ endpoint.
 
 This module is temporarily disabled. The implementation below is kept
 commented out until the network statsbeat wrappers are re-enabled.
-"""
 
-'''
+
 from __future__ import annotations
 
 from typing import Any
@@ -110,4 +109,4 @@ __all__ = [
     "_NetworkStatsMetricExporter",
     "_NetworkStatsLogExporter",
 ]
-'''
+"""

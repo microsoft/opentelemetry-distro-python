@@ -771,7 +771,7 @@ class TestInitializeSdkStats(unittest.TestCase):
 
 """
 class TestNetworkStatsExporterWrappers(unittest.TestCase):
-    '''Tests for the OTLP NetworkStats* exporter decorators.'''
+    Tests for the OTLP NetworkStats* exporter decorators.
 
     def setUp(self):
         _reset_state()
