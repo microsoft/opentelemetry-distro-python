@@ -396,6 +396,15 @@ class TestRecordHelpers(unittest.TestCase):
     def setUp(self):
         _reset_state()
 
+    def test_record_success_keys_by_endpoint_and_host(self):
+        record_success("a365", "a.example")
+        record_success("a365", "a.example")
+
+        self.assertEqual(
+            drain(REQUEST_SUCCESS_NAME),
+            {("a365", "a.example"): 2},
+        )
+
     def test_record_duration_accumulates_sum_and_count(self):
         record_duration("a365", "a.example", 0.1)
         record_duration("a365", "a.example", 0.4)
@@ -770,7 +779,7 @@ class TestInitializeSdkStats(unittest.TestCase):
 
 
 """
-class TestNetworkStatsExporterWrappers(unittest.TestCase):
+class TestNetworkStatsExporterWrappers(unittest.TestCase): # pylint: disable=pointless-string-statement
     Tests for the OTLP NetworkStats* exporter decorators.
 
     def setUp(self):
