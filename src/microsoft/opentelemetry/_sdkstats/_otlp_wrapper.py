@@ -59,7 +59,7 @@ class _NetworkStatsSpanExporter(SpanExporter):
 
 
 class _NetworkStatsMetricExporter(MetricExporter):
-    """Metric exporter decorator that records ``request_success_count``."""
+    Metric exporter decorator that records ``request_success_count``.
 
     def __init__(self, inner: MetricExporter) -> None:
         super().__init__(
@@ -88,7 +88,7 @@ class _NetworkStatsMetricExporter(MetricExporter):
 
 
 class _NetworkStatsLogExporter(LogRecordExporter):
-    """Log exporter decorator that records ``request_success_count``."""
+    Log exporter decorator that records ``request_success_count``.
 
     def __init__(self, inner: LogRecordExporter) -> None:
         self._inner = inner
