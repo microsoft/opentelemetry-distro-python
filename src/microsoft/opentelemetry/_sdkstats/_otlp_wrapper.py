@@ -10,7 +10,10 @@ The upstream OTLP exporters do not expose HTTP status codes — only the
 ``ExportResult`` enum.  These wrappers capture the SUCCESS signal so the
 network statsbeat pipeline can record success/failures/retries per
 endpoint.
-"""
+
+This module is temporarily disabled. The implementation below is kept
+commented out until the network statsbeat wrappers are re-enabled.
+
 
 from __future__ import annotations
 
@@ -36,7 +39,7 @@ def _endpoint_host(exporter: Any) -> str:
 
 
 class _NetworkStatsSpanExporter(SpanExporter):
-    """Span exporter decorator that records ``request_success_count``."""
+    Span exporter decorator that records ``request_success_count``.
 
     def __init__(self, inner: SpanExporter) -> None:
         self._inner = inner
@@ -56,7 +59,7 @@ class _NetworkStatsSpanExporter(SpanExporter):
 
 
 class _NetworkStatsMetricExporter(MetricExporter):
-    """Metric exporter decorator that records ``request_success_count``."""
+    Metric exporter decorator that records ``request_success_count``.
 
     def __init__(self, inner: MetricExporter) -> None:
         super().__init__(
@@ -85,7 +88,7 @@ class _NetworkStatsMetricExporter(MetricExporter):
 
 
 class _NetworkStatsLogExporter(LogRecordExporter):
-    """Log exporter decorator that records ``request_success_count``."""
+    Log exporter decorator that records ``request_success_count``.
 
     def __init__(self, inner: LogRecordExporter) -> None:
         self._inner = inner
@@ -106,3 +109,4 @@ __all__ = [
     "_NetworkStatsMetricExporter",
     "_NetworkStatsLogExporter",
 ]
+"""

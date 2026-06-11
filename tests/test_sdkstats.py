@@ -48,11 +48,13 @@ from microsoft.opentelemetry._sdkstats._utils import (
     record_throttle,
     reset_all,
 )
-from microsoft.opentelemetry._sdkstats._otlp_wrapper import (
-    _NetworkStatsLogExporter,
-    _NetworkStatsMetricExporter,
-    _NetworkStatsSpanExporter,
-)
+# Network sdkstats wrappers are temporarily disabled. See
+# microsoft/opentelemetry/_sdkstats/_otlp_wrapper.py.
+# from microsoft.opentelemetry._sdkstats._otlp_wrapper import (
+#     _NetworkStatsLogExporter,
+#     _NetworkStatsMetricExporter,
+#     _NetworkStatsSpanExporter,
+# )
 
 
 def _reset_state():
@@ -393,6 +395,15 @@ class TestRecordHelpers(unittest.TestCase):
 
     def setUp(self):
         _reset_state()
+
+    def test_record_success_keys_by_endpoint_and_host(self):
+        record_success("a365", "a.example")
+        record_success("a365", "a.example")
+
+        self.assertEqual(
+            drain(REQUEST_SUCCESS_NAME),
+            {("a365", "a.example"): 2},
+        )
 
     def test_record_duration_accumulates_sum_and_count(self):
         record_duration("a365", "a.example", 0.1)
@@ -767,8 +778,10 @@ class TestInitializeSdkStats(unittest.TestCase):
             self.assertEqual(mock_bridge.call_count, 2)
 
 
+# pylint: disable=pointless-string-statement
+"""
 class TestNetworkStatsExporterWrappers(unittest.TestCase):
-    """Tests for the OTLP NetworkStats* exporter decorators."""
+    Tests for the OTLP NetworkStats* exporter decorators.
 
     def setUp(self):
         _reset_state()
@@ -848,6 +861,7 @@ class TestNetworkStatsExporterWrappers(unittest.TestCase):
         wrapper = _NetworkStatsLogExporter(inner)
         wrapper.export([])
         self.assertEqual(drain(REQUEST_SUCCESS_NAME), {})
+"""
 
 
 if __name__ == "__main__":
