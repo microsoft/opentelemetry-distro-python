@@ -77,36 +77,43 @@ def create_otlp_components(
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
     from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
     from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
-    from opentelemetry.sdk.metrics.export import MetricExporter, PeriodicExportingMetricReader
-    from opentelemetry.sdk._logs.export import BatchLogRecordProcessor, LogRecordExporter
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
+    from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 
-    from microsoft.opentelemetry._sdkstats import is_sdkstats_enabled
-    from microsoft.opentelemetry._sdkstats._otlp_wrapper import (
-        _NetworkStatsLogExporter,
-        _NetworkStatsMetricExporter,
-        _NetworkStatsSpanExporter,
-    )
 
-    record_network_sdkstats = is_sdkstats_enabled()
+    # from opentelemetry.sdk.trace.export import SpanExporter
+    # from opentelemetry.sdk.metrics.export import MetricExporter
+    # from opentelemetry.sdk._logs.export import LogRecordExporter
+    # from microsoft.opentelemetry._sdkstats import is_sdkstats_enabled
+    # from microsoft.opentelemetry._sdkstats._otlp_wrapper import (
+    #     _NetworkStatsLogExporter,
+    #     _NetworkStatsMetricExporter,
+    #     _NetworkStatsSpanExporter,
+    # )
+    # record_network_sdkstats = is_sdkstats_enabled()
+
     components = OtlpHandlers()
 
     if enable_traces:
-        span_exporter: SpanExporter = OTLPSpanExporter()
-        if record_network_sdkstats:
-            span_exporter = _NetworkStatsSpanExporter(span_exporter)
-        components.span_processor = BatchSpanProcessor(span_exporter)
+        components.span_processor = BatchSpanProcessor(OTLPSpanExporter())
+        # span_exporter: SpanExporter = OTLPSpanExporter()
+        # if record_network_sdkstats:
+        #     span_exporter = _NetworkStatsSpanExporter(span_exporter)
+        # components.span_processor = BatchSpanProcessor(span_exporter)
 
     if enable_metrics:
-        metric_exporter: MetricExporter = OTLPMetricExporter()
-        if record_network_sdkstats:
-            metric_exporter = _NetworkStatsMetricExporter(metric_exporter)
-        components.metric_reader = PeriodicExportingMetricReader(metric_exporter)
+        components.metric_reader = PeriodicExportingMetricReader(OTLPMetricExporter())
+        # metric_exporter: MetricExporter = OTLPMetricExporter()
+        # if record_network_sdkstats:
+        #     metric_exporter = _NetworkStatsMetricExporter(metric_exporter)
+        # components.metric_reader = PeriodicExportingMetricReader(metric_exporter)
 
     if enable_logs:
-        log_exporter: LogRecordExporter = OTLPLogExporter()
-        if record_network_sdkstats:
-            log_exporter = _NetworkStatsLogExporter(log_exporter)
-        components.log_record_processor = BatchLogRecordProcessor(log_exporter)
+        components.log_record_processor = BatchLogRecordProcessor(OTLPLogExporter())
+        # log_exporter: LogRecordExporter = OTLPLogExporter()
+        # if record_network_sdkstats:
+        #     log_exporter = _NetworkStatsLogExporter(log_exporter)
+        # components.log_record_processor = BatchLogRecordProcessor(log_exporter)
 
     return components

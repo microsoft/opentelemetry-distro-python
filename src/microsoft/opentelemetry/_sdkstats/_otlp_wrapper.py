@@ -10,8 +10,12 @@ The upstream OTLP exporters do not expose HTTP status codes — only the
 ``ExportResult`` enum.  These wrappers capture the SUCCESS signal so the
 network statsbeat pipeline can record success/failures/retries per
 endpoint.
+
+This module is temporarily disabled. The implementation below is kept
+commented out until the network statsbeat wrappers are re-enabled.
 """
 
+'''
 from __future__ import annotations
 
 from typing import Any
@@ -106,3 +110,4 @@ __all__ = [
     "_NetworkStatsMetricExporter",
     "_NetworkStatsLogExporter",
 ]
+'''
