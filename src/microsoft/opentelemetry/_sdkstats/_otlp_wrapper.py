@@ -39,7 +39,7 @@ def _endpoint_host(exporter: Any) -> str:
 
 
 class _NetworkStatsSpanExporter(SpanExporter):
-    """Span exporter decorator that records ``request_success_count``."""
+    Span exporter decorator that records ``request_success_count``.
 
     def __init__(self, inner: SpanExporter) -> None:
         self._inner = inner
