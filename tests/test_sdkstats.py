@@ -778,8 +778,8 @@ class TestInitializeSdkStats(unittest.TestCase):
             self.assertEqual(mock_bridge.call_count, 2)
 
 
-"""
-class TestNetworkStatsExporterWrappers(unittest.TestCase): # pylint: disable=pointless-string-statement
+"""  # pylint: disable=pointless-string-statement
+class TestNetworkStatsExporterWrappers(unittest.TestCase):
     Tests for the OTLP NetworkStats* exporter decorators.
 
     def setUp(self):
