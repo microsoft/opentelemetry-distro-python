@@ -32,7 +32,14 @@ from microsoft.opentelemetry._sdkstats._utils import (
 )
 
 try:
-    from azure.monitor.opentelemetry.exporter._constants import _REQ_SUCCESS_NAME
+    from azure.monitor.opentelemetry.exporter._constants import (
+        _REQ_DURATION_NAME,
+        _REQ_EXCEPTION_NAME,
+        _REQ_FAILURE_NAME,
+        _REQ_RETRY_NAME,
+        _REQ_SUCCESS_NAME,
+        _REQ_THROTTLE_NAME,
+    )
     from azure.monitor.opentelemetry.exporter.statsbeat._statsbeat_metrics import (
         _StatsbeatMetrics,
     )
@@ -151,6 +158,16 @@ def register_network_gauges():
         logger.debug("Upstream statsbeat unavailable; skipping network gauges.")
         return
     manager = StatsbeatManager()
-    return manager.add_metric_callback(_REQ_SUCCESS_NAME[0], _observe_request_success_count)
+    callbacks = (
+        (_REQ_SUCCESS_NAME[0], _observe_request_success_count),
+        (_REQ_DURATION_NAME[0], _observe_request_duration),
+        (_REQ_FAILURE_NAME[0], _observe_request_failure_count),
+        (_REQ_RETRY_NAME[0], _observe_request_retry_count),
+        (_REQ_THROTTLE_NAME[0], _observe_request_throttle_count),
+        (_REQ_EXCEPTION_NAME[0], _observe_request_exception_count),
+    )
+    return all(
+        manager.add_metric_callback(name, callback) for name, callback in callbacks
+    )
 
 
