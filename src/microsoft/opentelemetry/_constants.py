@@ -66,6 +66,20 @@ ENABLE_CONSOLE_ARG = "enable_console"
 # --- Microsoft OpenTelemetry Constants ---
 
 ENABLE_AZURE_MONITOR_ARG = "enable_azure_monitor"
+ENABLE_SENSITIVE_DATA_ARG = "enable_sensitive_data"
+CAPTURE_MESSAGE_CONTENT_ARG = "capture_message_content"
+ENABLE_EXPERIMENTAL_MODE_ARG = "enable_experimental_mode"
+
+_OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT_ENV = "OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT"
+
+_OTEL_SEMCONV_STABILITY_OPT_IN_ENV = "OTEL_SEMCONV_STABILITY_OPT_IN"
+
+_CAPTURE_MESSAGE_CONTENT_ALLOWED_VALUES = (
+    "span_only",
+    "event_only",
+    "span_and_event",
+)
+
 
 # --- OTLP Environment Variable Constants ---
 
@@ -87,8 +101,6 @@ _AZURE_MONITOR_KWARG_MAP = {
 }
 
 # --- Spectra Sidecar Constants ---
-
-ENABLE_SENSITIVE_DATA_ARG = "enable_sensitive_data"
 
 ENABLE_SPECTRA_ARG = "enable_spectra"
 SPECTRA_ENDPOINT_ARG = "spectra_endpoint"
