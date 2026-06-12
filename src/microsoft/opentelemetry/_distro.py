@@ -212,7 +212,7 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
     :rtype: None
     :keyword str capture_message_content: Message content capture can be enabled by setting
         this kwarg to values such as "span_and_event", "span_only", "span", "true", etc. Defaults
-        to False.
+        to None.
     :keyword bool enable_experimental_mode: Enables the experimental mode in otel for experimental
         gen_ai* attributes to be be displayed in spans. Defaults to False.
     """
@@ -255,9 +255,9 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
             )
     elif capture_message_content is not None:
         _logger.warning(
-        "Ignoring '%s'=%r: 'enable_experimental_mode=True' is required to capture message content.",
-        CAPTURE_MESSAGE_CONTENT_ARG, capture_message_content,
-    )
+            "Ignoring '%s'=%r: 'enable_experimental_mode=True' is required to capture message content.",
+            CAPTURE_MESSAGE_CONTENT_ARG, capture_message_content,
+        )
 
     # Separate Azure Monitor kwargs from generic OTel kwargs
     otel_kwargs: Dict[str, Any] = {k: v for k, v in kwargs.items() if k not in _AZURE_MONITOR_KWARG_MAP}
