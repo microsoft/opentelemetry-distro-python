@@ -86,9 +86,21 @@ def _reset_upstream_singleton():
 
 
 def _reset_network_metrics_guard():
-    from microsoft.opentelemetry._sdkstats import _network_metrics
+    """Clear upstream's additional-callbacks store so tests can re-register."""
+    try:
+        from azure.monitor.opentelemetry.exporter.statsbeat import _manager as _upstream_manager
+    except ImportError:
+        return
 
-    _network_metrics._reset_for_tests()
+    callbacks = getattr(_upstream_manager, "_ADDITIONAL_CALLBACKS", None)
+    lock = getattr(_upstream_manager, "_ADDITIONAL_CALLBACKS_LOCK", None)
+    if callbacks is None:
+        return
+    if lock is not None:
+        with lock:
+            callbacks.clear()
+    else:
+        callbacks.clear()
 
 
 class TestSdkStatsEnabled(unittest.TestCase):
@@ -320,29 +332,44 @@ class TestNetworkMetricsRegistration(unittest.TestCase):
         _reset_upstream_singleton()
         _reset_network_metrics_guard()
 
-    def test_returns_false_when_manager_has_no_meter_provider(self):
-        from microsoft.opentelemetry._sdkstats._network_metrics import (
-            register_network_gauges,
-        )
-
-        self.assertFalse(register_network_gauges())
-
     def test_returns_true_then_false_on_repeat(self):
-        from azure.monitor.opentelemetry.exporter.statsbeat._manager import (
-            StatsbeatManager,
-        )
-        from microsoft.opentelemetry._sdkstats._config import (
-            _build_default_sdkstats_config,
-        )
         from microsoft.opentelemetry._sdkstats._network_metrics import (
             register_network_gauges,
         )
-
-        config = _build_default_sdkstats_config()
-        self.assertTrue(StatsbeatManager().initialize(config))
 
         self.assertTrue(register_network_gauges())
         self.assertFalse(register_network_gauges())
+
+    def test_registers_callback_under_request_success_metric_name(self):
+        from azure.monitor.opentelemetry.exporter._constants import _REQ_SUCCESS_NAME
+        from azure.monitor.opentelemetry.exporter.statsbeat import _manager as _upstream_manager
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            _observe_request_success_count,
+            register_network_gauges,
+        )
+
+        register_network_gauges()
+        callbacks = _upstream_manager._ADDITIONAL_CALLBACKS.get(_REQ_SUCCESS_NAME[0], [])
+        self.assertIn(_observe_request_success_count, callbacks)
+
+    def test_returns_none_when_upstream_unavailable(self):
+        # Simulate upstream import failure by patching the import in
+        # ``register_network_gauges``'s try block.
+        import builtins
+
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            register_network_gauges,
+        )
+
+        real_import = builtins.__import__
+
+        def fake_import(name, *args, **kwargs):
+            if name == "azure.monitor.opentelemetry.exporter.statsbeat._manager":
+                raise ImportError("simulated")
+            return real_import(name, *args, **kwargs)
+
+        with patch("builtins.__import__", side_effect=fake_import):
+            self.assertFalse(register_network_gauges())
 
 
 class TestObserveRequestSuccessCount(unittest.TestCase):
@@ -646,6 +673,17 @@ class TestRegisterNetworkGaugesAttachesAllSix(unittest.TestCase):
         _reset_network_metrics_guard()
 
     def test_attaches_to_all_six_gauges(self):
+        from azure.monitor.opentelemetry.exporter._constants import (
+            _REQ_DURATION_NAME,
+            _REQ_EXCEPTION_NAME,
+            _REQ_FAILURE_NAME,
+            _REQ_RETRY_NAME,
+            _REQ_SUCCESS_NAME,
+            _REQ_THROTTLE_NAME,
+        )
+        from azure.monitor.opentelemetry.exporter.statsbeat import (
+            _manager as _upstream_manager,
+        )
         from azure.monitor.opentelemetry.exporter.statsbeat._manager import (
             StatsbeatManager,
         )
@@ -653,38 +691,35 @@ class TestRegisterNetworkGaugesAttachesAllSix(unittest.TestCase):
             _build_default_sdkstats_config,
         )
         from microsoft.opentelemetry._sdkstats._network_metrics import (
+            _observe_request_duration,
+            _observe_request_exception_count,
+            _observe_request_failure_count,
+            _observe_request_retry_count,
+            _observe_request_success_count,
+            _observe_request_throttle_count,
             register_network_gauges,
         )
 
         config = _build_default_sdkstats_config()
         self.assertTrue(StatsbeatManager().initialize(config))
 
-        # The six upstream gauges the distro must attach to.
-        gauge_attrs = [
-            "_success_count",
-            "_average_duration",
-            "_failure_count",
-            "_retry_count",
-            "_throttle_count",
-            "_exception_count",
-        ]
-
-        # Snapshot pre-registration callback counts so we can assert exactly
-        # one new callback per gauge.
-        metrics = StatsbeatManager()._metrics  # pylint: disable=protected-access
-        assert metrics is not None
-        before = {
-            name: len(getattr(metrics, name)._callbacks) for name in gauge_attrs  # pylint: disable=protected-access
-        }
-
         self.assertTrue(register_network_gauges())
 
-        for name in gauge_attrs:
-            after = len(getattr(metrics, name)._callbacks)  # pylint: disable=protected-access
-            self.assertEqual(
-                after,
-                before[name] + 1,
-                f"Expected one distro callback appended to {name}",
+        expected = {
+            _REQ_SUCCESS_NAME[0]: _observe_request_success_count,
+            _REQ_DURATION_NAME[0]: _observe_request_duration,
+            _REQ_FAILURE_NAME[0]: _observe_request_failure_count,
+            _REQ_RETRY_NAME[0]: _observe_request_retry_count,
+            _REQ_THROTTLE_NAME[0]: _observe_request_throttle_count,
+            _REQ_EXCEPTION_NAME[0]: _observe_request_exception_count,
+        }
+        # pylint: disable=protected-access
+        for metric_name, callback in expected.items():
+            callbacks = _upstream_manager._ADDITIONAL_CALLBACKS.get(metric_name, [])
+            self.assertIn(
+                callback,
+                callbacks,
+                f"Expected distro callback registered under {metric_name}",
             )
 
 
