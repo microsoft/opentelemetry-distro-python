@@ -22,6 +22,9 @@ from opentelemetry.sdk.metrics import MeterProvider
 from microsoft.opentelemetry._constants import (
     _A365_DISABLED_INSTRUMENTATIONS,
     _SUPPORTED_INSTRUMENTED_LIBRARIES,
+    _CAPTURE_MESSAGE_CONTENT_ALLOWED_VALUES,
+    _OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT_ENV,
+    _OTEL_SEMCONV_STABILITY_OPT_IN_ENV,
 )
 from microsoft.opentelemetry._distro import (
     use_microsoft_opentelemetry,
@@ -1203,6 +1206,132 @@ class TestGenAIMainAgentProcessorRegistration(unittest.TestCase):
         log_processors = otel_kwargs.get("log_record_processors") or []
         self.assertFalse(any(isinstance(p, GenAIMainAgentSpanProcessor) for p in span_processors))
         self.assertFalse(any(isinstance(p, GenAIMainAgentLogRecordProcessor) for p in log_processors))
+
+
+class TestCaptureMessageContentEnvVar(unittest.TestCase):
+    """Tests for ``capture_message_content`` + ``enable_experimental_mode``
+    → env-var propagation.
+
+    The distro only writes ``OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT``
+    when BOTH ``enable_experimental_mode=True`` and a recognised
+    ``capture_message_content`` value are supplied (and also sets
+    ``OTEL_SEMCONV_STABILITY_OPT_IN=gen_ai_latest_experimental`` in that case).
+    """
+
+    _CONTENT_ENV = _OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT_ENV
+    _STABILITY_ENV = _OTEL_SEMCONV_STABILITY_OPT_IN_ENV
+
+    def setUp(self):
+        self._saved_content = os.environ.pop(self._CONTENT_ENV, None)
+        self._saved_stability = os.environ.pop(self._STABILITY_ENV, None)
+
+    def tearDown(self):
+        os.environ.pop(self._CONTENT_ENV, None)
+        os.environ.pop(self._STABILITY_ENV, None)
+        if self._saved_content is not None:
+            os.environ[self._CONTENT_ENV] = self._saved_content
+        if self._saved_stability is not None:
+            os.environ[self._STABILITY_ENV] = self._saved_stability
+
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    def test_not_set_when_kwargs_absent(self, _append_mock):
+        use_microsoft_opentelemetry()
+        self.assertNotIn(self._CONTENT_ENV, os.environ)
+        self.assertNotIn(self._STABILITY_ENV, os.environ)
+
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    def test_recognised_value_is_normalised_and_set(self, _append_mock):
+        use_microsoft_opentelemetry(
+            enable_experimental_mode=True,
+            capture_message_content="SPAN_AND_EVENT",
+        )
+        self.assertEqual(os.environ[self._CONTENT_ENV], "span_and_event")
+        self.assertEqual(os.environ[self._STABILITY_ENV], "gen_ai_latest_experimental")
+
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    def test_whitespace_is_trimmed(self, _append_mock):
+        use_microsoft_opentelemetry(
+            enable_experimental_mode=True,
+            capture_message_content="  span_only  ",
+        )
+        self.assertEqual(os.environ[self._CONTENT_ENV], "span_only")
+
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    def test_unrecognised_value_is_ignored_but_stability_still_set(self, _append_mock):
+        # Entering the gated block (experimental=True + non-None content) always
+        # sets the stability env var; the content env var is only set when the
+        # value is in the allowed set.
+        use_microsoft_opentelemetry(
+            enable_experimental_mode=True,
+            capture_message_content="not-a-real-mode",
+        )
+        self.assertNotIn(self._CONTENT_ENV, os.environ)
+        self.assertEqual(os.environ[self._STABILITY_ENV], "gen_ai_latest_experimental")
+
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    def test_unrecognised_value_does_not_overwrite_existing_content_env(self, _append_mock):
+        os.environ[self._CONTENT_ENV] = "span_only"
+        use_microsoft_opentelemetry(
+            enable_experimental_mode=True,
+            capture_message_content="banana",
+        )
+        self.assertEqual(os.environ[self._CONTENT_ENV], "span_only")
+
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    def test_all_documented_values_accepted(self, _append_mock):
+        for value in _CAPTURE_MESSAGE_CONTENT_ALLOWED_VALUES:
+            os.environ.pop(self._CONTENT_ENV, None)
+            use_microsoft_opentelemetry(
+                enable_experimental_mode=True,
+                capture_message_content=value,
+            )
+            self.assertEqual(
+                os.environ.get(self._CONTENT_ENV),
+                value,
+                msg=f"value {value!r} should set the env var",
+            )
+
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    def test_experimental_mode_false_does_not_set_env_vars(self, _append_mock):
+        # Even with a valid content value, omitting (or setting False)
+        # ``enable_experimental_mode`` must leave both env vars untouched.
+        use_microsoft_opentelemetry(
+            enable_experimental_mode=False,
+            capture_message_content="span_and_event",
+        )
+        self.assertNotIn(self._CONTENT_ENV, os.environ)
+        self.assertNotIn(self._STABILITY_ENV, os.environ)
+
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    def test_experimental_mode_without_capture_kwarg_does_not_set_env_vars(self, _append_mock):
+        # ``enable_experimental_mode=True`` alone is a no-op: the gate also
+        # requires ``capture_message_content`` to be supplied.
+        use_microsoft_opentelemetry(enable_experimental_mode=True)
+        self.assertNotIn(self._CONTENT_ENV, os.environ)
+        self.assertNotIn(self._STABILITY_ENV, os.environ)
+
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    def test_experimental_mode_does_not_overwrite_existing_stability_env(self, _append_mock):
+        # Pre-existing user-set stability opt-in should NOT be clobbered when
+        # the distro is invoked without enabling experimental mode.
+        os.environ[self._STABILITY_ENV] = "http"
+        use_microsoft_opentelemetry(
+            enable_experimental_mode=False,
+            capture_message_content="span_and_event",
+        )
+        self.assertEqual(os.environ[self._STABILITY_ENV], "http")
+
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    def test_experimental_mode_overwrites_stability_env_when_enabled(self, _append_mock):
+        # Conversely, when the user opts into experimental mode via the kwarg
+        # AND provides a content value, the distro takes ownership of the
+        # stability env var and overwrites any prior value.
+        os.environ[self._STABILITY_ENV] = "http"
+        use_microsoft_opentelemetry(
+            enable_experimental_mode=True,
+            capture_message_content="span_and_event",
+        )
+        self.assertEqual(os.environ[self._STABILITY_ENV], "gen_ai_latest_experimental")
 
 
 if __name__ == "__main__":
