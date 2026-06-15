@@ -166,8 +166,7 @@ def register_network_gauges():
         (_REQ_THROTTLE_NAME[0], _observe_request_throttle_count),
         (_REQ_EXCEPTION_NAME[0], _observe_request_exception_count),
     )
-    return all(
-        manager.add_metric_callback(name, callback) for name, callback in callbacks
-    )
+    for name, callback in callbacks:
+        manager.add_metric_callback(name, callback)
 
 
