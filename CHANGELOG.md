@@ -1,5 +1,21 @@
 # Release History
 
+# 1.3.4 (2026-06-17)
+
+### Bugs Fixed
+- Fix token count mismatch
+  ([#195](https://github.com/microsoft/opentelemetry-distro-python/pull/195))
+- Fix `microsoft.gen_ai.main_agent.*` propagation and self-promotion bugs
+  ([#196](https://github.com/microsoft/opentelemetry-distro-python/pull/196))
+- Comment out the OTLP wrapper
+  ([#200](https://github.com/microsoft/opentelemetry-distro-python/pull/200))
+- Fix `wrapt` dependency and change to positional arguments
+  ([#204](https://github.com/microsoft/opentelemetry-distro-python/pull/204))
+
+### Other Changes
+- Remove distro word references
+  ([#197](https://github.com/microsoft/opentelemetry-distro-python/pull/197))
+
 # 1.3.3 (2026-06-08)
 
 ### Features Added
