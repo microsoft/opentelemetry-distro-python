@@ -166,8 +166,6 @@ def register_network_gauges():
         (_REQ_THROTTLE_NAME[0], _observe_request_throttle_count),
         (_REQ_EXCEPTION_NAME[0], _observe_request_exception_count),
     ):
-        callbacks = manager._additional_callbacks.setdefault(metric, [])
-        if callback not in callbacks:
-            callbacks.append(callback)
+        manager.add_additional_metric_callback(metric, callback)
 
 
