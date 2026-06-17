@@ -8,6 +8,276 @@
 
 Superset of microsoft-agents-a365-observability-core constants plus
 package-specific environment variable constants.
+
+Span operation names:
+:var INVOKE_AGENT_OPERATION_NAME: Span operation name for agent invocation.
+:vartype INVOKE_AGENT_OPERATION_NAME: str
+:var EXECUTE_TOOL_OPERATION_NAME: Span operation name for tool execution.
+:vartype EXECUTE_TOOL_OPERATION_NAME: str
+:var OUTPUT_MESSAGES_OPERATION_NAME: Span operation name for output message processing.
+:vartype OUTPUT_MESSAGES_OPERATION_NAME: str
+:var CHAT_OPERATION_NAME: Span operation name for chat requests.
+:vartype CHAT_OPERATION_NAME: str
+:var APPLY_GUARDRAIL_OPERATION_NAME: Span operation name for guardrail evaluation.
+:vartype APPLY_GUARDRAIL_OPERATION_NAME: str
+
+OpenTelemetry semantic conventions:
+:var ERROR_TYPE_KEY: Attribute key for error type.
+:vartype ERROR_TYPE_KEY: str
+:var ERROR_MESSAGE_KEY: Attribute key for error message.
+:vartype ERROR_MESSAGE_KEY: str
+:var AZ_NAMESPACE_KEY: Attribute key for Azure namespace.
+:vartype AZ_NAMESPACE_KEY: str
+:var AZURE_RP_NAMESPACE_VALUE: Azure resource provider namespace value.
+:vartype AZURE_RP_NAMESPACE_VALUE: str
+:var SOURCE_NAME: Source name used for emitted telemetry.
+:vartype SOURCE_NAME: str
+
+Feature switches:
+:var ENABLE_OPENTELEMETRY_SWITCH: Feature switch for OpenTelemetry enablement.
+:vartype ENABLE_OPENTELEMETRY_SWITCH: str
+:var TRACE_CONTENTS_SWITCH: Feature switch for GenAI content tracing.
+:vartype TRACE_CONTENTS_SWITCH: str
+:var TRACE_CONTENTS_ENVIRONMENT_VARIABLE: Env var controlling GenAI content tracing.
+:vartype TRACE_CONTENTS_ENVIRONMENT_VARIABLE: str
+:var ENABLE_OBSERVABILITY: Env var controlling observability enablement.
+:vartype ENABLE_OBSERVABILITY: str
+:var ENABLE_A365_OBSERVABILITY: Env var controlling A365 observability enablement.
+:vartype ENABLE_A365_OBSERVABILITY: str
+
+GenAI semantic conventions:
+:var GEN_AI_CLIENT_OPERATION_DURATION_METRIC_NAME: Metric name for operation duration.
+:vartype GEN_AI_CLIENT_OPERATION_DURATION_METRIC_NAME: str
+:var GEN_AI_CLIENT_TOKEN_USAGE_METRIC_NAME: Metric name for token usage.
+:vartype GEN_AI_CLIENT_TOKEN_USAGE_METRIC_NAME: str
+:var GEN_AI_OPERATION_NAME_KEY: Attribute key for operation name.
+:vartype GEN_AI_OPERATION_NAME_KEY: str
+:var GEN_AI_REQUEST_MAX_TOKENS_KEY: Attribute key for request max tokens.
+:vartype GEN_AI_REQUEST_MAX_TOKENS_KEY: str
+:var GEN_AI_REQUEST_MODEL_KEY: Attribute key for request model.
+:vartype GEN_AI_REQUEST_MODEL_KEY: str
+:var GEN_AI_REQUEST_TEMPERATURE_KEY: Attribute key for request temperature.
+:vartype GEN_AI_REQUEST_TEMPERATURE_KEY: str
+:var GEN_AI_REQUEST_TOP_P_KEY: Attribute key for request top_p.
+:vartype GEN_AI_REQUEST_TOP_P_KEY: str
+:var GEN_AI_RESPONSE_FINISH_REASONS_KEY: Attribute key for response finish reasons.
+:vartype GEN_AI_RESPONSE_FINISH_REASONS_KEY: str
+:var GEN_AI_RESPONSE_MODEL_KEY: Attribute key for response model.
+:vartype GEN_AI_RESPONSE_MODEL_KEY: str
+:var GEN_AI_RESPONSE_ID_KEY: Attribute key for response id.
+:vartype GEN_AI_RESPONSE_ID_KEY: str
+:var GEN_AI_AGENT_ID_KEY: Attribute key for agent id.
+:vartype GEN_AI_AGENT_ID_KEY: str
+:var GEN_AI_AGENT_NAME_KEY: Attribute key for agent name.
+:vartype GEN_AI_AGENT_NAME_KEY: str
+:var GEN_AI_AGENT_DESCRIPTION_KEY: Attribute key for agent description.
+:vartype GEN_AI_AGENT_DESCRIPTION_KEY: str
+:var GEN_AI_AGENT_VERSION_KEY: Attribute key for agent version.
+:vartype GEN_AI_AGENT_VERSION_KEY: str
+:var GEN_AI_AGENT_PLATFORM_ID_KEY: Attribute key for platform id.
+:vartype GEN_AI_AGENT_PLATFORM_ID_KEY: str
+:var GEN_AI_AGENT_THOUGHT_PROCESS_KEY: Attribute key for thought process payload.
+:vartype GEN_AI_AGENT_THOUGHT_PROCESS_KEY: str
+:var GEN_AI_CONVERSATION_ID_KEY: Attribute key for conversation id.
+:vartype GEN_AI_CONVERSATION_ID_KEY: str
+:var GEN_AI_CONVERSATION_ITEM_LINK_KEY: Attribute key for conversation item link.
+:vartype GEN_AI_CONVERSATION_ITEM_LINK_KEY: str
+:var GEN_AI_TOKEN_TYPE_KEY: Attribute key for token type.
+:vartype GEN_AI_TOKEN_TYPE_KEY: str
+:var GEN_AI_USAGE_INPUT_TOKENS_KEY: Attribute key for input token usage.
+:vartype GEN_AI_USAGE_INPUT_TOKENS_KEY: str
+:var GEN_AI_USAGE_OUTPUT_TOKENS_KEY: Attribute key for output token usage.
+:vartype GEN_AI_USAGE_OUTPUT_TOKENS_KEY: str
+:var GEN_AI_CHOICE: Attribute key for model choice metadata.
+:vartype GEN_AI_CHOICE: str
+:var GEN_AI_PROVIDER_NAME_KEY: Attribute key for provider name.
+:vartype GEN_AI_PROVIDER_NAME_KEY: str
+:var GEN_AI_SYSTEM_INSTRUCTIONS_KEY: Attribute key for system instructions.
+:vartype GEN_AI_SYSTEM_INSTRUCTIONS_KEY: str
+:var GEN_AI_INPUT_MESSAGES_KEY: Attribute key for input messages payload.
+:vartype GEN_AI_INPUT_MESSAGES_KEY: str
+:var GEN_AI_OUTPUT_MESSAGES_KEY: Attribute key for output messages payload.
+:vartype GEN_AI_OUTPUT_MESSAGES_KEY: str
+
+Tool execution:
+:var GEN_AI_TOOL_CALL_ID_KEY: Attribute key for tool call id.
+:vartype GEN_AI_TOOL_CALL_ID_KEY: str
+:var GEN_AI_TOOL_NAME_KEY: Attribute key for tool name.
+:vartype GEN_AI_TOOL_NAME_KEY: str
+:var GEN_AI_TOOL_DESCRIPTION_KEY: Attribute key for tool description.
+:vartype GEN_AI_TOOL_DESCRIPTION_KEY: str
+:var GEN_AI_TOOL_ARGS_KEY: Attribute key for tool call arguments.
+:vartype GEN_AI_TOOL_ARGS_KEY: str
+:var GEN_AI_TOOL_CALL_RESULT_KEY: Attribute key for tool call result.
+:vartype GEN_AI_TOOL_CALL_RESULT_KEY: str
+:var GEN_AI_TOOL_TYPE_KEY: Attribute key for tool type.
+:vartype GEN_AI_TOOL_TYPE_KEY: str
+
+Human caller:
+:var USER_ID_KEY: Attribute key for human caller id.
+:vartype USER_ID_KEY: str
+:var USER_NAME_KEY: Attribute key for human caller name.
+:vartype USER_NAME_KEY: str
+:var USER_EMAIL_KEY: Attribute key for human caller email.
+:vartype USER_EMAIL_KEY: str
+:var GEN_AI_CALLER_CLIENT_IP_KEY: Attribute key for human caller client IP.
+:vartype GEN_AI_CALLER_CLIENT_IP_KEY: str
+
+Agent-to-agent caller:
+:var GEN_AI_CALLER_AGENT_USER_ID_KEY: Attribute key for caller agent user id.
+:vartype GEN_AI_CALLER_AGENT_USER_ID_KEY: str
+:var GEN_AI_CALLER_AGENT_EMAIL_KEY: Attribute key for caller agent user email.
+:vartype GEN_AI_CALLER_AGENT_EMAIL_KEY: str
+:var GEN_AI_CALLER_AGENT_NAME_KEY: Attribute key for caller agent name.
+:vartype GEN_AI_CALLER_AGENT_NAME_KEY: str
+:var GEN_AI_CALLER_AGENT_ID_KEY: Attribute key for caller agent id.
+:vartype GEN_AI_CALLER_AGENT_ID_KEY: str
+:var GEN_AI_CALLER_AGENT_APPLICATION_ID_KEY: Attribute key for caller agent blueprint id.
+:vartype GEN_AI_CALLER_AGENT_APPLICATION_ID_KEY: str
+:var GEN_AI_CALLER_AGENT_PLATFORM_ID_KEY: Attribute key for caller agent platform id.
+:vartype GEN_AI_CALLER_AGENT_PLATFORM_ID_KEY: str
+:var GEN_AI_CALLER_AGENT_VERSION_KEY: Attribute key for caller agent version.
+:vartype GEN_AI_CALLER_AGENT_VERSION_KEY: str
+
+Agent-specific dimensions:
+:var AGENT_ID_KEY: Attribute key for agent id.
+:vartype AGENT_ID_KEY: str
+:var GEN_AI_TASK_ID_KEY: Attribute key for task id.
+:vartype GEN_AI_TASK_ID_KEY: str
+:var GEN_AI_ICON_URI_KEY: Attribute key for agent icon URI.
+:vartype GEN_AI_ICON_URI_KEY: str
+:var GEN_AI_EXECUTION_PAYLOAD_KEY: Attribute key for execution payload.
+:vartype GEN_AI_EXECUTION_PAYLOAD_KEY: str
+:var TENANT_ID_KEY: Attribute key for tenant id.
+:vartype TENANT_ID_KEY: str
+:var GEN_AI_AGENT_AUID_KEY: Attribute key for agentic user id.
+:vartype GEN_AI_AGENT_AUID_KEY: str
+:var GEN_AI_AGENT_EMAIL_KEY: Attribute key for agentic user email.
+:vartype GEN_AI_AGENT_EMAIL_KEY: str
+:var GEN_AI_AGENT_BLUEPRINT_ID_KEY: Attribute key for agent blueprint id.
+:vartype GEN_AI_AGENT_BLUEPRINT_ID_KEY: str
+:var SESSION_ID_KEY: Attribute key for session id.
+:vartype SESSION_ID_KEY: str
+:var SESSION_DESCRIPTION_KEY: Attribute key for session description.
+:vartype SESSION_DESCRIPTION_KEY: str
+
+Error types:
+:var ERROR_TYPE_CANCELLED: Error type value for cancelled tasks.
+:vartype ERROR_TYPE_CANCELLED: str
+
+OTel standard keys:
+:var SERVER_ADDRESS_KEY: Attribute key for server address.
+:vartype SERVER_ADDRESS_KEY: str
+:var SERVER_PORT_KEY: Attribute key for server port.
+:vartype SERVER_PORT_KEY: str
+:var SERVICE_NAME_KEY: Attribute key for service name.
+:vartype SERVICE_NAME_KEY: str
+
+Custom span keys:
+:var CUSTOM_PARENT_SPAN_ID_KEY: Attribute key for custom parent span id.
+:vartype CUSTOM_PARENT_SPAN_ID_KEY: str
+:var CUSTOM_SPAN_NAME_KEY: Attribute key for custom span name.
+:vartype CUSTOM_SPAN_NAME_KEY: str
+
+Channel:
+:var CHANNEL_NAME_KEY: Attribute key for channel name.
+:vartype CHANNEL_NAME_KEY: str
+:var CHANNEL_LINK_KEY: Attribute key for channel link.
+:vartype CHANNEL_LINK_KEY: str
+
+Guardrail and security:
+:var GEN_AI_GUARDIAN_ID_KEY: Attribute key for guardian id.
+:vartype GEN_AI_GUARDIAN_ID_KEY: str
+:var GEN_AI_GUARDIAN_NAME_KEY: Attribute key for guardian name.
+:vartype GEN_AI_GUARDIAN_NAME_KEY: str
+:var GEN_AI_GUARDIAN_PROVIDER_NAME_KEY: Attribute key for guardian provider name.
+:vartype GEN_AI_GUARDIAN_PROVIDER_NAME_KEY: str
+:var GEN_AI_GUARDIAN_VERSION_KEY: Attribute key for guardian version.
+:vartype GEN_AI_GUARDIAN_VERSION_KEY: str
+:var GEN_AI_SECURITY_DECISION_TYPE_KEY: Attribute key for security decision type.
+:vartype GEN_AI_SECURITY_DECISION_TYPE_KEY: str
+:var GEN_AI_SECURITY_DECISION_REASON_KEY: Attribute key for security decision reason.
+:vartype GEN_AI_SECURITY_DECISION_REASON_KEY: str
+:var GEN_AI_SECURITY_DECISION_CODE_KEY: Attribute key for security decision code.
+:vartype GEN_AI_SECURITY_DECISION_CODE_KEY: str
+:var GEN_AI_SECURITY_TARGET_TYPE_KEY: Attribute key for security target type.
+:vartype GEN_AI_SECURITY_TARGET_TYPE_KEY: str
+:var GEN_AI_SECURITY_TARGET_ID_KEY: Attribute key for security target id.
+:vartype GEN_AI_SECURITY_TARGET_ID_KEY: str
+:var GEN_AI_SECURITY_POLICY_ID_KEY: Attribute key for security policy id.
+:vartype GEN_AI_SECURITY_POLICY_ID_KEY: str
+:var GEN_AI_SECURITY_POLICY_NAME_KEY: Attribute key for security policy name.
+:vartype GEN_AI_SECURITY_POLICY_NAME_KEY: str
+:var GEN_AI_SECURITY_POLICY_VERSION_KEY: Attribute key for security policy version.
+:vartype GEN_AI_SECURITY_POLICY_VERSION_KEY: str
+:var GEN_AI_SECURITY_CONTENT_INPUT_HASH_KEY: Attribute key for input content hash.
+:vartype GEN_AI_SECURITY_CONTENT_INPUT_HASH_KEY: str
+:var GEN_AI_SECURITY_CONTENT_MODIFIED_KEY: Attribute key for content modified flag.
+:vartype GEN_AI_SECURITY_CONTENT_MODIFIED_KEY: str
+:var GEN_AI_SECURITY_EXTERNAL_EVENT_ID_KEY: Attribute key for external event id.
+:vartype GEN_AI_SECURITY_EXTERNAL_EVENT_ID_KEY: str
+:var GEN_AI_SECURITY_CONTENT_INPUT_VALUE_KEY: Attribute key for input content value.
+:vartype GEN_AI_SECURITY_CONTENT_INPUT_VALUE_KEY: str
+:var GEN_AI_SECURITY_CONTENT_OUTPUT_VALUE_KEY: Attribute key for output content value.
+:vartype GEN_AI_SECURITY_CONTENT_OUTPUT_VALUE_KEY: str
+:var GEN_AI_SECURITY_FINDING_EVENT_NAME: Event name for security findings.
+:vartype GEN_AI_SECURITY_FINDING_EVENT_NAME: str
+:var GEN_AI_SECURITY_RISK_CATEGORY_KEY: Attribute key for risk category.
+:vartype GEN_AI_SECURITY_RISK_CATEGORY_KEY: str
+:var GEN_AI_SECURITY_RISK_SEVERITY_KEY: Attribute key for risk severity.
+:vartype GEN_AI_SECURITY_RISK_SEVERITY_KEY: str
+:var GEN_AI_SECURITY_RISK_SCORE_KEY: Attribute key for risk score.
+:vartype GEN_AI_SECURITY_RISK_SCORE_KEY: str
+:var GEN_AI_SECURITY_RISK_METADATA_KEY: Attribute key for risk metadata.
+:vartype GEN_AI_SECURITY_RISK_METADATA_KEY: str
+:var GEN_AI_SECURITY_POLICY_DECISION_TYPE_KEY: Attribute key for policy decision type.
+:vartype GEN_AI_SECURITY_POLICY_DECISION_TYPE_KEY: str
+
+Telemetry SDK attributes:
+:var TELEMETRY_SDK_NAME_KEY: Attribute key for telemetry SDK name.
+:vartype TELEMETRY_SDK_NAME_KEY: str
+:var TELEMETRY_SDK_LANGUAGE_KEY: Attribute key for telemetry SDK language.
+:vartype TELEMETRY_SDK_LANGUAGE_KEY: str
+:var TELEMETRY_SDK_VERSION_KEY: Attribute key for telemetry SDK version.
+:vartype TELEMETRY_SDK_VERSION_KEY: str
+:var TELEMETRY_SDK_NAME_VALUE: Telemetry SDK name value.
+:vartype TELEMETRY_SDK_NAME_VALUE: str
+:var TELEMETRY_SDK_LANGUAGE_VALUE: Telemetry SDK language value.
+:vartype TELEMETRY_SDK_LANGUAGE_VALUE: str
+
+Package-specific environment variable names:
+:var ENABLE_A365_OBSERVABILITY_EXPORTER: Env var enabling the A365 exporter.
+:vartype ENABLE_A365_OBSERVABILITY_EXPORTER: str
+:var A365_OBSERVABILITY_DOMAIN_OVERRIDE: Env var overriding the A365 domain.
+:vartype A365_OBSERVABILITY_DOMAIN_OVERRIDE: str
+:var A365_TENANT_ID_ENV: Env var for tenant id.
+:vartype A365_TENANT_ID_ENV: str
+:var A365_AGENT_ID_ENV: Env var for agent id.
+:vartype A365_AGENT_ID_ENV: str
+:var A365_CLUSTER_CATEGORY_ENV: Env var for cluster category.
+:vartype A365_CLUSTER_CATEGORY_ENV: str
+:var A365_USE_S2S_ENDPOINT_ENV: Env var toggling S2S endpoint usage.
+:vartype A365_USE_S2S_ENDPOINT_ENV: str
+:var A365_SUPPRESS_INVOKE_AGENT_INPUT_ENV: Env var suppressing invoke input capture.
+:vartype A365_SUPPRESS_INVOKE_AGENT_INPUT_ENV: str
+:var A365_OBSERVABILITY_SCOPE_OVERRIDE_ENV: Env var overriding observability scope.
+:vartype A365_OBSERVABILITY_SCOPE_OVERRIDE_ENV: str
+
+HTTP timeout:
+:var A365_HTTP_TIMEOUT_SECONDS: HTTP timeout in seconds for outbound calls.
+:vartype A365_HTTP_TIMEOUT_SECONDS: float
+
+FIC token flow environment variables:
+:var A365_AGENT_APP_INSTANCE_ID_ENV: Env var for agent app instance id.
+:vartype A365_AGENT_APP_INSTANCE_ID_ENV: str
+:var A365_AGENTIC_USER_ID_ENV: Env var for agentic user id.
+:vartype A365_AGENTIC_USER_ID_ENV: str
+:var A365_SERVICE_CLIENT_ID_ENV: Env var for service connection client id.
+:vartype A365_SERVICE_CLIENT_ID_ENV: str
+:var A365_SERVICE_CLIENT_SECRET_ENV: Env var for service connection client secret.
+:vartype A365_SERVICE_CLIENT_SECRET_ENV: str
+:var A365_SERVICE_TENANT_ID_ENV: Env var for service connection tenant id.
+:vartype A365_SERVICE_TENANT_ID_ENV: str
 """
 
 # --- Span operation names ---
