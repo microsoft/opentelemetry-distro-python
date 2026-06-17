@@ -58,7 +58,7 @@ def _get_common_attributes() -> dict:
 
 
 def _observe_request_success_count(options: CallbackOptions) -> Iterable[Observation]:
-    """Drain per-endpoint success counts and emit one observation each."""
+    """Drain the per-endpoint success counts and emit one observation each."""
     common = _get_common_attributes()
     observations: List[Observation] = []
     for key, value in drain(REQUEST_SUCCESS_NAME).items():
