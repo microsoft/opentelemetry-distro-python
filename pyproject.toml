@@ -40,7 +40,7 @@ dependencies = [
     "opentelemetry-instrumentation-openai-agents-v2==0.1.0",
     "opentelemetry-instrumentation-openai-v2==2.3b0",
     "opentelemetry-resource-detector-azure<1.0.0,>=0.1.5",
-    "wrapt>=1.0",
+    "wrapt>=1.0.0,<2.0.0",
     "opentelemetry-util-genai==0.3b0",
     "aiohttp>=3.8.0",
     "PyJWT",
