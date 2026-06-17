@@ -92,9 +92,9 @@ class LangChainInstrumentor(BaseInstrumentor):
 
         self._original_cb_init = langchain_core.callbacks.BaseCallbackManager.__init__
         wrap_function_wrapper(
-            module="langchain_core.callbacks",
-            name="BaseCallbackManager.__init__",
-            wrapper=_BaseCallbackManagerInit(self._tracer),
+            "langchain_core.callbacks",
+            "BaseCallbackManager.__init__",
+            _BaseCallbackManagerInit(self._tracer),
         )
 
         # Register the A365 span enricher when the A365 pipeline is available.
