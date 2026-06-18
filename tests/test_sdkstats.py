@@ -86,19 +86,8 @@ def _reset_upstream_singleton():
 
 
 def _reset_network_metrics_guard():
-    """Clear the StatsbeatManager instance's additional-callbacks store so tests can re-register."""
-    try:
-        from azure.monitor.opentelemetry.exporter.statsbeat._manager import StatsbeatManager
-    except ImportError:
-        return
-
-    try:
-        manager = StatsbeatManager()
-        callbacks = getattr(manager, "_additional_callbacks", None)
-        if callbacks is not None:
-            callbacks.clear()
-    except Exception:  # pylint: disable=broad-except
-        pass
+    """Reset callback registration by recreating the upstream singleton."""
+    _reset_upstream_singleton()
 
 
 class TestSdkStatsEnabled(unittest.TestCase):
@@ -339,6 +328,16 @@ class TestNetworkMetricsRegistration(unittest.TestCase):
         register_network_gauges()
         register_network_gauges()
 
+    def test_register_calls_additional_callback_api_for_each_metric(self):
+        from azure.monitor.opentelemetry.exporter.statsbeat._manager import StatsbeatManager
+        from microsoft.opentelemetry._sdkstats._network_metrics import (
+            register_network_gauges,
+        )
+
+        with patch.object(StatsbeatManager, "add_additional_metric_callbacks") as mock_add:
+            register_network_gauges()
+            self.assertEqual(mock_add.call_count, 6)
+
     def test_registers_callback_under_request_success_metric_name(self):
         from azure.monitor.opentelemetry.exporter._constants import _REQ_SUCCESS_NAME
         from azure.monitor.opentelemetry.exporter.statsbeat._manager import StatsbeatManager
@@ -348,7 +347,7 @@ class TestNetworkMetricsRegistration(unittest.TestCase):
         )
 
         register_network_gauges()
-        callbacks = StatsbeatManager()._additional_callbacks.get(_REQ_SUCCESS_NAME[0], [])
+        callbacks = StatsbeatManager().get_additional_metric_callbacks(_REQ_SUCCESS_NAME[0])
         self.assertIn(_observe_request_success_count, callbacks)
 
     def test_returns_none_when_upstream_unavailable(self):
@@ -710,9 +709,8 @@ class TestRegisterNetworkGaugesAttachesAllSix(unittest.TestCase):
             _REQ_THROTTLE_NAME[0]: _observe_request_throttle_count,
             _REQ_EXCEPTION_NAME[0]: _observe_request_exception_count,
         }
-        # pylint: disable=protected-access
         for metric_name, callback in expected.items():
-            callbacks = manager._additional_callbacks.get(metric_name, [])
+            callbacks = manager.get_additional_metric_callbacks(metric_name)
             self.assertIn(
                 callback,
                 callbacks,
