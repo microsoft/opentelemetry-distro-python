@@ -151,7 +151,7 @@ def _observe_request_exception_count(options: CallbackOptions) -> Iterable[Obser
     return observations
 
 
-def register_network_gauges():
+def register_network_gauges() -> None:
     try:
         from azure.monitor.opentelemetry.exporter.statsbeat._manager import StatsbeatManager  # type: ignore[import-not-found] # pylint: disable=line-too-long
     except ImportError:
