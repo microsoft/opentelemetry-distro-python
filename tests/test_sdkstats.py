@@ -48,6 +48,7 @@ from microsoft.opentelemetry._sdkstats._utils import (
     record_throttle,
     reset_all,
 )
+
 # Network sdkstats wrappers are temporarily disabled. See
 # microsoft/opentelemetry/_sdkstats/_otlp_wrapper.py.
 # from microsoft.opentelemetry._sdkstats._otlp_wrapper import (

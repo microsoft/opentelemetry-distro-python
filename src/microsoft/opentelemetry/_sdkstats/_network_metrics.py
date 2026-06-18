@@ -153,7 +153,7 @@ def _observe_request_exception_count(options: CallbackOptions) -> Iterable[Obser
 
 def register_network_gauges():
     try:
-        from azure.monitor.opentelemetry.exporter.statsbeat._manager import StatsbeatManager  # type: ignore[import-not-found]
+        from azure.monitor.opentelemetry.exporter.statsbeat._manager import StatsbeatManager  # type: ignore[import-not-found] # pylint: disable=line-too-long
     except ImportError:
         logger.debug("Upstream statsbeat unavailable; skipping network gauges.")
         return
@@ -167,5 +167,3 @@ def register_network_gauges():
         (_REQ_EXCEPTION_NAME[0], _observe_request_exception_count),
     ):
         manager.add_additional_metric_callbacks(metric, callback)
-
-
