@@ -493,9 +493,9 @@ class _Agent365Exporter(SpanExporter):
                             "Grant the 'Agent365.Observability.OtelWrite' role to%s "
                             "and ensure admin consent has been granted. "
                             "| Setup instructions: "
-                            "https://learn.microsoft.com/en-us/microsoft-agent-365/developer/observability?tabs=python#http-403-forbidden "
+                            "https://learn.microsoft.com/microsoft-agent-365/developer/observability?tabs=python#http-403-forbidden "
                             "| For Foundry: "
-                            "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/grant-agent-365-permissions "
+                            "https://learn.microsoft.com/azure/foundry/agents/how-to/grant-agent-365-permissions "
                             "| Correlation ID: %s.",
                             sp_str,
                             correlation_id,
