@@ -487,7 +487,7 @@ class _Agent365Exporter(SpanExporter):
                         }
                         if sp:
                             error_detail["service_principal"] = sp
-                        logger.error(json.dumps(error_detail, separators=(",", ":")))
+                        logger.error(json.dumps(error_detail, indent=2))
                     else:
                         logger.error(
                             "HTTP %d non-retryable error. Correlation ID: %s. Response: %s. "
