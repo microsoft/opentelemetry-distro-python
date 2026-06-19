@@ -5,8 +5,9 @@
 
 Defines the structured message format for input/output message tracing,
 following the OpenTelemetry gen-ai semantic conventions:
-  https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-input-messages.json
-  https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-output-messages.json
+
+* https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-input-messages.json
+* https://opentelemetry.io/docs/specs/semconv/gen-ai/gen-ai-output-messages.json
 """
 
 from __future__ import annotations
@@ -23,27 +24,39 @@ from typing import Union
 class MessageRole(Enum):
     """Role of a message participant per OTEL gen-ai semantic conventions."""
 
+    #: System / developer instructions that set up the conversation.
     SYSTEM = "system"
+    #: Input authored by the end user.
     USER = "user"
+    #: Output produced by the model.
     ASSISTANT = "assistant"
+    #: Output of a tool returned back to the model.
     TOOL = "tool"
 
 
 class FinishReason(Enum):
     """Reason a model stopped generating per OTEL gen-ai semantic conventions."""
 
+    #: The model emitted a natural stop point or a provided stop sequence.
     STOP = "stop"
+    #: Generation stopped because the maximum token limit was reached.
     LENGTH = "length"
+    #: Generation stopped because content was filtered by a safety system.
     CONTENT_FILTER = "content_filter"
+    #: The model stopped to request a tool call.
     TOOL_CALL = "tool_call"
+    #: Generation stopped because an error occurred.
     ERROR = "error"
 
 
 class Modality(Enum):
     """Media modality for blob, file, and URI parts."""
 
+    #: Image content.
     IMAGE = "image"
+    #: Video content.
     VIDEO = "video"
+    #: Audio content.
     AUDIO = "audio"
 
 

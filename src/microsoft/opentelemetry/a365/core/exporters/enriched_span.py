@@ -6,7 +6,9 @@
 
 """Enriched ReadableSpan wrapper for adding attributes to immutable spans.
 
-Vendored from microsoft-agents-a365-observability-core exporters/enriched_span.py.
+Wraps an already-ended :class:`~opentelemetry.sdk.trace.ReadableSpan` so that
+additional attributes can be layered on top without mutating the original
+span, which is immutable once ended.
 """
 
 from __future__ import annotations

@@ -4,9 +4,11 @@
 # license information.
 # --------------------------------------------------------------------------
 
-"""Configuration for Agent365 exporter.
+"""Configuration options for the Agent365 span exporter.
 
-Vendored from microsoft-agents-a365-observability-core exporters/agent365_exporter_options.py.
+Defines the tunable settings—such as the ingestion endpoint, authentication
+token resolvers, and payload size limits—used to construct an Agent365
+exporter.
 """
 
 from __future__ import annotations

@@ -1,7 +1,11 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-# Microsoft Agent 365 Python SDK for OpenTelemetry tracing.
+"""Core Agent365 observability primitives.
+
+Span scopes (such as invoke-agent, execute-tool, and apply-guardrail), data
+models, and exporters that make up the Agent365 OpenTelemetry tracing surface.
+"""
 
 from microsoft.opentelemetry.a365.core.agent_details import AgentDetails
 from microsoft.opentelemetry.a365.core.apply_guardrail_scope import ApplyGuardrailScope

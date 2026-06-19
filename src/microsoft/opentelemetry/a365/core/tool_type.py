@@ -9,6 +9,9 @@ from enum import Enum
 class ToolType(Enum):
     """Enumeration for different tool types for execute tool contexts."""
 
+    #: A callable function tool.
     FUNCTION = "function"
+    #: An extension or plugin tool.
     EXTENSION = "extension"
+    #: A datastore / knowledge-retrieval tool.
     DATASTORE = "datastore"
