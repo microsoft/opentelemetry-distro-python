@@ -487,7 +487,7 @@ class _Agent365Exporter(SpanExporter):
                         }
                         if sp:
                             error_detail["service_principal"] = sp
-                        error_json = str(json.dumps(error_detail, indent=2))
+                        error_json = str(json.dumps(error_detail, indent=2)).replace("\n", "\r")
                         logger.error(error_json)
                     else:
                         logger.error(
