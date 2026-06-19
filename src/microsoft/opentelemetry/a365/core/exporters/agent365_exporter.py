@@ -11,6 +11,7 @@ Vendored from microsoft-agents-a365-observability-core exporters/agent365_export
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import threading
@@ -363,6 +364,75 @@ class _Agent365Exporter(SpanExporter):
             return text[:max_length] + "..."
         return text
 
+    @staticmethod
+    def _extract_token_identity(headers: dict[str, str | bytes]) -> str:
+        """Decode the Bearer JWT to extract the service principal identity.
+
+        Returns a string like ' service principal (app ID: <uuid>, object ID: <uuid>)'
+        or empty string if the token is absent or cannot be decoded.
+        """
+        try:
+            auth = headers.get("authorization", "")
+            if isinstance(auth, bytes):
+                auth = auth.decode("utf-8", errors="replace")
+            if not auth.startswith("Bearer "):
+                return ""
+            jwt_token = auth[len("Bearer "):]
+            parts = jwt_token.split(".")
+            if len(parts) != 3:
+                return ""
+            # Pad to a multiple of 4 for base64 decoding
+            payload_b64 = parts[1]
+            payload_b64 += "=" * (4 - len(payload_b64) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+            app_id = payload.get("appid") or payload.get("azp") or ""
+            oid = payload.get("oid") or ""
+            if app_id or oid:
+                identity_parts = []
+                if app_id:
+                    identity_parts.append(f"app ID: {app_id}")
+                if oid:
+                    identity_parts.append(f"object ID: {oid}")
+                return f" service principal ({', '.join(identity_parts)})"
+        except Exception:  # pylint: disable=broad-except
+            pass
+        return ""
+
+    @staticmethod
+    def _extract_token_identity(headers: dict[str, str | bytes]) -> str:
+        """Decode the Bearer JWT to extract the service principal identity (appid, oid).
+
+        Returns a human-readable string like
+        ' Service principal: app ID (client_id)=<uuid>, object ID=<uuid>.'
+        or an empty string if the token is absent or cannot be decoded.
+        """
+        try:
+            auth = headers.get("authorization", "")
+            if isinstance(auth, bytes):
+                auth = auth.decode("utf-8", errors="replace")
+            if not auth.startswith("Bearer "):
+                return ""
+            jwt_token = auth[len("Bearer "):]
+            parts = jwt_token.split(".")
+            if len(parts) != 3:
+                return ""
+            # Pad to a multiple of 4 for base64 decoding
+            payload_b64 = parts[1]
+            payload_b64 += "=" * (4 - len(payload_b64) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+            app_id = payload.get("appid") or payload.get("azp") or ""
+            oid = payload.get("oid") or ""
+            if app_id or oid:
+                identity_parts = []
+                if app_id:
+                    identity_parts.append(f"app ID (client_id)={app_id}")
+                if oid:
+                    identity_parts.append(f"object ID={oid}")
+                return f" Service principal: {', '.join(identity_parts)}."
+        except Exception:  # pylint: disable=broad-except
+            pass
+        return ""
+
     def _post_with_retries(  # pylint: disable=too-many-statements
         self, url: str, body: str, headers: dict[str, str | bytes]
     ) -> bool:
@@ -449,16 +519,18 @@ class _Agent365Exporter(SpanExporter):
                             record_failure(ENDPOINT_A365, host, resp.status_code)
                     www_auth = resp.headers.get("www-authenticate", "")
                     if resp.status_code == 403 and "insufficient_scope" in www_auth:
+                        identity_info = self._extract_token_identity(headers)
                         logger.error(
                             "HTTP 403 authorization error: the token is missing the required "
                             "'Agent365.Observability.OtelWrite' app role. "
-                            "Grant this role to your application's service principal and ensure "
-                            "admin consent has been granted. "
-                            "For setup instructions see: "
-                            "https://learn.microsoft.com/en-us/microsoft-agent-365/developer/observability?tabs=python#http-403-forbidden "
-                            "(If you are using Foundry, see also: "
-                            "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/grant-agent-365-permissions) "
-                            "Correlation ID: %s.",
+                            "Grant the 'Agent365.Observability.OtelWrite' role to%s "
+                            "and ensure admin consent has been granted.\n"
+                            "  -> Setup instructions: "
+                            "https://learn.microsoft.com/en-us/microsoft-agent-365/developer/observability?tabs=python#http-403-forbidden\n"
+                            "  -> For Foundry: "
+                            "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/grant-agent-365-permissions\n"
+                            "  Correlation ID: %s.",
+                            identity_info if identity_info else " your application's service principal",
                             correlation_id,
                         )
                     else:
