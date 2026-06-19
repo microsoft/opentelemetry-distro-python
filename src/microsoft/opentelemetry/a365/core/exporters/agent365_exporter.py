@@ -447,15 +447,30 @@ class _Agent365Exporter(SpanExporter):
                             record_throttle(ENDPOINT_A365, host, resp.status_code)
                         else:
                             record_failure(ENDPOINT_A365, host, resp.status_code)
-                    logger.error(
-                        "HTTP %d non-retryable error. Correlation ID: %s. Response: %s. "
-                        "WWW-Authenticate: %s. Response headers: %s",
-                        resp.status_code,
-                        correlation_id,
-                        response_text,
-                        resp.headers.get("www-authenticate", "N/A"),
-                        dict(resp.headers),
-                    )
+                    www_auth = resp.headers.get("www-authenticate", "")
+                    if resp.status_code == 403 and "insufficient_scope" in www_auth:
+                        logger.error(
+                            "HTTP 403 authorization error: the token is missing the required "
+                            "'Agent365.Observability.OtelWrite' app role. "
+                            "Grant this role to your application's service principal and ensure "
+                            "admin consent has been granted. "
+                            "For setup instructions see: "
+                            "https://learn.microsoft.com/en-us/microsoft-agent-365/developer/observability?tabs=python#http-403-forbidden "
+                            "(If you are using Foundry, see also: "
+                            "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/grant-agent-365-permissions) "
+                            "Correlation ID: %s.",
+                            correlation_id,
+                        )
+                    else:
+                        logger.error(
+                            "HTTP %d non-retryable error. Correlation ID: %s. Response: %s. "
+                            "WWW-Authenticate: %s. Response headers: %s",
+                            resp.status_code,
+                            correlation_id,
+                            response_text,
+                            www_auth or "N/A",
+                            dict(resp.headers),
+                        )
                 return False
 
             except requests.RequestException as e:

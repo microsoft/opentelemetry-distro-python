@@ -531,6 +531,36 @@ class TestNetworkStatsbeatHook(unittest.TestCase):
         exporter.shutdown()
 
     @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.is_sdkstats_enabled", return_value=False)
+    def test_403_insufficient_scope_logs_actionable_message(self, _enabled):
+        """HTTP 403 with insufficient_scope logs an actionable message with doc links."""
+        exporter = _Agent365Exporter(token_resolver=lambda a, t: "token")
+        exporter._session = MagicMock()
+        exporter._session.post.return_value = _make_response(
+            403,
+            headers={
+                "www-authenticate": (
+                    'Bearer error="insufficient_scope", '
+                    'error_description="Required app role: Agent365.Observability.OtelWrite", '
+                    'scope="Agent365.Observability.OtelWrite"'
+                ),
+                "x-ms-correlation-id": "test-correlation-id",
+            },
+        )
+        with self.assertLogs(
+            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter", level="ERROR"
+        ) as log:
+            result = exporter._post_with_retries(self.URL, "{}", {})
+
+        self.assertFalse(result)
+        self.assertEqual(len(log.output), 1)
+        msg = log.output[0]
+        self.assertIn("Agent365.Observability.OtelWrite", msg)
+        self.assertIn("https://learn.microsoft.com/en-us/microsoft-agent-365/developer/observability", msg)
+        self.assertIn("https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/grant-agent-365-permissions", msg)
+        self.assertIn("Foundry", msg)
+        exporter.shutdown()
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.is_sdkstats_enabled", return_value=False)
     def test_disabled_records_no_metrics(self, _enabled):
         """When sdkstats is disabled, none of the new helpers fire."""
         from microsoft.opentelemetry._sdkstats._utils import (
