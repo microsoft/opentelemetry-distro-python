@@ -478,17 +478,28 @@ class _Agent365Exporter(SpanExporter):
                     www_auth = resp.headers.get("www-authenticate", "")
                     if resp.status_code == 403 and "insufficient_scope" in www_auth:
                         sp = self._extract_token_identity(headers)
-                        error_detail: dict[str, Any] = {
-                            "error": "HTTP 403: Token missing 'Agent365.Observability.OtelWrite' app role",
-                            "action": "Grant the 'Agent365.Observability.OtelWrite' role to the service principal and ensure admin consent has been granted",
-                            "docs": "https://learn.microsoft.com/en-us/microsoft-agent-365/developer/observability?tabs=python#http-403-forbidden",
-                            "foundry_docs": "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/grant-agent-365-permissions",
-                            "correlation_id": correlation_id,
-                        }
                         if sp:
-                            error_detail["service_principal"] = sp
-                        error_json = str(json.dumps(error_detail, indent=2)).replace("\n", "\r")
-                        logger.error(error_json)
+                            sp_parts = []
+                            if sp.get("app_id"):
+                                sp_parts.append(f"app ID: {sp['app_id']}")
+                            if sp.get("object_id"):
+                                sp_parts.append(f"object ID: {sp['object_id']}")
+                            sp_str = f" service principal ({', '.join(sp_parts)})"
+                        else:
+                            sp_str = " your application's service principal"
+                        logger.error(
+                            "HTTP 403 authorization error: the token is missing the required "
+                            "'Agent365.Observability.OtelWrite' app role. "
+                            "Grant the 'Agent365.Observability.OtelWrite' role to%s "
+                            "and ensure admin consent has been granted. "
+                            "| Setup instructions: "
+                            "https://learn.microsoft.com/en-us/microsoft-agent-365/developer/observability?tabs=python#http-403-forbidden "
+                            "| For Foundry: "
+                            "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/grant-agent-365-permissions "
+                            "| Correlation ID: %s.",
+                            sp_str,
+                            correlation_id,
+                        )
                     else:
                         logger.error(
                             "HTTP %d non-retryable error. Correlation ID: %s. Response: %s. "
