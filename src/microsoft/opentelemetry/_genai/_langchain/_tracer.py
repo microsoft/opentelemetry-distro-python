@@ -108,7 +108,6 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         "_agent_config",
         "_agent_run_ids",
         "_agent_content",
-        "_agent_wrapper_spans",
         "_spans_by_run",
         "_event_logger",
         "_context_tokens",
@@ -132,7 +131,6 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         self._agent_config: dict[str, Any] = agent_config or {}
         self._agent_run_ids: set[UUID] = set()
         self._agent_content: dict[UUID, dict[str, Any]] = {}
-        self._agent_wrapper_spans: dict[UUID, Span] = {}
         self._spans_by_run: OrderedDict[UUID, Span] = OrderedDict()
         self._event_logger = event_logger
         self._context_tokens: dict[UUID, list[Token]] = {}
@@ -157,7 +155,6 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                 evicted_id, _ = self._spans_by_run.popitem(last=False)
                 self._agent_run_ids.discard(evicted_id)
                 self._agent_content.pop(evicted_id, None)
-                self._agent_wrapper_spans.pop(evicted_id, None)
                 self._context_tokens.pop(evicted_id, None)
                 self.run_map.pop(str(evicted_id), None)
 
@@ -192,50 +189,19 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         else:
             span_name = run.name
 
-        # For agent runs, always create a wrapper span.
-        # The wrapper gets the agent name (from config or metadata).
-        # The inner span shows the framework name (e.g. "invoke_agent LangGraph").
-        wrapper_span: Span | None = None
+        # Suppress internal LangGraph orchestration chain nodes while keeping
+        # their child spans attached to the current active context.
+        if run.run_type.lower() == "chain" and run.name in ("model", "tools"):
+            return
+
+        # Agent runs are emitted as a single invoke_agent span.
         if is_agent:
             agent_name = self._resolve_agent_name(run, use_config=not is_nested_agent)
-            wrapper_label = agent_name or run.name
-            wrapper_span = self._tracer.start_span(
-                name=f"{INVOKE_AGENT_OPERATION_NAME} {wrapper_label}",
-                context=parent_context,
-                start_time=start_time_utc_nano,
-                kind=SpanKind.INTERNAL,
+            span_name = (
+                f"{INVOKE_AGENT_OPERATION_NAME} {agent_name}"
+                if agent_name
+                else f"{INVOKE_AGENT_OPERATION_NAME} {run.name}"
             )
-            # Set agent attributes on wrapper span BEFORE creating the inner
-            # span so that GenAIMainAgentSpanProcessor.on_start can read them
-            # from the parent when the inner span is created.
-            wrapper_span.set_attribute(GEN_AI_OPERATION_NAME_KEY, INVOKE_AGENT_OPERATION_NAME)
-            if agent_name:
-                wrapper_span.set_attribute(GEN_AI_AGENT_NAME_KEY, agent_name)
-            # Apply agent identity from config only for the top-level agent.
-            # Nested agents derive identity solely from run metadata.
-            if not is_nested_agent:
-                agent_id = self._agent_config.get("agent_id")
-                if agent_id:
-                    wrapper_span.set_attribute(GEN_AI_AGENT_ID_KEY, agent_id)
-                agent_desc = self._agent_config.get("agent_description")
-                if agent_desc:
-                    wrapper_span.set_attribute(GEN_AI_AGENT_DESCRIPTION_KEY, agent_desc)
-                agent_version = self._agent_config.get("agent_version")
-                if agent_version:
-                    wrapper_span.set_attribute(GEN_AI_AGENT_VERSION_KEY, agent_version)
-            wrapper_span.set_attributes(dict(flatten(extract_agent_metadata(run))))
-            server_addr = self._agent_config.get("server_address")
-            if server_addr:
-                wrapper_span.set_attribute(SERVER_ADDRESS_KEY, server_addr)
-            server_port = self._agent_config.get("server_port")
-            if server_port:
-                wrapper_span.set_attribute(SERVER_PORT_KEY, server_port)
-            wrapper_span.set_attributes(dict(flatten(extract_session_info(run))))
-
-            parent_context = trace_api.set_span_in_context(wrapper_span)
-            # Resolve framework name for the inner span (e.g. "LangGraph")
-            framework_name = self._resolve_framework_name(run)
-            span_name = f"{INVOKE_AGENT_OPERATION_NAME} {framework_name}"
 
         if run.run_type.lower() in ("llm", "chat_model"):
             span_kind = SpanKind.CLIENT
@@ -248,6 +214,31 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             start_time=start_time_utc_nano,
             kind=span_kind,
         )
+
+        if is_agent:
+            span.set_attribute(GEN_AI_OPERATION_NAME_KEY, INVOKE_AGENT_OPERATION_NAME)
+            if agent_name:
+                span.set_attribute(GEN_AI_AGENT_NAME_KEY, agent_name)
+            # Apply agent identity from config only for the top-level agent.
+            # Nested agents derive identity solely from run metadata.
+            if not is_nested_agent:
+                agent_id = self._agent_config.get("agent_id")
+                if agent_id:
+                    span.set_attribute(GEN_AI_AGENT_ID_KEY, agent_id)
+                agent_desc = self._agent_config.get("agent_description")
+                if agent_desc:
+                    span.set_attribute(GEN_AI_AGENT_DESCRIPTION_KEY, agent_desc)
+                agent_version = self._agent_config.get("agent_version")
+                if agent_version:
+                    span.set_attribute(GEN_AI_AGENT_VERSION_KEY, agent_version)
+            span.set_attributes(dict(flatten(extract_agent_metadata(run))))
+            server_addr = self._agent_config.get("server_address")
+            if server_addr:
+                span.set_attribute(SERVER_ADDRESS_KEY, server_addr)
+            server_port = self._agent_config.get("server_port")
+            if server_port:
+                span.set_attribute(SERVER_PORT_KEY, server_port)
+            span.set_attributes(dict(flatten(extract_session_info(run))))
 
         if not self._separate_trace_from_runtime_context:
             token = context_api.attach(trace_api.set_span_in_context(span))
@@ -269,8 +260,6 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                     "input_tokens": 0,
                     "output_tokens": 0,
                 }
-                if wrapper_span is not None:
-                    self._agent_wrapper_spans[run.id] = wrapper_span
 
         with self._lock:
             self._spans_by_run[run.id] = span
@@ -289,7 +278,6 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
 
         with self._lock:
             span = self._spans_by_run.pop(run.id, None)
-            wrapper_span = self._agent_wrapper_spans.pop(run.id, None) if is_agent else None
             tokens = self._context_tokens.pop(run.id, None)
 
         if tokens:
@@ -308,11 +296,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         if span:
             invocation: LLMInvocation | None = None
             try:
-                if is_agent and wrapper_span:
-                    # Two-span agent: update inner span as chain, finalize wrapper as agent
-                    _update_span(span, run)
-                elif is_agent:
-                    # Single-span agent: finalize directly
+                if is_agent:
                     self._finalize_agent_span(span, run)
                 else:
                     invocation = _update_span(span, run)
@@ -325,14 +309,6 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                 except Exception:
                     logger.debug("Failed to emit LLM event.", exc_info=True)
             span.end(end_time=end_time_utc_nano)
-
-        # Finalize and end wrapper span after the inner span
-        if wrapper_span:
-            try:
-                self._finalize_agent_span(wrapper_span, run)
-            except Exception:
-                logger.exception("Failed to finalize agent wrapper span.")
-            wrapper_span.end(end_time=end_time_utc_nano)
 
         # Clean up agent tracking
         if is_agent:
@@ -437,19 +413,6 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         if run.name and run.name != "LangGraph":
             return str(run.name)
         return None
-
-    @staticmethod
-    def _resolve_framework_name(run: Run) -> str:
-        """Resolve the framework/graph type name for the inner agent span."""
-        serialized = run.serialized or {}
-        graph = serialized.get("graph")
-        if isinstance(graph, dict):
-            graph_type = graph.get("type")
-            if graph_type in ("CompiledGraph", "StateGraph"):
-                return "LangGraph"
-        if serialized.get("name") and serialized["name"] != run.name:
-            return str(serialized["name"])
-        return "LangGraph"
 
     def _aggregate_into_parent(self, run: Run) -> None:  # pylint: disable=too-many-branches
         """Aggregate child run content into the parent agent span's content."""
