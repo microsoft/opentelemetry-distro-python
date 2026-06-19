@@ -524,12 +524,12 @@ class _Agent365Exporter(SpanExporter):
                             "HTTP 403 authorization error: the token is missing the required "
                             "'Agent365.Observability.OtelWrite' app role. "
                             "Grant the 'Agent365.Observability.OtelWrite' role to%s "
-                            "and ensure admin consent has been granted.\n"
-                            "  -> Setup instructions: "
-                            "https://learn.microsoft.com/en-us/microsoft-agent-365/developer/observability?tabs=python#http-403-forbidden\n"
-                            "  -> For Foundry: "
-                            "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/grant-agent-365-permissions\n"
-                            "  Correlation ID: %s.",
+                            "and ensure admin consent has been granted. "
+                            "| Setup instructions: "
+                            "https://learn.microsoft.com/en-us/microsoft-agent-365/developer/observability?tabs=python#http-403-forbidden "
+                            "| For Foundry: "
+                            "https://learn.microsoft.com/en-us/azure/foundry/agents/how-to/grant-agent-365-permissions "
+                            "| Correlation ID: %s.",
                             identity_info if identity_info else " your application's service principal",
                             correlation_id,
                         )
