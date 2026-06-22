@@ -6,7 +6,9 @@
 
 """Span enrichment support for the Agent365 exporter pipeline.
 
-Vendored from microsoft-agents-a365-observability-core exporters/enriching_span_processor.py.
+Provides a span processor that runs registered enrichers against each span
+before it is exported, allowing additional attributes to be attached without
+mutating the original span.
 """
 
 from __future__ import annotations

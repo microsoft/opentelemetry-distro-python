@@ -6,7 +6,8 @@
 
 """Utilities for the Agent365 exporter.
 
-Vendored from microsoft-agents-a365-observability-core exporters/utils.py.
+Shared helpers used by the Agent365 exporter pipeline, including payload
+serialization, size enforcement, and token-resolution helpers.
 """
 
 from __future__ import annotations

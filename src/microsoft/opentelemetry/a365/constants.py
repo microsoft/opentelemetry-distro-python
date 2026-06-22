@@ -6,8 +6,9 @@
 
 """Constants for Agent365 observability.
 
-Superset of microsoft-agents-a365-observability-core constants plus
-package-specific environment variable constants.
+Span operation names, semantic-convention attribute keys, baggage keys, and
+environment-variable names used throughout the Agent365 observability
+integration.
 """
 
 # --- Span operation names ---

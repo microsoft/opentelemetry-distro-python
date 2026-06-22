@@ -1,7 +1,11 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-# Constants for SDK OpenTelemetry implementation.
+"""Constants for the Agent365 OpenTelemetry implementation.
+
+Span operation names and OpenTelemetry semantic-convention attribute keys
+shared across the Agent365 core scopes and exporters.
+"""
 
 # --- Span operation names ---
 INVOKE_AGENT_OPERATION_NAME = "invoke_agent"

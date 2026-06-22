@@ -34,7 +34,10 @@ from microsoft.opentelemetry.a365.core.utils import extract_context_from_headers
 
 logger = logging.getLogger(__name__)
 
-# TurnState key for the parent trace context (W3C traceparent string).
+#: TurnState key under which the parent trace context (a W3C ``traceparent``
+#: string) is stored so emitted
+#: :class:`~microsoft.opentelemetry.a365.core.spans_scopes.output_scope.OutputScope`
+#: spans can be linked to it.
 A365_PARENT_TRACEPARENT_KEY = "A365ParentTraceparent"
 
 
@@ -95,10 +98,13 @@ def _derive_channel(
 
 
 class OutputLoggingMiddleware:
-    """Middleware that creates :class:`OutputScope` spans for outgoing messages.
+    """Middleware that creates
+    :class:`~microsoft.opentelemetry.a365.core.spans_scopes.output_scope.OutputScope`
+    spans for outgoing messages.
 
-    Links to a parent span when :data:`A365_PARENT_TRACEPARENT_KEY` is set in
-    ``turn_state``.
+    Links to a parent span when
+    :data:`~microsoft.opentelemetry.a365.hosting.middleware.output_logging_middleware.A365_PARENT_TRACEPARENT_KEY`
+    is set in ``turn_state``.
 
     **Privacy note:** Outgoing message content is captured verbatim as span
     attributes and exported to the configured telemetry backend.

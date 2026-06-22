@@ -6,9 +6,6 @@
 
 """Span processor for propagating OpenTelemetry baggage entries onto spans.
 
-Vendored from microsoft-agents-a365-observability-core trace_processor/span_processor.py
-and trace_processor/util.py.
-
 For every new span:
   * Retrieve the current (or parent) context
   * Obtain all baggage entries

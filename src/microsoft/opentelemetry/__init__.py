@@ -6,7 +6,8 @@
 
 """Microsoft OpenTelemetry Python.
 
-Provides a single entry-point — :func:`use_microsoft_opentelemetry` —
+Provides a single entry-point —
+:func:`microsoft.opentelemetry.use_microsoft_opentelemetry` —
 that initialises OpenTelemetry global providers (tracing, metrics, logging)
 and optionally configures Azure Monitor as an exporter.
 """

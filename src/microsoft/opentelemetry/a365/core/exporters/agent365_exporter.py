@@ -6,7 +6,8 @@
 
 """Agent365 span exporter.
 
-Vendored from microsoft-agents-a365-observability-core exporters/agent365_exporter.py.
+Exports OpenTelemetry spans to the Agent365 observability ingestion endpoint,
+handling authentication, batching, and payload size limits.
 """
 
 from __future__ import annotations

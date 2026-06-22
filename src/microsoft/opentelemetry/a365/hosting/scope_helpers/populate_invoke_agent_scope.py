@@ -22,11 +22,14 @@ if TYPE_CHECKING:
 
 
 def populate(scope: InvokeAgentScope, turn_context: TurnContext) -> InvokeAgentScope:
-    """
-    Populate all supported InvokeAgentScope tags from the provided TurnContext.
-    :param scope: The InvokeAgentScope instance to populate.
-    :param turn_context: The TurnContext containing activity information.
-    :return: The updated InvokeAgentScope instance.
+    """Populate all supported InvokeAgentScope tags from the provided TurnContext.
+
+    Args:
+        scope: The InvokeAgentScope instance to populate.
+        turn_context: The TurnContext containing activity information.
+
+    Returns:
+        The updated InvokeAgentScope instance.
     """
     if not turn_context:
         raise ValueError("turn_context is required")
