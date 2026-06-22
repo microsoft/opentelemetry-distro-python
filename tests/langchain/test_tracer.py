@@ -448,7 +448,7 @@ class TestStartTrace(TestCase):
         otel_tracer.start_span.assert_called_once()
         span_name = otel_tracer.start_span.call_args.kwargs["name"]
         self.assertEqual(span_name, f"{INVOKE_AGENT_OPERATION_NAME} Flight_Specialist")
-        mock_span.set_attribute.assert_any_call(GEN_AI_AGENT_NAME_KEY, "Flight_Specialist")
+        mock_span.set_attribute.assert_any_call(GEN_AI_AGENT_NAME_KEY, "Flight_Specialist")  # pylint: disable=no-member
 
     @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
     def test_langgraph_node_span_falls_back_to_node_name(self, mock_ctx):
@@ -527,9 +527,7 @@ class TestStartTrace(TestCase):
 
         # LLM child whose direct parent is the suppressed node.
         llm_run = _make_run(run_type="llm", name="gpt-4", parent_run_id=model_node.id)
-        with patch(
-            "microsoft.opentelemetry._genai._langchain._tracer.trace_api.set_span_in_context"
-        ) as mock_sic:
+        with patch("microsoft.opentelemetry._genai._langchain._tracer.trace_api.set_span_in_context") as mock_sic:
             tracer._start_trace(llm_run)
             # The child must be parented under the agent span, not the
             # span-less ``model`` node.
