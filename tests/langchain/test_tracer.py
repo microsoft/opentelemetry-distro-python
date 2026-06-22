@@ -181,6 +181,93 @@ class TestIsAgentRun(TestCase):
         self.assertEqual(tracer._find_agent_ancestor(sub_graph), agent_id)
 
 
+# ---- LangGraph node suppression ----------------------------------------------
+
+
+def _node_run(node_name, *, parent_run_id=None, **meta):
+    """Build a chain run tagged with a LangGraph node and extra metadata."""
+    metadata = {"langgraph_node": node_name, **meta}
+    return _make_run(
+        run_type="chain",
+        name="LangGraph",
+        parent_run_id=parent_run_id,
+        extra={"metadata": metadata},
+    )
+
+
+class TestShouldIgnoreLangGraphNode(TestCase):
+    """Guards the suppression rules for genuine LangGraph nodes.  These
+    rules decide which framework-internal nodes (``__start__``, middleware,
+    identity-less orchestration nodes) are dropped vs. emitted as their own
+    ``invoke_agent`` span, including the ``otel_trace`` / ``otel_agent_span``
+    overrides."""
+
+    def setUp(self):
+        self.tracer, _, _ = _make_tracer()
+
+    # --- otel_trace override (highest precedence) -----------------------------
+
+    def test_otel_trace_true_forces_keep(self):
+        run = _node_run("__start__", parent_run_id=uuid4(), otel_trace=True)
+        self.assertFalse(self.tracer._should_ignore_langgraph_node(run))
+
+    def test_otel_trace_false_forces_ignore(self):
+        # Even the root (no parent) is suppressed when otel_trace is False.
+        run = _node_run("agent", parent_run_id=None, otel_trace=False, agent_name="A")
+        self.assertTrue(self.tracer._should_ignore_langgraph_node(run))
+
+    # --- __start__ entrypoint -------------------------------------------------
+
+    def test_start_node_ignored(self):
+        run = _node_run("__start__", parent_run_id=uuid4())
+        self.assertTrue(self.tracer._should_ignore_langgraph_node(run))
+
+    # --- otel_agent_span override ---------------------------------------------
+
+    def test_otel_agent_span_true_forces_keep(self):
+        run = _node_run("model", parent_run_id=uuid4(), otel_agent_span=True)
+        self.assertFalse(self.tracer._should_ignore_langgraph_node(run))
+
+    def test_otel_agent_span_false_forces_ignore(self):
+        run = _node_run("flight", parent_run_id=uuid4(), otel_agent_span=False, agent_name="Flight")
+        self.assertTrue(self.tracer._should_ignore_langgraph_node(run))
+
+    def test_otel_trace_wins_over_otel_agent_span(self):
+        run = _node_run("model", parent_run_id=uuid4(), otel_trace=True, otel_agent_span=False)
+        self.assertFalse(self.tracer._should_ignore_langgraph_node(run))
+
+    # --- middleware prefix ----------------------------------------------------
+
+    def test_middleware_prefix_ignored(self):
+        run = _node_run("Middleware.summarize", parent_run_id=uuid4())
+        self.assertTrue(self.tracer._should_ignore_langgraph_node(run))
+
+    def test_middleware_only_matches_as_prefix_not_substring(self):
+        """A node name that merely contains ``Middleware.`` somewhere other
+        than the start must NOT be suppressed by the middleware rule."""
+        run = _node_run("CustomMiddleware.step", parent_run_id=uuid4(), agent_name="Custom")
+        self.assertFalse(self.tracer._should_ignore_langgraph_node(run))
+
+    # --- root vs. nested ------------------------------------------------------
+
+    def test_root_node_kept(self):
+        run = _node_run("graph", parent_run_id=None)
+        self.assertFalse(self.tracer._should_ignore_langgraph_node(run))
+
+    def test_nested_node_with_agent_name_kept(self):
+        run = _node_run("flight", parent_run_id=uuid4(), agent_name="Flight_Specialist")
+        self.assertFalse(self.tracer._should_ignore_langgraph_node(run))
+
+    def test_nested_node_with_agent_type_kept(self):
+        run = _node_run("hotel", parent_run_id=uuid4(), agent_type="Hotel_Specialist")
+        self.assertFalse(self.tracer._should_ignore_langgraph_node(run))
+
+    def test_nested_identityless_node_ignored(self):
+        # create_agent's internal ``model`` / ``tools`` nodes have no identity.
+        run = _node_run("model", parent_run_id=uuid4())
+        self.assertTrue(self.tracer._should_ignore_langgraph_node(run))
+
+
 # ---- Agent name resolution ---------------------------------------------------
 
 
@@ -378,6 +465,75 @@ class TestStartTrace(TestCase):
         otel_tracer.start_span.assert_called_once()
         span_name = otel_tracer.start_span.call_args.kwargs["name"]
         self.assertEqual(span_name, f"{INVOKE_AGENT_OPERATION_NAME} researcher")
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_suppressed_langgraph_node_emits_no_span(self, mock_ctx):
+        """An identity-less internal node (create_agent's ``model``) is
+        suppressed in ``_start_trace`` and produces no span, but is still
+        registered in ``run_map`` so its children can be re-parented."""
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            parent_run_id=uuid4(),
+            extra={"metadata": {"langgraph_node": "model"}},
+        )
+        tracer._start_trace(run)
+        otel_tracer.start_span.assert_not_called()
+        self.assertNotIn(run.id, tracer._spans_by_run)
+        self.assertIn(str(run.id), tracer.run_map)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_suppressed_start_node_emits_no_span(self, mock_ctx):
+        """The ``__start__`` entrypoint node never produces a span."""
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            parent_run_id=uuid4(),
+            extra={"metadata": {"langgraph_node": "__start__"}},
+        )
+        tracer._start_trace(run)
+        otel_tracer.start_span.assert_not_called()
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_suppressed_node_child_reparents_to_agent_span(self, mock_ctx):
+        """A child of a suppressed node parents under the nearest real span
+        (the enclosing agent), skipping the span-less internal node."""
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        agent_span = MagicMock(name="agent")
+        child_span = MagicMock(name="child")
+        otel_tracer.start_span.side_effect = [agent_span, child_span]
+
+        # Real agent root span.
+        agent_run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            extra={"metadata": {"agent_name": "Travel_Assistant"}},
+        )
+        tracer._start_trace(agent_run)
+
+        # Suppressed internal node between agent and the LLM child.
+        model_node = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            parent_run_id=agent_run.id,
+            extra={"metadata": {"langgraph_node": "model"}},
+        )
+        tracer._start_trace(model_node)
+
+        # LLM child whose direct parent is the suppressed node.
+        llm_run = _make_run(run_type="llm", name="gpt-4", parent_run_id=model_node.id)
+        with patch(
+            "microsoft.opentelemetry._genai._langchain._tracer.trace_api.set_span_in_context"
+        ) as mock_sic:
+            tracer._start_trace(llm_run)
+            # The child must be parented under the agent span, not the
+            # span-less ``model`` node.
+            self.assertIs(mock_sic.call_args_list[0][0][0], agent_span)
 
 
 class TestEndTrace(TestCase):
