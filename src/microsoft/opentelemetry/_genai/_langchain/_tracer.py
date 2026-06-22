@@ -369,7 +369,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         node = cls._run_metadata(run).get("langgraph_node")
         return str(node) if node else None
 
-    def _should_ignore_langgraph_node(self, run: Run) -> bool:
+    def _should_ignore_langgraph_node(self, run: Run) -> bool: # pylint: disable=too-many-return-statements
         """Decide whether a genuine LangGraph node should be suppressed."""
         meta = self._run_metadata(run)
         # 1. Explicit per-node opt-in/opt-out always wins.
@@ -397,7 +397,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         return True
 
     @classmethod
-    def _is_agent_like_chain(cls, run: Run) -> bool:
+    def _is_agent_like_chain(cls, run: Run) -> bool: # pylint: disable=too-many-return-statements
         """Check whether a chain should be emitted as an ``invoke_agent`` span."""
         if run.run_type != "chain":
             return False
@@ -425,7 +425,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         """Detect whether a LangChain run should be emitted as invoke_agent."""
         return self._is_agent_like_chain(run)
 
-    def _resolve_agent_name(self, run: Run, *, use_config: bool = True) -> str | None:
+    def _resolve_agent_name(self, run: Run, *, use_config: bool = True) -> str | None: # pylint: disable=too-many-return-statements
         """Resolve agent name from run metadata, then config, then run name.
 
         Args:
