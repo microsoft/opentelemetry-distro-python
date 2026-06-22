@@ -103,7 +103,7 @@ logger.addHandler(logging.NullHandler())
 # ---- Core utilities ----------------------------------------------------------
 
 
-def _should_capture_content_on_spans(enable_sensitive_data: bool) -> bool:
+def _should_capture_content_on_spans(enable_sensitive_data: bool = False) -> bool:
     """Check if content should be captured on span attributes."""
     if enable_sensitive_data:
         return True

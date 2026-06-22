@@ -117,6 +117,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         "_spans_by_run",
         "_event_logger",
         "_context_tokens",
+        "_enable_sensitive_data",
     )
 
     def __init__(
@@ -664,7 +665,7 @@ def get_attributes_from_context() -> Iterator[tuple[str, AttributeValue]]:
             yield ctx_attr, cast(AttributeValue, val)
 
 
-def _update_span(span: Span, run: Run, enable_sensitive_data: bool) -> LLMInvocation | None:
+def _update_span(span: Span, run: Run, enable_sensitive_data: bool = False) -> LLMInvocation | None:
     """Update a non-agent span with run data.
 
     Returns the ``LLMInvocation`` for LLM runs (used for event emission
