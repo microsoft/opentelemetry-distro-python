@@ -103,8 +103,10 @@ logger.addHandler(logging.NullHandler())
 # ---- Core utilities ----------------------------------------------------------
 
 
-def _should_capture_content_on_spans() -> bool:
+def _should_capture_content_on_spans(enable_sensitive_data: bool) -> bool:
     """Check if content should be captured on span attributes."""
+    if enable_sensitive_data:
+        return True
     if not is_experimental_mode():
         return False
     mode = get_content_capturing_mode()
@@ -830,7 +832,7 @@ def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
 
 
 @stop_on_exception
-def function_calls(outputs: Mapping[str, Any] | None) -> Iterator[tuple[str, str]]:
+def function_calls(outputs: Mapping[str, Any] | None, enable_sensitive_data: bool = False) -> Iterator[tuple[str, str]]:
     if not outputs:
         return
     if not isinstance(outputs, Mapping):
@@ -851,7 +853,7 @@ def function_calls(outputs: Mapping[str, Any] | None) -> Iterator[tuple[str, str
     call_id = fc.get("id")
     if isinstance(call_id, str):
         yield GEN_AI_TOOL_CALL_ID_KEY, call_id
-    if _should_capture_content_on_spans():
+    if _should_capture_content_on_spans(enable_sensitive_data):
         args = fc.get("arguments")
         if args is not None:
             if isinstance(args, str):
@@ -868,7 +870,7 @@ def function_calls(outputs: Mapping[str, Any] | None) -> Iterator[tuple[str, str
 
 
 @stop_on_exception
-def tools(run: Run) -> Iterator[tuple[str, str]]:
+def tools(run: Run, enable_sensitive_data: bool = False) -> Iterator[tuple[str, str]]:
     if run.run_type.lower() != "tool":
         return
     if not (serialized := run.serialized):
@@ -883,7 +885,7 @@ def tools(run: Run) -> Iterator[tuple[str, str]]:
     if run.extra and hasattr(run.extra, "get"):
         if tool_call_id := run.extra.get("tool_call_id"):
             yield GEN_AI_TOOL_CALL_ID_KEY, tool_call_id
-    if _should_capture_content_on_spans():
+    if _should_capture_content_on_spans(enable_sensitive_data):
         if run.inputs and hasattr(run.inputs, "get"):
             _sentinel = object()
             input_val = run.inputs.get("input", _sentinel)
@@ -910,12 +912,13 @@ def tools(run: Run) -> Iterator[tuple[str, str]]:
 def chain_node_messages(
     data: Mapping[str, Any] | None,
     attr_key: str,
+    enable_sensitive_data: bool = False,
 ) -> Iterator[tuple[str, str]]:
     """Extract messages from a LangGraph chain node's inputs or outputs.
 
     Chain nodes typically store messages as ``{"messages": [BaseMessage, ...]}``.
     """
-    if not _should_capture_content_on_spans():
+    if not _should_capture_content_on_spans(enable_sensitive_data):
         return
     if not data or not isinstance(data, Mapping):
         return
@@ -1557,7 +1560,6 @@ def _output_message_to_input(out_msg: OutputMessage) -> InputMessage:
     """Convert an ``OutputMessage`` (assistant) to an ``InputMessage`` so it
     can be appended to ``gen_ai.input.messages`` as a history turn."""
     return InputMessage(role=out_msg.role, parts=list(out_msg.parts))
-
 
 
 @stop_on_exception

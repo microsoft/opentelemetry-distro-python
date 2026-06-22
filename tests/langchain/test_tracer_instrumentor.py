@@ -140,3 +140,48 @@ class TestBaseCallbackManagerInit(TestCase):
         mock_instance.inheritable_handlers = [mock_tracer]
         hook(mock_wrapped, mock_instance, (), {})
         mock_instance.add_handler.assert_not_called()
+
+
+class TestLangChainInstrumentorEnableSensitiveData(TestCase):
+    def setUp(self):
+        inst = LangChainInstrumentor()
+        if inst.is_instrumented_by_opentelemetry:
+            inst._uninstrument()
+
+    def tearDown(self):
+        inst = LangChainInstrumentor()
+        if inst.is_instrumented_by_opentelemetry:
+            inst._uninstrument()
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer_instrumentor.get_otel_logger")
+    @patch("microsoft.opentelemetry._genai._langchain._tracer_instrumentor.trace_api.get_tracer")
+    @patch("microsoft.opentelemetry._genai._langchain._tracer_instrumentor.wrap_function_wrapper")
+    def test_enable_sensitive_data_true_passed_to_tracer(self, mock_wrap, mock_get_tracer, mock_get_logger):
+        """When enable_sensitive_data=True, the LangChainTracer receives the flag as True."""
+        mock_get_tracer.return_value = MagicMock()
+        mock_get_logger.return_value = MagicMock()
+        inst = LangChainInstrumentor()
+        inst._instrument(enable_sensitive_data=True)
+        self.assertTrue(inst._tracer._enable_sensitive_data)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer_instrumentor.get_otel_logger")
+    @patch("microsoft.opentelemetry._genai._langchain._tracer_instrumentor.trace_api.get_tracer")
+    @patch("microsoft.opentelemetry._genai._langchain._tracer_instrumentor.wrap_function_wrapper")
+    def test_enable_sensitive_data_defaults_to_false(self, mock_wrap, mock_get_tracer, mock_get_logger):
+        """When enable_sensitive_data is not passed, the LangChainTracer defaults to False."""
+        mock_get_tracer.return_value = MagicMock()
+        mock_get_logger.return_value = MagicMock()
+        inst = LangChainInstrumentor()
+        inst._instrument()
+        self.assertFalse(inst._tracer._enable_sensitive_data)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer_instrumentor.get_otel_logger")
+    @patch("microsoft.opentelemetry._genai._langchain._tracer_instrumentor.trace_api.get_tracer")
+    @patch("microsoft.opentelemetry._genai._langchain._tracer_instrumentor.wrap_function_wrapper")
+    def test_enable_sensitive_data_false_explicit(self, mock_wrap, mock_get_tracer, mock_get_logger):
+        """When enable_sensitive_data=False explicitly, the LangChainTracer stores False."""
+        mock_get_tracer.return_value = MagicMock()
+        mock_get_logger.return_value = MagicMock()
+        inst = LangChainInstrumentor()
+        inst._instrument(enable_sensitive_data=False)
+        self.assertFalse(inst._tracer._enable_sensitive_data)

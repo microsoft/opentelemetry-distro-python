@@ -126,6 +126,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         *args: Any,
         agent_config: dict[str, Any] | None = None,
         event_logger: Any | None = None,
+        enable_sensitive_data: bool = False,
         **kwargs: Any,
     ) -> None:
         super().__init__(*args, **kwargs)
@@ -141,6 +142,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         self._event_logger = event_logger
         self._context_tokens: dict[UUID, list[Token]] = {}
         self._lock = RLock()  # type: ignore[misc]
+        self._enable_sensitive_data = enable_sensitive_data
 
     def get_span(self, run_id: UUID) -> Span | None:
         with self._lock:
@@ -298,9 +300,10 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             invocation: LLMInvocation | None = None
             try:
                 if is_agent:
+                    # Single-span agent: finalize directly
                     self._finalize_agent_span(span, run)
                 else:
-                    invocation = _update_span(span, run)
+                    invocation = _update_span(span, run, self._enable_sensitive_data)
             except Exception:
                 logger.exception("Failed to update span with run data.")
             # Emit OTel GenAI event for LLM spans (respects env-var config)
@@ -622,7 +625,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             span.set_attribute(GEN_AI_USAGE_OUTPUT_TOKENS_KEY, output_tokens)
 
         # Set aggregated input/output messages only when content capture is enabled
-        if _should_capture_content_on_spans():
+        if _should_capture_content_on_spans(self._enable_sensitive_data):
             if tool_defs := content.get("tool_definitions"):
                 span.set_attribute(GEN_AI_TOOL_DEFINITIONS_KEY, tool_defs)
             if msgs := content.get("input_messages"):
@@ -661,7 +664,7 @@ def get_attributes_from_context() -> Iterator[tuple[str, AttributeValue]]:
             yield ctx_attr, cast(AttributeValue, val)
 
 
-def _update_span(span: Span, run: Run) -> LLMInvocation | None:
+def _update_span(span: Span, run: Run, enable_sensitive_data: bool) -> LLMInvocation | None:
     """Update a non-agent span with run data.
 
     Returns the ``LLMInvocation`` for LLM runs (used for event emission
@@ -691,7 +694,7 @@ def _update_span(span: Span, run: Run) -> LLMInvocation | None:
                     chain(
                         prompts(run.inputs),
                         invocation_parameters(run),
-                        function_calls(run.outputs),
+                        function_calls(run.outputs, enable_sensitive_data),
                         metadata(run),
                     )
                 )
@@ -705,9 +708,9 @@ def _update_span(span: Span, run: Run) -> LLMInvocation | None:
             flatten(
                 chain(
                     add_operation_type(run),
-                    chain_node_messages(run.inputs, GEN_AI_INPUT_MESSAGES_KEY),
-                    chain_node_messages(run.outputs, GEN_AI_OUTPUT_MESSAGES_KEY),
-                    tools(run),
+                    chain_node_messages(run.inputs, GEN_AI_INPUT_MESSAGES_KEY, enable_sensitive_data),
+                    chain_node_messages(run.outputs, GEN_AI_OUTPUT_MESSAGES_KEY, enable_sensitive_data),
+                    tools(run, enable_sensitive_data),
                     metadata(run),
                 )
             )

@@ -63,11 +63,6 @@ from microsoft.opentelemetry._constants import (
     _SPECTRA_ENDPOINT_ENV,
     _SPECTRA_PROTOCOL_ENV,
     MICROSOFT_OPENTELEMETRY_VERSION_ENV,
-    CAPTURE_MESSAGE_CONTENT_ARG,
-    _OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT_ENV,
-    _CAPTURE_MESSAGE_CONTENT_ALLOWED_VALUES,
-    ENABLE_EXPERIMENTAL_MODE_ARG,
-    _OTEL_SEMCONV_STABILITY_OPT_IN_ENV,
 )
 from microsoft.opentelemetry._version import VERSION
 
@@ -210,11 +205,6 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
         Enable sensitive data recording (prompts, tool arguments, results) for
         the Agent Framework SDK instrumentation. Defaults to False.
     :rtype: None
-    :keyword str capture_message_content: Message content capture can be enabled by setting
-        this kwarg to values such as "span_and_event", "span_only", "span", "true", etc. Defaults
-        to None.
-    :keyword bool enable_experimental_mode: Enables the experimental mode in otel for experimental
-        gen_ai* attributes to be be displayed in spans. Defaults to False.
     """
 
     enable_azure_monitor: bool = bool(kwargs.pop(ENABLE_AZURE_MONITOR_ARG, False))
@@ -238,26 +228,6 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
     spectra_insecure = kwargs.pop(SPECTRA_INSECURE_ARG, None)
 
     enable_sensitive_data: bool = bool(kwargs.pop(ENABLE_SENSITIVE_DATA_ARG, False))
-    capture_message_content = kwargs.pop(CAPTURE_MESSAGE_CONTENT_ARG, None)
-    enable_experimental_mode: bool = bool(kwargs.pop(ENABLE_EXPERIMENTAL_MODE_ARG, False))
-
-    if str(enable_experimental_mode).strip().lower() == "true" and capture_message_content is not None:
-        os.environ[_OTEL_SEMCONV_STABILITY_OPT_IN_ENV] = "gen_ai_latest_experimental"
-        normalized = str(capture_message_content).strip().lower()
-        if normalized in _CAPTURE_MESSAGE_CONTENT_ALLOWED_VALUES:
-            os.environ[_OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT_ENV] = normalized
-        else:
-            _logger.warning(
-                "Invalid value for %s: '%s'. Allowed values are: %s. Skipping message content capture.",
-                CAPTURE_MESSAGE_CONTENT_ARG,
-                capture_message_content,
-                _CAPTURE_MESSAGE_CONTENT_ALLOWED_VALUES,
-            )
-    elif capture_message_content is not None:
-        _logger.warning(
-            "Ignoring '%s'=%r: 'enable_experimental_mode=True' is required to capture message content.",
-            CAPTURE_MESSAGE_CONTENT_ARG, capture_message_content,
-        )
 
     # Separate Azure Monitor kwargs from generic OTel kwargs
     otel_kwargs: Dict[str, Any] = {k: v for k, v in kwargs.items() if k not in _AZURE_MONITOR_KWARG_MAP}
@@ -814,7 +784,7 @@ def _setup_instrumentations(otel_kwargs: Dict[str, Any], **kwargs: Any) -> None:
                 continue
             lib_kwargs = _get_instrumentation_kwargs(otel_kwargs, lib_name)
             merged_kwargs = {**kwargs, **lib_kwargs}
-            if lib_name == "agent_framework":
+            if lib_name in ["agent_framework", "langchain"]:
                 merged_kwargs[ENABLE_SENSITIVE_DATA_ARG] = enable_sensitive_data
             instrumentor: Any = entry_point.load()
             instrumentor().instrument(skip_dep_check=True, **merged_kwargs)

@@ -26,27 +26,24 @@ Demonstrates the internal langchain instrumentation.
 | `OTEL_SEMCONV_STABILITY_OPT_IN`                      | "gen_ai_latest_experimental" |
 | `AZURE_EXPERIMENTAL_ENABLE_GENAI_TRACING`            | "true"                       |
 
-> **Alternative:** instead of exporting `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` and `OTEL_SEMCONV_STABILITY_OPT_IN`, you can pass the equivalent kwargs to `use_microsoft_opentelemetry(...)`:
->
-> ```python
-> use_microsoft_opentelemetry(
->     enable_experimental_mode=True,
->     capture_message_content="span_and_event",
-> )
-> ```
->
+> **Alternative** Instead of setting the `OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT` and `OTEL_SEMCONV_STABILITY_OPT_IN` environment variables, pass the config `enable_sensitive_data=True` to `use_microsoft_opentelemetry()`:
 
-> When both kwargs are supplied, they take **precedence over** any pre-existing values of those environment variables. If only one of the two kwargs is supplied (or `enable_experimental_mode` is `False`), both env vars are left untouched.
->
-> **Accepted values for `capture_message_content`** (case-insensitive, surrounding whitespace ignored):
->
-> | Value | Effect |
-> | --- | --- |
-> | `span_only` | Content captured on span attributes only |
-> | `event_only` | Content captured on log/event records only |
-> | `span_and_event` | Content captured on both spans and events |
->
-> Any other value is ignored (the env var is left untouched and a warning is logged).
+```python
+use_microsoft_opentelemetry(
+    enable_sensitive_data=True,
+    ...
+)
+```
+
+When `enable_sensitive_data=True` is supplied:
+
+- Sensitive and experimental data attributes populate on the spans.
+- The content capture mode defaults to `SPAN_AND_EVENT`.
+- This setting takes **precedence over** the pre-existing values of the corresponding environment variables.
+
+> **Note:** `enable_sensitive_data` defaults to `False`. Only enable it in trusted, non-production environments where capturing message content is intentional.
+
+---
 
 **Placeholders to fill: If use azure endpoint and api key**
 

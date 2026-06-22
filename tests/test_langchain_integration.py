@@ -11,7 +11,6 @@ and that it monkey-patches LangChain's callback machinery.  Also validates
 that ``agent_name`` / ``agent_id`` kwargs are forwarded correctly.
 """
 
-import os
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -26,8 +25,6 @@ from microsoft.opentelemetry._genai._langchain._tracer_instrumentor import (  # 
 
 from microsoft.opentelemetry._constants import (  # noqa: E402
     _SUPPORTED_INSTRUMENTED_LIBRARIES,
-    _OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT_ENV,
-    _OTEL_SEMCONV_STABILITY_OPT_IN_ENV,
 )
 
 # pylint: enable=wrong-import-position
@@ -144,79 +141,6 @@ class TestLangChainCallbackPatching(unittest.TestCase):
         # the OTel tracer in its handlers (or the __init__ should be wrapped).
         # We verify by checking the instrumentor recorded the original init.
         self.assertIsNotNone(inst._original_cb_init)
-
-
-class TestLangChainCaptureMessageContentWiring(unittest.TestCase):
-    """Verify the ``capture_message_content`` + ``enable_experimental_mode``
-    kwargs propagate to the env vars that LangChain content-capture reads.
-
-    This guards against regressions where the kwargs are dropped on the floor
-    instead of being written to ``OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT``
-    and ``OTEL_SEMCONV_STABILITY_OPT_IN``, which together are what
-    ``_should_capture_content_on_spans()`` reads (via upstream
-    ``is_experimental_mode()`` and ``get_content_capturing_mode()``).
-    """
-
-    _CONTENT_ENV = _OTEL_INSTRUMENTATION_GENAI_CAPTURE_MESSAGE_CONTENT_ENV
-    _STABILITY_ENV = _OTEL_SEMCONV_STABILITY_OPT_IN_ENV
-
-    def setUp(self):
-        self._saved_content = os.environ.pop(self._CONTENT_ENV, None)
-        self._saved_stability = os.environ.pop(self._STABILITY_ENV, None)
-
-    def tearDown(self):
-        os.environ.pop(self._CONTENT_ENV, None)
-        os.environ.pop(self._STABILITY_ENV, None)
-        if self._saved_content is not None:
-            os.environ[self._CONTENT_ENV] = self._saved_content
-        if self._saved_stability is not None:
-            os.environ[self._STABILITY_ENV] = self._saved_stability
-
-    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
-    def test_kwargs_set_env_vars_read_by_langchain(self, _append_mock):
-        from microsoft.opentelemetry._distro import use_microsoft_opentelemetry
-
-        use_microsoft_opentelemetry(
-            enable_experimental_mode=True,
-            capture_message_content="span_and_event",
-        )
-
-        self.assertEqual(os.environ.get(self._CONTENT_ENV), "span_and_event")
-        self.assertEqual(os.environ.get(self._STABILITY_ENV), "gen_ai_latest_experimental")
-
-    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
-    def test_unrecognised_kwarg_leaves_content_env_unset(self, _append_mock):
-        from microsoft.opentelemetry._distro import use_microsoft_opentelemetry
-
-        use_microsoft_opentelemetry(
-            enable_experimental_mode=True,
-            capture_message_content="banana",
-        )
-
-        self.assertNotIn(self._CONTENT_ENV, os.environ)
-
-    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
-    def test_capture_kwarg_without_experimental_mode_is_a_noop(self, _append_mock):
-        from microsoft.opentelemetry._distro import use_microsoft_opentelemetry
-
-        use_microsoft_opentelemetry(capture_message_content="span_and_event")
-
-        self.assertNotIn(self._CONTENT_ENV, os.environ)
-        self.assertNotIn(self._STABILITY_ENV, os.environ)
-
-    def test_langchain_helper_reads_same_env_var(self):
-        """Sanity-check that the LangChain content-capture helper looks at the
-        env var our distro writes — not some other key. ``is_experimental_mode``
-        is patched so the test doesn't depend on cached upstream stability state."""
-        from opentelemetry.util.genai import utils as _genai_utils  # type: ignore[import-not-found]
-        from opentelemetry.util.genai.utils import (  # type: ignore[import-not-found]
-            ContentCapturingMode,
-            get_content_capturing_mode,
-        )
-
-        os.environ[self._CONTENT_ENV] = "span_and_event"
-        with patch.object(_genai_utils, "is_experimental_mode", return_value=True):
-            self.assertEqual(get_content_capturing_mode(), ContentCapturingMode.SPAN_AND_EVENT)
 
 
 if __name__ == "__main__":
