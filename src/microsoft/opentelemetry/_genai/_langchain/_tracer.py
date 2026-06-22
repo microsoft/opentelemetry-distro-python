@@ -425,7 +425,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         """Detect whether a LangChain run should be emitted as invoke_agent."""
         return self._is_agent_like_chain(run)
 
-    def _resolve_agent_name(self, run: Run, *, use_config: bool = True) -> str | None: # pylint: disable=too-many-return-statements
+    def _resolve_agent_name(self, run: Run, *, use_config: bool = True) -> str | None: # pylint: disable=too-many-return-statements, line-too-long
         """Resolve agent name from run metadata, then config, then run name.
 
         Args:
