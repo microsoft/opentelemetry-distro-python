@@ -18,6 +18,7 @@ from microsoft.opentelemetry._genai._langchain._tracer import (  # noqa: E402  #
 )
 from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # pylint: disable=wrong-import-position
     EXECUTE_TOOL_OPERATION_NAME,
+    GEN_AI_AGENT_NAME_KEY,
     GEN_AI_INPUT_MESSAGES_KEY,
     GEN_AI_OUTPUT_MESSAGES_KEY,
     GEN_AI_PROVIDER_NAME_KEY,
@@ -76,7 +77,6 @@ class TestEvictTrackedRuns(TestCase):
             tracer._spans_by_run[uid] = f"span-{uid}"
             tracer._agent_run_ids.add(uid)
             tracer._agent_content[uid] = {"model": None}
-            tracer._agent_wrapper_spans[uid] = f"wrapper-{uid}"
             tracer._context_tokens[uid] = []
             tracer.run_map[str(uid)] = f"run-{uid}"
         tracer._evict_tracked_runs()
@@ -88,13 +88,11 @@ class TestEvictTrackedRuns(TestCase):
         for uid in uuids[:5]:
             self.assertNotIn(uid, tracer._agent_run_ids)
             self.assertNotIn(uid, tracer._agent_content)
-            self.assertNotIn(uid, tracer._agent_wrapper_spans)
             self.assertNotIn(uid, tracer._context_tokens)
             self.assertNotIn(str(uid), tracer.run_map)
         for uid in uuids[5:]:
             self.assertIn(uid, tracer._agent_run_ids)
             self.assertIn(uid, tracer._agent_content)
-            self.assertIn(uid, tracer._agent_wrapper_spans)
 
 
 # ---- Agent detection ---------------------------------------------------------
@@ -148,23 +146,28 @@ class TestIsAgentRun(TestCase):
         run = _make_run(run_type="chain", name="LangGraph", parent_run_id=None)
         self.assertTrue(tracer._is_agent_run(run))
 
-    def test_nested_agent_returns_false(self):
+    def test_nested_agent_is_still_agent_like(self):
+        """A nested agent-like chain is still detected as an agent run; the
+        nesting itself is recognised separately via ``_find_agent_ancestor``
+        (used by ``_start_trace`` to suppress config-derived identity for
+        sub-agents), not by ``_is_agent_run`` returning ``False``."""
         tracer, _, _ = _make_tracer()
         parent_id = uuid4()
         tracer._agent_run_ids.add(parent_id)
         run = _make_run(run_type="chain", name="LangGraph", parent_run_id=parent_id)
-        self.assertFalse(tracer._is_agent_run(run))
+        self.assertTrue(tracer._is_agent_run(run))
+        self.assertEqual(tracer._find_agent_ancestor(run), parent_id)
 
     def test_non_agent_returns_false(self):
         tracer, _, _ = _make_tracer()
         run = _make_run(run_type="chain", name="RunnableSequence")
         self.assertFalse(tracer._is_agent_run(run))
 
-    def test_deeply_nested_agent_returns_false(self):
-        """Agent-like chain nested under a non-agent chain whose ancestor is
-        already an agent must NOT be treated as a separate agent.  This
-        prevents token aggregation from splitting across multiple agent
-        spans (see token-count mismatch in multi-agent LangGraph setups)."""
+    def test_deeply_nested_agent_finds_agent_ancestor(self):
+        """An agent-like chain nested under a non-agent chain whose ancestor is
+        already an agent is still agent-like, and ``_find_agent_ancestor``
+        walks past the intermediate chain to locate the real agent ancestor
+        (so token aggregation stays attributed to the top-level agent span)."""
         tracer, _, _ = _make_tracer()
         agent_id = uuid4()
         chain_id = uuid4()
@@ -174,7 +177,8 @@ class TestIsAgentRun(TestCase):
         tracer.run_map[str(chain_id)] = chain_run
         # Sub-graph whose direct parent is the intermediate chain, not the agent.
         sub_graph = _make_run(run_type="chain", name="SubAgentGraph", parent_run_id=chain_id)
-        self.assertFalse(tracer._is_agent_run(sub_graph))
+        self.assertTrue(tracer._is_agent_run(sub_graph))
+        self.assertEqual(tracer._find_agent_ancestor(sub_graph), agent_id)
 
 
 # ---- Agent name resolution ---------------------------------------------------
@@ -194,6 +198,87 @@ class TestResolveAgentName(TestCase):
             extra={"metadata": {"agent_name": "MetaBot"}},
         )
         self.assertEqual(tracer._resolve_agent_name(run), "MetaBot")
+
+    def test_metadata_agent_name_wins_over_langgraph_node(self):
+        """A node that advertises its own ``agent_name`` keeps that friendly
+        label instead of the raw LangGraph structural node name.  This locks
+        in the deliberate divergence from langchain-azure (which prefers the
+        ``langgraph_node`` name) so nested sub-agents render as e.g.
+        ``Flight_Specialist`` rather than ``flight``."""
+        tracer, _, _ = _make_tracer()
+        run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            extra={"metadata": {"langgraph_node": "flight", "agent_name": "Flight_Specialist"}},
+        )
+        self.assertEqual(tracer._resolve_agent_name(run), "Flight_Specialist")
+
+    def test_metadata_agent_type_wins_over_langgraph_node(self):
+        """``agent_type`` is also a stronger display signal than the raw
+        ``langgraph_node`` name."""
+        tracer, _, _ = _make_tracer()
+        run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            extra={"metadata": {"langgraph_node": "hotel", "agent_type": "Hotel_Specialist"}},
+        )
+        self.assertEqual(tracer._resolve_agent_name(run), "Hotel_Specialist")
+
+    def test_langgraph_node_used_when_no_explicit_identity(self):
+        """When a node carries only the framework-injected ``langgraph_node``
+        and no explicit ``agent_name``/``agent_type``, that structural node
+        name is used as the label."""
+        tracer, _, _ = _make_tracer()
+        run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            extra={"metadata": {"langgraph_node": "researcher"}},
+        )
+        self.assertEqual(tracer._resolve_agent_name(run), "researcher")
+
+    def test_langgraph_start_node_skipped(self):
+        """The ``__start__`` entrypoint node name is never used as a label;
+        resolution falls through to the next signal (here, none -> None)."""
+        tracer, _, _ = _make_tracer()
+        run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            extra={"metadata": {"langgraph_node": "__start__"}},
+        )
+        self.assertIsNone(tracer._resolve_agent_name(run))
+
+    def test_agent_name_wins_over_config(self):
+        """Per-node ``agent_name`` takes precedence over the process-level
+        config name, so sub-agents do not inherit the top-level agent's name."""
+        tracer, _, _ = _make_tracer(agent_config={"agent_name": "Travel_Assistant"})
+        run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            extra={"metadata": {"langgraph_node": "flight", "agent_name": "Flight_Specialist"}},
+        )
+        self.assertEqual(tracer._resolve_agent_name(run), "Flight_Specialist")
+
+    def test_langgraph_node_wins_over_config(self):
+        """A genuine LangGraph node name is more specific than the inherited
+        process-level config name."""
+        tracer, _, _ = _make_tracer(agent_config={"agent_name": "Travel_Assistant"})
+        run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            extra={"metadata": {"langgraph_node": "flight"}},
+        )
+        self.assertEqual(tracer._resolve_agent_name(run), "flight")
+
+    def test_nested_agent_ignores_config_name(self):
+        """With ``use_config=False`` (nested sub-agents), the config name is
+        not used as a fallback; the node's own metadata identity is returned."""
+        tracer, _, _ = _make_tracer(agent_config={"agent_name": "Travel_Assistant"})
+        run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            extra={"metadata": {"langgraph_node": "flight"}},
+        )
+        self.assertEqual(tracer._resolve_agent_name(run, use_config=False), "flight")
 
     def test_metadata_lc_agent_name(self):
         tracer, _, _ = _make_tracer()
@@ -227,28 +312,6 @@ class TestResolveAgentName(TestCase):
 # ---- Framework name resolution -----------------------------------------------
 
 
-class TestResolveFrameworkName(TestCase):
-    def test_compiled_graph_returns_langgraph(self):
-        run = _make_run(serialized={"graph": {"type": "CompiledGraph"}})
-        self.assertEqual(LangChainTracer._resolve_framework_name(run), "LangGraph")
-
-    def test_state_graph_returns_langgraph(self):
-        run = _make_run(serialized={"graph": {"type": "StateGraph"}})
-        self.assertEqual(LangChainTracer._resolve_framework_name(run), "LangGraph")
-
-    def test_serialized_name_different_from_run(self):
-        run = _make_run(name="Travel_Assistant", serialized={"name": "CustomFramework"})
-        self.assertEqual(LangChainTracer._resolve_framework_name(run), "CustomFramework")
-
-    def test_defaults_to_langgraph(self):
-        run = _make_run(name="Travel_Assistant", serialized=None)
-        self.assertEqual(LangChainTracer._resolve_framework_name(run), "LangGraph")
-
-    def test_same_serialized_and_run_name_defaults(self):
-        run = _make_run(name="Travel_Assistant", serialized={"name": "Travel_Assistant"})
-        self.assertEqual(LangChainTracer._resolve_framework_name(run), "LangGraph")
-
-
 # ---- _start_trace / _end_trace -----------------------------------------------
 
 
@@ -275,31 +338,46 @@ class TestStartTrace(TestCase):
         self.assertIn("get_weather", args.kwargs["name"])
 
     @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
-    def test_creates_wrapper_for_agent(self, mock_ctx):
-        mock_ctx.get_value.return_value = None
-        tracer, otel_tracer, mock_span = _make_tracer()
-        run = _make_run(
-            run_type="chain",
-            name="Travel_Assistant",
-            extra={"metadata": {"lc_agent_name": "Travel_Assistant"}},
-        )
-        tracer._start_trace(run)
-        # Two spans: wrapper + inner
-        self.assertEqual(otel_tracer.start_span.call_count, 2)
-        calls = otel_tracer.start_span.call_args_list
-        wrapper_name = calls[0].kwargs["name"]
-        inner_name = calls[1].kwargs["name"]
-        self.assertIn("Travel_Assistant", wrapper_name)
-        self.assertIn(INVOKE_AGENT_OPERATION_NAME, wrapper_name)
-        self.assertIn("LangGraph", inner_name)
-
-    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
     def test_suppressed_instrumentation_skips(self, mock_ctx):
         mock_ctx.get_value.return_value = True
         tracer, otel_tracer, _ = _make_tracer()
         run = _make_run(run_type="chain", name="test")
         tracer._start_trace(run)
         otel_tracer.start_span.assert_not_called()
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_langgraph_node_span_uses_friendly_agent_name(self, mock_ctx):
+        """A LangGraph node that carries its own ``agent_name`` emits an
+        ``invoke_agent`` span named with that friendly label, not the raw
+        structural node name (``flight``)."""
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, mock_span = _make_tracer(agent_config={"agent_name": "Travel_Assistant"})
+        run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            extra={"metadata": {"langgraph_node": "flight", "agent_name": "Flight_Specialist"}},
+        )
+        tracer._start_trace(run)
+        otel_tracer.start_span.assert_called_once()
+        span_name = otel_tracer.start_span.call_args.kwargs["name"]
+        self.assertEqual(span_name, f"{INVOKE_AGENT_OPERATION_NAME} Flight_Specialist")
+        mock_span.set_attribute.assert_any_call(GEN_AI_AGENT_NAME_KEY, "Flight_Specialist")
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_langgraph_node_span_falls_back_to_node_name(self, mock_ctx):
+        """A LangGraph node with no explicit ``agent_name`` uses the raw
+        structural node name as its ``invoke_agent`` span label."""
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            extra={"metadata": {"langgraph_node": "researcher"}},
+        )
+        tracer._start_trace(run)
+        otel_tracer.start_span.assert_called_once()
+        span_name = otel_tracer.start_span.call_args.kwargs["name"]
+        self.assertEqual(span_name, f"{INVOKE_AGENT_OPERATION_NAME} researcher")
 
 
 class TestEndTrace(TestCase):
@@ -311,23 +389,6 @@ class TestEndTrace(TestCase):
         tracer._start_trace(run)
         tracer._end_trace(run)
         mock_span.end.assert_called()
-
-    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
-    def test_ends_both_spans_for_agent(self, mock_ctx):
-        mock_ctx.get_value.return_value = None
-        tracer, otel_tracer, _ = _make_tracer()
-        wrapper_span = MagicMock()
-        inner_span = MagicMock()
-        otel_tracer.start_span.side_effect = [wrapper_span, inner_span]
-        run = _make_run(
-            run_type="chain",
-            name="Travel_Assistant",
-            extra={"metadata": {"lc_agent_name": "Travel_Assistant"}},
-        )
-        tracer._start_trace(run)
-        tracer._end_trace(run)
-        inner_span.end.assert_called_once()
-        wrapper_span.end.assert_called_once()
 
     @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
     def test_cleans_up_agent_tracking(self, mock_ctx):
@@ -749,32 +810,6 @@ class TestContextAttachDetach(TestCase):
         tracer._start_trace(run)
         mock_ctx.attach.assert_not_called()
         self.assertEqual(tracer._context_tokens, {})
-
-    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
-    def test_attach_uses_inner_span_for_agent(self, mock_ctx):
-        """For a two-span agent, the attached span must be the INNER span
-        (so child LLM/tool runs parent under the framework span, and HTTP
-        spans parent under the LLM span when its own _start_trace runs)."""
-        mock_ctx.get_value.return_value = None
-        mock_ctx.attach.return_value = "token-1"
-        tracer, otel_tracer, _ = _make_tracer()
-        wrapper_span = MagicMock(name="wrapper")
-        inner_span = MagicMock(name="inner")
-        otel_tracer.start_span.side_effect = [wrapper_span, inner_span]
-        run = _make_run(
-            run_type="chain",
-            name="Travel_Assistant",
-            extra={"metadata": {"lc_agent_name": "Travel_Assistant"}},
-        )
-        # Patch set_span_in_context to record the span passed in.
-        with patch("microsoft.opentelemetry._genai._langchain._tracer.trace_api.set_span_in_context") as mock_sic:
-            tracer._start_trace(run)
-            # set_span_in_context is called twice during agent _start_trace:
-            # 1. To re-parent the inner span under the wrapper (parent_context).
-            # 2. To attach the inner span to the runtime context.
-            attach_call_args = mock_sic.call_args_list[-1]
-            self.assertIs(attach_call_args[0][0], inner_span)
-        mock_ctx.attach.assert_called_once()
 
 
 # ---- invoke_agent aggregation fixes (issue #172) -----------------------------
