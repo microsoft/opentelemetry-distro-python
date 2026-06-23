@@ -41,7 +41,7 @@ When `enable_sensitive_data=True` is supplied:
 - The content capture mode defaults to `SPAN_AND_EVENT`.
 - This setting takes **precedence over** the pre-existing values of the corresponding environment variables.
 
-> **Note:** `enable_sensitive_data` defaults to `False`. Only enable it in trusted, non-production environments where capturing message content is intentional.
+> **Note:** `enable_sensitive_data` defaults to `False`. Only enable it in trusted, non-production environments where capturing message content is intentional. This configuration currently applies only to LangChain instrumentation and Microsoft Agent Framework.
 
 ---
 
