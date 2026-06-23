@@ -12,6 +12,7 @@ handling authentication, batching, and payload size limits.
 
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import threading
@@ -51,6 +52,9 @@ from microsoft.opentelemetry.a365.constants import A365_HTTP_TIMEOUT_SECONDS, GE
 DEFAULT_HTTP_TIMEOUT_SECONDS = A365_HTTP_TIMEOUT_SECONDS
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_ENDPOINT_URL = "https://agent365.svc.cloud.microsoft"
+
+_403_DOCS_URL = "https://aka.ms/a365-403"
+_403_FOUNDRY_URL = "https://aka.ms/foundry-grant-agent-365-permissions"
 
 # Circuit breaker defaults
 DEFAULT_CB_FAILURE_THRESHOLD = 5
@@ -364,6 +368,33 @@ class _Agent365Exporter(SpanExporter):
             return text[:max_length] + "..."
         return text
 
+    @staticmethod
+    def _extract_token_identity(headers: dict[str, str | bytes]) -> dict[str, str]:
+        """Decode the Bearer JWT and return service principal claims as a dict.
+
+        Returns a dict with 'app_id' and/or 'object_id' keys, or an empty dict
+        if the token is absent or cannot be decoded.
+        """
+        try:
+            auth = headers.get("authorization", "")
+            if isinstance(auth, bytes):
+                auth = auth.decode("utf-8", errors="replace")
+            if not auth.startswith("Bearer "):
+                return {}
+            parts = auth[len("Bearer "):].split(".")
+            if len(parts) != 3:
+                return {}
+            payload_b64 = parts[1] + "=" * (4 - len(parts[1]) % 4)
+            payload = json.loads(base64.urlsafe_b64decode(payload_b64))
+            sp: dict[str, str] = {}
+            if payload.get("appid") or payload.get("azp"):
+                sp["app_id"] = payload.get("appid") or payload.get("azp")
+            if payload.get("oid"):
+                sp["object_id"] = payload["oid"]
+            return sp
+        except Exception:  # pylint: disable=broad-except
+            return {}
+
     def _post_with_retries(  # pylint: disable=too-many-statements
         self, url: str, body: str, headers: dict[str, str | bytes]
     ) -> bool:
@@ -448,15 +479,41 @@ class _Agent365Exporter(SpanExporter):
                             record_throttle(ENDPOINT_A365, host, resp.status_code)
                         else:
                             record_failure(ENDPOINT_A365, host, resp.status_code)
-                    logger.error(
-                        "HTTP %d non-retryable error. Correlation ID: %s. Response: %s. "
-                        "WWW-Authenticate: %s. Response headers: %s",
-                        resp.status_code,
-                        correlation_id,
-                        response_text,
-                        resp.headers.get("www-authenticate", "N/A"),
-                        dict(resp.headers),
-                    )
+                    www_auth = resp.headers.get("www-authenticate", "")
+                    if resp.status_code == 403 and "insufficient_scope" in www_auth:
+                        sp = self._extract_token_identity(headers)
+                        if sp:
+                            sp_parts = [
+                                f"{label}: {sp[key]}"
+                                for key, label in (("app_id", "app ID"), ("object_id", "object ID"))
+                                if sp.get(key)
+                            ]
+                            sp_str = f" service principal ({', '.join(sp_parts)})"
+                        else:
+                            sp_str = " your application's service principal"
+                        logger.error(
+                            "HTTP 403 authorization error: the token is missing the required "
+                            "'Agent365.Observability.OtelWrite' app role. "
+                            "Grant the 'Agent365.Observability.OtelWrite' role to%s "
+                            "and ensure admin consent has been granted. "
+                            "| Setup instructions: %s "
+                            "| For Foundry: %s "
+                            "| Correlation ID: %s.",
+                            sp_str,
+                            _403_DOCS_URL,
+                            _403_FOUNDRY_URL,
+                            correlation_id,
+                        )
+                    else:
+                        logger.error(
+                            "HTTP %d non-retryable error. Correlation ID: %s. Response: %s. "
+                            "WWW-Authenticate: %s. Response headers: %s",
+                            resp.status_code,
+                            correlation_id,
+                            response_text,
+                            www_auth or "N/A",
+                            dict(resp.headers),
+                        )
                 return False
 
             except requests.RequestException as e:
