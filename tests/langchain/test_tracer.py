@@ -616,7 +616,7 @@ class TestUpdateSpan(TestCase):
     def test_sets_ok_status_on_no_error(self):
         span = MagicMock()
         run = _make_run(run_type="chain", name="test", error=None)
-        _update_span(span, run)
+        _update_span(span, run, False)
         span.set_status.assert_called()
 
     def test_llm_run_returns_invocation(self):
@@ -628,13 +628,13 @@ class TestUpdateSpan(TestCase):
             extra=None,
             inputs=None,
         )
-        result = _update_span(span, run)
+        result = _update_span(span, run, False)
         self.assertIsNotNone(result)
 
     def test_chain_run_returns_none(self):
         span = MagicMock()
         run = _make_run(run_type="chain", name="test")
-        result = _update_span(span, run)
+        result = _update_span(span, run, False)
         self.assertIsNone(result)
 
     def test_tool_run_sets_tool_attributes(self):
@@ -646,7 +646,7 @@ class TestUpdateSpan(TestCase):
             inputs={"input": "2+2"},
             outputs={"output": "4"},
         )
-        _update_span(span, run)
+        _update_span(span, run, False)
         span.set_attributes.assert_called()
 
     def test_chat_span_sets_provider_and_choice_count(self):
@@ -664,7 +664,7 @@ class TestUpdateSpan(TestCase):
             inputs=None,
         )
 
-        _update_span(span, run)
+        _update_span(span, run, False)
 
         merged_attrs = {}
         for call in span.set_attributes.call_args_list:
@@ -1290,3 +1290,30 @@ class TestExtractAgentInputMessagesToolRole(TestCase):
         self.assertEqual(tool_part.type, "tool_call_response")
         self.assertEqual(tool_part.id, "tc1")
         self.assertEqual(tool_part.response, "rainy")
+
+
+# ---- LangChainTracer enable_sensitive_data -----------------------------------
+
+
+class TestLangChainTracerEnableSensitiveData(TestCase):
+    def test_default_enable_sensitive_data_is_false(self):
+        tracer, _, _ = _make_tracer()
+        self.assertFalse(tracer._enable_sensitive_data)
+
+    def test_enable_sensitive_data_stored_when_true(self):
+        otel_tracer = MagicMock()
+        tracer = LangChainTracer(
+            otel_tracer,
+            False,
+            enable_sensitive_data=True,
+        )
+        self.assertTrue(tracer._enable_sensitive_data)
+
+    def test_enable_sensitive_data_stored_when_false(self):
+        otel_tracer = MagicMock()
+        tracer = LangChainTracer(
+            otel_tracer,
+            False,
+            enable_sensitive_data=False,
+        )
+        self.assertFalse(tracer._enable_sensitive_data)

@@ -784,7 +784,7 @@ def _setup_instrumentations(otel_kwargs: Dict[str, Any], **kwargs: Any) -> None:
                 continue
             lib_kwargs = _get_instrumentation_kwargs(otel_kwargs, lib_name)
             merged_kwargs = {**kwargs, **lib_kwargs}
-            if lib_name == "agent_framework":
+            if lib_name in ["agent_framework", "langchain"]:
                 merged_kwargs[ENABLE_SENSITIVE_DATA_ARG] = enable_sensitive_data
             instrumentor: Any = entry_point.load()
             instrumentor().instrument(skip_dep_check=True, **merged_kwargs)

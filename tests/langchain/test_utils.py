@@ -15,6 +15,7 @@ pytest.importorskip("langchain_core")
 from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # pylint: disable=wrong-import-position
     DictWithLock,
     CHAT_OPERATION_NAME,
+    _should_capture_content_on_spans,
     EXECUTE_TOOL_OPERATION_NAME,
     GEN_AI_AGENT_DESCRIPTION_KEY,
     GEN_AI_AGENT_ID_KEY,
@@ -837,10 +838,12 @@ class TestChainNodeMessages(TestCase):
         self.assertEqual(result[0][0], GEN_AI_INPUT_MESSAGES_KEY)
         self.assertIn("human: Hello", result[0][1])
 
-    def test_returns_empty_on_none(self):
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=True)
+    def test_returns_empty_on_none(self, _mock_capture):
         self.assertEqual(list(chain_node_messages(None, GEN_AI_INPUT_MESSAGES_KEY)), [])
 
-    def test_returns_empty_on_no_messages(self):
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=True)
+    def test_returns_empty_on_no_messages(self, _mock_capture):
         self.assertEqual(list(chain_node_messages({"other": 1}, GEN_AI_INPUT_MESSAGES_KEY)), [])
 
 
@@ -1297,6 +1300,7 @@ class TestBuildLlmInvocation(TestCase):
         self.assertEqual(inv.response_model_name, "gpt-4o-2024-11-20")
         self.assertEqual(inv.response_id, "chatcmpl-kwargs")
 
+
 # ---- Spec-compliant input.messages (issue #172) ------------------------------
 
 
@@ -1371,3 +1375,52 @@ class TestExtractStructuredInputMessagesSpecCompliance(TestCase):
         self.assertEqual(tool_parts[0].type, "tool_call_response")
         self.assertEqual(tool_parts[0].id, "call_1")
         self.assertEqual(tool_parts[0].response, "rainy, 57F")
+
+
+# ---- _should_capture_content_on_spans ---------------------------------------
+
+
+class TestShouldCaptureContentOnSpans(TestCase):
+    def test_enable_sensitive_data_true_returns_true_without_consulting_mode(self):
+        """When enable_sensitive_data=True, returns True immediately without calling get_content_capturing_mode."""
+        with patch("microsoft.opentelemetry._genai._langchain._utils.get_content_capturing_mode") as mock_mode:
+            result = _should_capture_content_on_spans(enable_sensitive_data=True)
+            mock_mode.assert_not_called()
+            self.assertIs(result, True)
+
+    def test_enable_sensitive_data_false_delegates_to_upstream_mode(self):
+        """When enable_sensitive_data=False, calls get_content_capturing_mode to determine the result."""
+        from opentelemetry.util.genai.utils import ContentCapturingMode
+
+        with patch(
+            "microsoft.opentelemetry._genai._langchain._utils.get_content_capturing_mode",
+            return_value=ContentCapturingMode.SPAN_AND_EVENT,
+        ):
+            self.assertTrue(_should_capture_content_on_spans(enable_sensitive_data=False))
+
+    def test_enable_sensitive_data_false_span_only_returns_true(self):
+        from opentelemetry.util.genai.utils import ContentCapturingMode
+
+        with patch(
+            "microsoft.opentelemetry._genai._langchain._utils.get_content_capturing_mode",
+            return_value=ContentCapturingMode.SPAN_ONLY,
+        ):
+            self.assertTrue(_should_capture_content_on_spans(enable_sensitive_data=False))
+
+    def test_enable_sensitive_data_false_no_content_returns_false(self):
+        from opentelemetry.util.genai.utils import ContentCapturingMode
+
+        with patch(
+            "microsoft.opentelemetry._genai._langchain._utils.get_content_capturing_mode",
+            return_value=ContentCapturingMode.NO_CONTENT,
+        ):
+            self.assertFalse(_should_capture_content_on_spans(enable_sensitive_data=False))
+
+    def test_enable_sensitive_data_false_event_only_returns_false(self):
+        from opentelemetry.util.genai.utils import ContentCapturingMode
+
+        with patch(
+            "microsoft.opentelemetry._genai._langchain._utils.get_content_capturing_mode",
+            return_value=ContentCapturingMode.EVENT_ONLY,
+        ):
+            self.assertFalse(_should_capture_content_on_spans(enable_sensitive_data=False))

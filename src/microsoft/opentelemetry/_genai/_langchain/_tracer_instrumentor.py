@@ -68,6 +68,8 @@ class LangChainInstrumentor(BaseInstrumentor):
             tracer_provider=tracer_provider,
         )
 
+        enable_sensitive_data = kwargs.get("enable_sensitive_data", False)
+
         logger_provider = kwargs.get("logger_provider")
         event_logger = get_otel_logger(
             __name__,
@@ -88,6 +90,7 @@ class LangChainInstrumentor(BaseInstrumentor):
             bool(kwargs.get("separate_trace_from_runtime_context")),
             agent_config=agent_config,
             event_logger=event_logger,
+            enable_sensitive_data=enable_sensitive_data,
         )
 
         self._original_cb_init = langchain_core.callbacks.BaseCallbackManager.__init__
