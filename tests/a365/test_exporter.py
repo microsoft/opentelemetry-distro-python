@@ -555,8 +555,8 @@ class TestNetworkStatsbeatHook(unittest.TestCase):
         self.assertEqual(len(log.output), 1)
         msg = log.output[0]
         self.assertIn("Agent365.Observability.OtelWrite", msg)
-        self.assertIn("https://learn.microsoft.com/microsoft-agent-365/developer/observability", msg)
-        self.assertIn("https://learn.microsoft.com/azure/foundry/agents/how-to/grant-agent-365-permissions", msg)
+        self.assertIn("https://aka.ms/a365-403", msg)
+        self.assertIn("https://aka.ms/foundry-grant-agent-365-permissions", msg)
         self.assertIn("Foundry", msg)
         exporter.shutdown()
 

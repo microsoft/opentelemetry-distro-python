@@ -52,6 +52,9 @@ DEFAULT_HTTP_TIMEOUT_SECONDS = A365_HTTP_TIMEOUT_SECONDS
 DEFAULT_MAX_RETRIES = 3
 DEFAULT_ENDPOINT_URL = "https://agent365.svc.cloud.microsoft"
 
+_403_DOCS_URL = "https://aka.ms/a365-403"
+_403_FOUNDRY_URL = "https://aka.ms/foundry-grant-agent-365-permissions"
+
 # Circuit breaker defaults
 DEFAULT_CB_FAILURE_THRESHOLD = 5
 DEFAULT_CB_RECOVERY_TIMEOUT = 30.0  # seconds
@@ -479,11 +482,11 @@ class _Agent365Exporter(SpanExporter):
                     if resp.status_code == 403 and "insufficient_scope" in www_auth:
                         sp = self._extract_token_identity(headers)
                         if sp:
-                            sp_parts = []
-                            if sp.get("app_id"):
-                                sp_parts.append(f"app ID: {sp['app_id']}")
-                            if sp.get("object_id"):
-                                sp_parts.append(f"object ID: {sp['object_id']}")
+                            sp_parts = [
+                                f"{label}: {sp[key]}"
+                                for key, label in (("app_id", "app ID"), ("object_id", "object ID"))
+                                if sp.get(key)
+                            ]
                             sp_str = f" service principal ({', '.join(sp_parts)})"
                         else:
                             sp_str = " your application's service principal"
@@ -492,12 +495,12 @@ class _Agent365Exporter(SpanExporter):
                             "'Agent365.Observability.OtelWrite' app role. "
                             "Grant the 'Agent365.Observability.OtelWrite' role to%s "
                             "and ensure admin consent has been granted. "
-                            "| Setup instructions: "
-                            "https://learn.microsoft.com/microsoft-agent-365/developer/observability?tabs=python#http-403-forbidden "
-                            "| For Foundry: "
-                            "https://learn.microsoft.com/azure/foundry/agents/how-to/grant-agent-365-permissions "
+                            "| Setup instructions: %s "
+                            "| For Foundry: %s "
                             "| Correlation ID: %s.",
                             sp_str,
+                            _403_DOCS_URL,
+                            _403_FOUNDRY_URL,
                             correlation_id,
                         )
                     else:
