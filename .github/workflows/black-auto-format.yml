@@ -17,7 +17,8 @@ jobs:
       cancel-in-progress: false
     permissions:
       contents: write
-      pull-requests: write
+      pull-requests: read
+      issues: write
     steps:
       - name: Fetch and validate PR
         id: find-pr
@@ -30,7 +31,13 @@ jobs:
               core.setOutput('has-pr', 'false');
               return;
             }
-            const prNumber = parseInt(prNumberStr);
+            const prNumber = Number.parseInt(prNumberStr, 10);
+            if (!Number.isInteger(prNumber) || prNumber <= 0) {
+              core.warning(`Invalid pr_number input: ${prNumberStr}`);
+              core.setOutput('has-pr', 'false');
+              core.setOutput('is-fork', 'false');
+              return;
+            }
             core.info(`Got PR #${prNumber} from workflow_dispatch input`);
             const { data: pr } = await github.rest.pulls.get({
               ...context.repo,
@@ -110,9 +117,7 @@ jobs:
             echo "CHANGES=false" >> $GITHUB_OUTPUT
           else
             # Only commit Python source changes produced by black.
-            git diff --name-only \
-              | grep -E '\.py$' \
-              | xargs -r git add --
+            git add -u -- '*.py' '*.pyi'
 
             if git diff --cached --quiet; then
               echo "Formatting changes were detected, but none matched the commit allow-list"
