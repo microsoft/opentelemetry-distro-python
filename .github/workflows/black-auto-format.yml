@@ -29,6 +29,7 @@ jobs:
             if (!prNumberStr) {
               core.warning('No pr_number input provided');
               core.setOutput('has-pr', 'false');
+              core.setOutput('is-fork', 'false');
               return;
             }
             const prNumber = Number.parseInt(prNumberStr, 10);
@@ -72,7 +73,7 @@ jobs:
           script: |
             await github.rest.issues.createComment({
               ...context.repo,
-              issue_number: parseInt(context.payload.inputs.pr_number),
+              issue_number: Number.parseInt(context.payload.inputs.pr_number, 10),
               body: [
                 '⚠️ **Black auto-format skipped for fork PR.**',
                 '',
@@ -124,7 +125,7 @@ jobs:
               echo "CHANGES=false" >> $GITHUB_OUTPUT
             else
               git commit -m "chore: apply black formatting fixes"
-              git push
+              git push origin HEAD:"${{ steps.find-pr.outputs.pr-branch }}"
               echo "CHANGES=true" >> $GITHUB_OUTPUT
             fi
           fi
@@ -136,7 +137,7 @@ jobs:
           CHANGES: ${{ steps.commit.outputs.CHANGES }}
         with:
           script: |
-            const prNumber = parseInt(context.payload.inputs.pr_number);
+            const prNumber = Number.parseInt(context.payload.inputs.pr_number, 10);
 
             if (process.env.CHANGES === 'true') {
               await github.rest.issues.createComment({
