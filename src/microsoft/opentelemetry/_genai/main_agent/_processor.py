@@ -28,6 +28,7 @@ from opentelemetry.sdk._logs import LogRecordProcessor, ReadWriteLogRecord
 from opentelemetry.sdk.trace import ReadableSpan, Span
 from opentelemetry.sdk.trace.export import SpanProcessor
 from opentelemetry.trace import Span as SpanAPI
+from opentelemetry.util.types import AttributeValue
 
 # Each row: (target attribute on current span,
 #            primary source attribute on parent span,
@@ -109,7 +110,7 @@ class GenAIMainAgentSpanProcessor(SpanProcessor):
             return
 
         # Build the attributes to write before touching the (now frozen) span.
-        updates: dict[str, object] = {}
+        updates: dict[str, AttributeValue] = {}
 
         # Self-promotion: top-level invoke_agent spans copy their own
         # gen_ai.agent.* → microsoft.gen_ai.main_agent.*
