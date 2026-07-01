@@ -28,6 +28,7 @@ from opentelemetry.sdk._logs import LogRecordProcessor, ReadWriteLogRecord
 from opentelemetry.sdk.trace import ReadableSpan, Span
 from opentelemetry.sdk.trace.export import SpanProcessor
 from opentelemetry.trace import Span as SpanAPI
+from opentelemetry.util.types import AttributeValue
 
 # Each row: (target attribute on current span,
 #            primary source attribute on parent span,
@@ -108,15 +109,16 @@ class GenAIMainAgentSpanProcessor(SpanProcessor):
         if mutable is None:
             return
 
+        # Build the attributes to write before touching the (now frozen) span.
+        updates: dict[str, AttributeValue] = {}
+
         # Self-promotion: top-level invoke_agent spans copy their own
         # gen_ai.agent.* → microsoft.gen_ai.main_agent.*
         if attributes.get(GEN_AI_OPERATION_NAME_KEY) == INVOKE_AGENT_OPERATION_NAME:
             for target, source in _SELF_COPY_TABLE:
                 value = attributes.get(source)
                 if value is not None:
-                    mutable[target] = value
-            return
-
+                    updates[target] = value
         # Fallback propagation: re-read from the parent span whose attributes
         # may have been set after this child was created (timing issue).
         if parent is not None:
@@ -126,7 +128,26 @@ class GenAIMainAgentSpanProcessor(SpanProcessor):
                 if value is None:
                     value = parent_attributes.get(fallback)
                 if value is not None:
+                    updates[target] = value
+
+        if not updates:
+            return
+
+        # OTel SDK >= 1.43 freezes span attributes (``_immutable = True``) inside
+        # ``end()`` *before* invoking ``on_end``.  Writing then raises ``TypeError``.
+        # Temporarily lift the freeze for our own synchronous writes and always
+        # restore it so the exported ``ReadableSpan`` snapshot stays frozen.
+        was_immutable = getattr(mutable, "_immutable", False)
+        if was_immutable:
+            mutable._immutable = False  # pylint: disable=protected-access
+            try:
+                for target, value in updates.items():
                     mutable[target] = value
+            finally:
+                mutable._immutable = True  # pylint: disable=protected-access
+        else:
+            for target, value in updates.items():
+                mutable[target] = value
 
     def shutdown(self) -> None:
         self._parent_spans.clear()
