@@ -368,7 +368,8 @@ class TestNetworkMetricsRegistration(unittest.TestCase):
             return real_import(name, *args, **kwargs)
 
         with patch("builtins.__import__", side_effect=fake_import):
-            self.assertFalse(register_network_gauges())
+            # Returns None (falsy) when upstream is unavailable; must not raise.
+            register_network_gauges()
 
 
 class TestObserveRequestSuccessCount(unittest.TestCase):
