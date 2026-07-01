@@ -1,5 +1,29 @@
 # Release History
 
+# 1.3.5 (2026-07-01)
+
+### Features Added
+- Pass metrics observations to upstream SDKStats Manager
+  ([#191](https://github.com/microsoft/opentelemetry-distro-python/pull/191))
+- Enable sensitive data for LangChain programmatically
+  ([#201](https://github.com/microsoft/opentelemetry-distro-python/pull/201))
+
+### Bugs Fixed
+- Add actionable 403 error message
+  ([#213](https://github.com/microsoft/opentelemetry-distro-python/pull/213))
+- Remove internal model/tool spans
+  ([#212](https://github.com/microsoft/opentelemetry-distro-python/pull/212))
+
+### Other Changes
+- Update otel dependencies
+  ([#218](https://github.com/microsoft/opentelemetry-distro-python/pull/218))
+- Add pre-commit hook for auto-formatting
+  ([#220](https://github.com/microsoft/opentelemetry-distro-python/pull/220))
+- Remove specific co-code owners
+  ([#221](https://github.com/microsoft/opentelemetry-distro-python/pull/221))
+- Documentation improvements for published API reference
+  ([#214](https://github.com/microsoft/opentelemetry-distro-python/pull/214))
+
 # 1.3.4 (2026-06-17)
 
 ### Bugs Fixed
