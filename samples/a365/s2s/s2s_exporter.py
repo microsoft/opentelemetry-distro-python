@@ -197,7 +197,7 @@ def build_s2s_token_resolver():
                 cache[cache_key] = (access_token, time.time() + expires_in)
             return access_token
 
-        except Exception as exc:  # noqa: BLE001 - surface auth failures in sample  # pylint: disable=broad-exception-caught
+        except Exception as exc:  # pylint: disable=broad-exception-caught
             print(f"S2S token acquisition failed: {exc}")
             return None
 
