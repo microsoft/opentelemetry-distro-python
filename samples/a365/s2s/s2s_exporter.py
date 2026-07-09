@@ -116,17 +116,16 @@ def build_s2s_token_resolver():
     """
     try:
         import msal
-    except ImportError:
+    except ImportError as exc:
         raise SystemExit(
             "msal is required for the S2S sample. Install dependencies with `uv sync`."
-        )
+        ) from exc
 
     client_id = _require_env(A365_SERVICE_CLIENT_ID_ENV)
     client_secret = _require_env(A365_SERVICE_CLIENT_SECRET_ENV)
-    tenant_id = _require_env(A365_SERVICE_TENANT_ID_ENV)
+    configured_tenant_id = _require_env(A365_SERVICE_TENANT_ID_ENV)
     instance_id = _require_env(A365_AGENT_APP_INSTANCE_ID_ENV)
 
-    authority = f"https://login.microsoftonline.com/{tenant_id}"
     cache: dict[str, tuple[str, float]] = {}
     lock = threading.Lock()
 
@@ -134,6 +133,18 @@ def build_s2s_token_resolver():
         # The resolver runs on the exporter's worker thread; guard the cache to
         # keep token acquisition thread-safe.
         cache_key = f"{request_tenant_id}:{agent_id}"
+
+        # Authenticate against the tenant the telemetry is being exported for, so
+        # the token audience matches the cache key. Fail fast if the request's
+        # tenant diverges from the configured credentials, since acquiring a token
+        # for a different tenant than we cache under yields confusing failures.
+        if request_tenant_id != configured_tenant_id:
+            print(
+                f"S2S token acquisition failed: request tenant {request_tenant_id!r} "
+                f"does not match configured tenant {configured_tenant_id!r}."
+            )
+            return None
+        authority = f"https://login.microsoftonline.com/{request_tenant_id}"
 
         with lock:
             cached = cache.get(cache_key)
@@ -186,7 +197,7 @@ def build_s2s_token_resolver():
                 cache[cache_key] = (access_token, time.time() + expires_in)
             return access_token
 
-        except Exception as exc:  # noqa: BLE001 - surface auth failures in sample
+        except Exception as exc:  # noqa: BLE001 - surface auth failures in sample  # pylint: disable=broad-exception-caught
             print(f"S2S token acquisition failed: {exc}")
             return None
 
@@ -201,12 +212,20 @@ def _configure_export_logging() -> None:
     success, or an error log on failure. Without this, those messages are
     suppressed and the run looks identical whether or not export succeeded.
     """
-    handler = logging.StreamHandler()
-    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
     exporter_logger = logging.getLogger(
         "microsoft.opentelemetry.a365.core.exporters.agent365_exporter"
     )
     exporter_logger.setLevel(logging.DEBUG)
+    # Disable propagation so records aren't also emitted via the root logger,
+    # and only attach our handler once so repeated runs in the same process
+    # (interactive sessions / test harnesses) don't duplicate log output.
+    exporter_logger.propagate = False
+    handler_name = "a365-s2s-sample-export-logging"
+    if any(getattr(h, "name", None) == handler_name for h in exporter_logger.handlers):
+        return
+    handler = logging.StreamHandler()
+    handler.name = handler_name
+    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
     exporter_logger.addHandler(handler)
 
 

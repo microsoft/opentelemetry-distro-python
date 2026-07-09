@@ -23,7 +23,7 @@ so the sample needs no LLM.
 - [uv](https://docs.astral.sh/uv/)
 - To actually export: a Blueprint app registration granted the
   `Agent365.Observability.OtelWrite` **application** permission (with admin
-  consent). See [`MIGRATION_A365.md`](../../MIGRATION_A365.md) →
+  consent). See [`MIGRATION_A365.md`](../../../MIGRATION_A365.md) →
   "Troubleshooting — Permissions and Setup".
 
 ## Setup
