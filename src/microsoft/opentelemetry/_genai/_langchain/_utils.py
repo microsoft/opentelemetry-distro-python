@@ -97,6 +97,8 @@ try:
 except ImportError:
     GEN_AI_AGENT_VERSION = "gen_ai.agent.version"  # type: ignore[misc]
 
+_SERVED_MODEL_HEADER = "x-ms-served-model"
+
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
@@ -773,6 +775,18 @@ def _iter_generation_response_metadata(outputs: Mapping[str, Any] | None) -> Ite
             yield meta
 
 
+def _served_model_from_outputs(outputs: Mapping[str, Any] | None) -> str | None:
+    """Return the Azure Foundry served-model snapshot from response headers. """
+    for meta in _iter_generation_response_metadata(outputs):
+        headers = meta.get("headers")
+        if not isinstance(headers, Mapping):
+            continue
+        for header_name, header_value in headers.items():
+            if isinstance(header_name, str) and header_name.lower() == _SERVED_MODEL_HEADER and header_value:
+                return str(header_value)
+    return None
+
+
 def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
     if (
         outputs
@@ -1061,8 +1075,12 @@ def build_llm_invocation(run: Run) -> LLMInvocation:  # pylint: disable=too-many
                         inv.server_address = normalized_addr
                         break
 
-    # --- Response model name (from llm_output) ---
-    if run.outputs and isinstance(run.outputs, Mapping):
+    # Prefer the real served-model snapshot from the ``x-ms-served-model``
+    # response header (foundry responses protocol) when available.
+    if served_model := _served_model_from_outputs(run.outputs):
+        inv.response_model_name = served_model
+
+    if not inv.response_model_name and run.outputs and isinstance(run.outputs, Mapping):
         llm_output = run.outputs.get("llm_output")
         if llm_output and hasattr(llm_output, "get"):
             for key in ("model_name", "model"):
