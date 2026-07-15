@@ -203,15 +203,35 @@ class TestDictWithLock(TestCase):
 
 
 class TestPrompts(TestCase):
-    def test_extracts_prompts(self):
+    @patch(
+        "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
+        return_value=True,
+    )
+    def test_extracts_prompts(self, _mock_capture):
         inputs = {"prompts": ["System prompt here"]}
         result = list(prompts(inputs))
         self.assertEqual(result, [(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, ["System prompt here"])])
 
-    def test_returns_empty_on_none(self):
+    @patch(
+        "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
+        return_value=False,
+    )
+    def test_skips_prompts_when_content_capture_disabled(self, _mock_capture):
+        inputs = {"prompts": ["System prompt here"]}
+        self.assertEqual(list(prompts(inputs)), [])
+
+    @patch(
+        "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
+        return_value=True,
+    )
+    def test_returns_empty_on_none(self, _mock_capture):
         self.assertEqual(list(prompts(None)), [])
 
-    def test_returns_empty_on_no_prompts(self):
+    @patch(
+        "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
+        return_value=True,
+    )
+    def test_returns_empty_on_no_prompts(self, _mock_capture):
         self.assertEqual(list(prompts({"other": "data"})), [])
 
 
@@ -1388,7 +1408,11 @@ class TestShouldCaptureContentOnSpans(TestCase):
             mock_mode.assert_not_called()
             self.assertIs(result, True)
 
-    def test_enable_sensitive_data_false_delegates_to_upstream_mode(self):
+    @patch(
+        "microsoft.opentelemetry._genai._langchain._utils.is_experimental_mode",
+        return_value=True,
+    )
+    def test_enable_sensitive_data_false_delegates_to_upstream_mode(self, _mock_experimental):
         """When enable_sensitive_data=False, calls get_content_capturing_mode to determine the result."""
         from opentelemetry.util.genai.utils import ContentCapturingMode
 
@@ -1398,7 +1422,11 @@ class TestShouldCaptureContentOnSpans(TestCase):
         ):
             self.assertTrue(_should_capture_content_on_spans(enable_sensitive_data=False))
 
-    def test_enable_sensitive_data_false_span_only_returns_true(self):
+    @patch(
+        "microsoft.opentelemetry._genai._langchain._utils.is_experimental_mode",
+        return_value=True,
+    )
+    def test_enable_sensitive_data_false_span_only_returns_true(self, _mock_experimental):
         from opentelemetry.util.genai.utils import ContentCapturingMode
 
         with patch(

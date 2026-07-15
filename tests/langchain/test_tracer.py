@@ -674,6 +674,50 @@ class TestUpdateSpan(TestCase):
         self.assertEqual(merged_attrs.get(GEN_AI_PROVIDER_NAME_KEY), "openai")
         self.assertEqual(merged_attrs.get(GEN_AI_REQUEST_CHOICE_COUNT_KEY), 2)
 
+    @patch("microsoft.opentelemetry._genai._langchain._tracer._should_capture_content_on_spans", return_value=True)
+    def test_llm_span_sets_messages_when_content_capture_enabled(self, _mock_capture):
+        from langchain_core.messages import HumanMessage
+
+        span = MagicMock()
+        run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            inputs={"messages": [[HumanMessage(content="hi")]]},
+            outputs={
+                "llm_output": {"model_name": "gpt-4o"},
+                "generations": [[{"message": {"content": "hello there"}}]],
+            },
+            extra=None,
+        )
+
+        _update_span(span, run, enable_sensitive_data=True)
+
+        set_attr_keys = {call.args[0] for call in span.set_attribute.call_args_list if call.args}
+        self.assertIn(GEN_AI_INPUT_MESSAGES_KEY, set_attr_keys)
+        self.assertIn(GEN_AI_OUTPUT_MESSAGES_KEY, set_attr_keys)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer._should_capture_content_on_spans", return_value=False)
+    def test_llm_span_skips_messages_when_content_capture_disabled(self, _mock_capture):
+        from langchain_core.messages import HumanMessage
+
+        span = MagicMock()
+        run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            inputs={"messages": [[HumanMessage(content="hi")]]},
+            outputs={
+                "llm_output": {"model_name": "gpt-4o"},
+                "generations": [[{"message": {"content": "hello there"}}]],
+            },
+            extra=None,
+        )
+
+        _update_span(span, run, enable_sensitive_data=False)
+
+        set_attr_keys = {call.args[0] for call in span.set_attribute.call_args_list if call.args}
+        self.assertNotIn(GEN_AI_INPUT_MESSAGES_KEY, set_attr_keys)
+        self.assertNotIn(GEN_AI_OUTPUT_MESSAGES_KEY, set_attr_keys)
+
 
 # ---- Aggregation -------------------------------------------------------------
 
@@ -1069,6 +1113,94 @@ class TestAggregateInputMessagesLastWins(TestCase):
         roles = [m.role for m in content["input_messages"]]
         self.assertEqual(roles, ["user", "assistant", "tool"])
         # Final assistant is held as pending_assistant until finalize.
+        self.assertIsNotNone(content["pending_assistant"])
+        self.assertEqual(content["pending_assistant"][0].role, "assistant")
+
+
+class TestAggregateExcludesStructuredOutput(TestCase):
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_structured_output_llm_excluded_from_transcript(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        wrapper = MagicMock()
+        inner = MagicMock()
+        otel_tracer.start_span.side_effect = [wrapper, inner]
+
+        agent_run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            inputs={"messages": [{"role": "user", "content": "What is 2+2?"}]},
+        )
+        tracer.run_map[str(agent_run.id)] = agent_run
+        tracer._start_trace(agent_run)
+
+        triage_llm = _make_run(
+            run_type="chat_model",
+            name="gpt-4.1",
+            parent_run_id=agent_run.id,
+            inputs={"prompts": ["System: route this\nHuman: What is 2+2?"]},
+            extra={
+                "options": {
+                    "ls_structured_output_format": {
+                        "kwargs": {"method": "json_schema"},
+                        "schema": {"type": "object"},
+                    }
+                }
+            },
+            outputs={
+                "generations": [
+                    [
+                        {
+                            "text": '{"destination":"math"}',
+                            "message": {
+                                "id": ["langchain", "schema", "messages", "AIMessage"],
+                                "kwargs": {
+                                    "content": '{"destination":"math"}',
+                                    "type": "ai",
+                                },
+                            },
+                        }
+                    ]
+                ]
+            },
+        )
+        tracer.run_map[str(triage_llm.id)] = triage_llm
+        tracer._aggregate_into_parent(triage_llm)
+
+        answer_llm = _make_run(
+            run_type="chat_model",
+            name="gpt-4.1",
+            parent_run_id=agent_run.id,
+            inputs={"prompts": ["Human: What is 2+2?"]},
+            extra=None,
+            outputs={
+                "generations": [
+                    [
+                        {
+                            "text": "4",
+                            "message": {
+                                "id": ["langchain", "schema", "messages", "AIMessage"],
+                                "kwargs": {"content": "4", "type": "ai"},
+                            },
+                        }
+                    ]
+                ]
+            },
+        )
+        tracer.run_map[str(answer_llm.id)] = answer_llm
+        tracer._aggregate_into_parent(answer_llm)
+
+        content = tracer._agent_content[agent_run.id]
+
+        roles = [m.role for m in content["input_messages"]]
+        self.assertEqual(roles, ["user"])
+        transcript_text = "".join(
+            part.content
+            for m in content["input_messages"]
+            for part in m.parts
+            if getattr(part, "content", None)
+        )
+        self.assertNotIn("destination", transcript_text)
         self.assertIsNotNone(content["pending_assistant"])
         self.assertEqual(content["pending_assistant"][0].role, "assistant")
 
