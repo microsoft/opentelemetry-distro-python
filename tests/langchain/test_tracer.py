@@ -692,7 +692,7 @@ class TestUpdateSpan(TestCase):
 
         _update_span(span, run, enable_sensitive_data=True)
 
-        set_attr_keys = {call.args[0] for call in span.set_attribute.call_args_list if call.args}
+        set_attr_keys = {call.args[0] for call in span.set_attribute.call_args_list if call.args}  # pylint: disable=no-member
         self.assertIn(GEN_AI_INPUT_MESSAGES_KEY, set_attr_keys)
         self.assertIn(GEN_AI_OUTPUT_MESSAGES_KEY, set_attr_keys)
 
@@ -714,7 +714,7 @@ class TestUpdateSpan(TestCase):
 
         _update_span(span, run, enable_sensitive_data=False)
 
-        set_attr_keys = {call.args[0] for call in span.set_attribute.call_args_list if call.args}
+        set_attr_keys = {call.args[0] for call in span.set_attribute.call_args_list if call.args}  # pylint: disable=no-member
         self.assertNotIn(GEN_AI_INPUT_MESSAGES_KEY, set_attr_keys)
         self.assertNotIn(GEN_AI_OUTPUT_MESSAGES_KEY, set_attr_keys)
 
@@ -1195,10 +1195,7 @@ class TestAggregateExcludesStructuredOutput(TestCase):
         roles = [m.role for m in content["input_messages"]]
         self.assertEqual(roles, ["user"])
         transcript_text = "".join(
-            part.content
-            for m in content["input_messages"]
-            for part in m.parts
-            if getattr(part, "content", None)
+            part.content for m in content["input_messages"] for part in m.parts if getattr(part, "content", None)
         )
         self.assertNotIn("destination", transcript_text)
         self.assertIsNotNone(content["pending_assistant"])
