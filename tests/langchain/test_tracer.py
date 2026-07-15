@@ -692,7 +692,8 @@ class TestUpdateSpan(TestCase):
 
         _update_span(span, run, enable_sensitive_data=True)
 
-        set_attr_keys = {call.args[0] for call in span.set_attribute.call_args_list if call.args}  # pylint: disable=no-member
+        calls = getattr(span.set_attribute, "call_args_list")
+        set_attr_keys = {call.args[0] for call in calls if call.args}
         self.assertIn(GEN_AI_INPUT_MESSAGES_KEY, set_attr_keys)
         self.assertIn(GEN_AI_OUTPUT_MESSAGES_KEY, set_attr_keys)
 
@@ -714,7 +715,8 @@ class TestUpdateSpan(TestCase):
 
         _update_span(span, run, enable_sensitive_data=False)
 
-        set_attr_keys = {call.args[0] for call in span.set_attribute.call_args_list if call.args}  # pylint: disable=no-member
+        calls = getattr(span.set_attribute, "call_args_list")
+        set_attr_keys = {call.args[0] for call in calls if call.args}
         self.assertNotIn(GEN_AI_INPUT_MESSAGES_KEY, set_attr_keys)
         self.assertNotIn(GEN_AI_OUTPUT_MESSAGES_KEY, set_attr_keys)
 
