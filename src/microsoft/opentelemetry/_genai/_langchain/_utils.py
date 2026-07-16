@@ -264,7 +264,12 @@ LANGCHAIN_THREAD_ID = "thread_id"
 
 
 @stop_on_exception
-def prompts(inputs: Mapping[str, Any] | None) -> Iterator[tuple[str, list[str]]]:
+def prompts(
+    inputs: Mapping[str, Any] | None,
+    enable_sensitive_data: bool = False,
+) -> Iterator[tuple[str, list[str]]]:
+    if not _should_capture_content_on_spans(enable_sensitive_data):
+        return
     if not inputs:
         return
     if not isinstance(inputs, Mapping):
@@ -889,11 +894,12 @@ def tools(run: Run, enable_sensitive_data: bool = False) -> Iterator[tuple[str, 
         if run.inputs and hasattr(run.inputs, "get"):
             _sentinel = object()
             input_val = run.inputs.get("input", _sentinel)
-            if input_val is not _sentinel:
-                if isinstance(input_val, str):
-                    yield GEN_AI_TOOL_ARGS_KEY, input_val
-                else:
-                    yield GEN_AI_TOOL_ARGS_KEY, safe_json_dumps(input_val)
+            if input_val is _sentinel:
+                input_val = run.inputs
+            if isinstance(input_val, str):
+                yield GEN_AI_TOOL_ARGS_KEY, input_val
+            else:
+                yield GEN_AI_TOOL_ARGS_KEY, safe_json_dumps(input_val)
         if run.outputs and hasattr(run.outputs, "get"):
             _sentinel = object()
             result = run.outputs.get("output", _sentinel)
@@ -1489,6 +1495,21 @@ def _extract_agent_output_messages(
 
 
 # ---- Agent input-history builders (issue #172) -------------------------------
+
+
+def _is_structured_output_run(run: Run) -> bool:
+    """Return True if this LLM/chat run came from ``with_structured_output``."""
+    extra = run.extra
+    if not isinstance(extra, Mapping):
+        return False
+    for container_key in ("options", "invocation_params", "metadata"):
+        container = extra.get(container_key)
+        if isinstance(container, Mapping):
+            if container.get("ls_structured_output_format") is not None:
+                return True
+            if container.get("structured_output_format") is not None:
+                return True
+    return False
 
 
 def _seed_initial_messages(inputs: Mapping[str, Any] | None) -> list[InputMessage]:

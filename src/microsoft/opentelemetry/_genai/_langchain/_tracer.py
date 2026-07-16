@@ -74,6 +74,7 @@ from microsoft.opentelemetry._genai._langchain._utils import (
     _extract_agent_input_messages,
     _extract_agent_output_messages,
     _output_message_to_input,
+    _is_structured_output_run,
     _seed_initial_messages,
     _should_capture_content_on_spans,
     _tool_run_to_input_message,
@@ -130,6 +131,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         enable_sensitive_data: bool = False,
         **kwargs: Any,
     ) -> None:
+        kwargs.setdefault("_schema_format", "original+chat")
         super().__init__(*args, **kwargs)
         if TYPE_CHECKING:
             assert self.run_map  # type: ignore[has-type]
@@ -516,7 +518,12 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             # rely on the LLM child's own ``run.inputs`` because LangChain
             # often hands the model a pre-serialised prompt string, losing
             # the structured per-turn shape (see issue #172).
-            if run_type in ("llm", "chat_model"):
+            #
+            # Structured-output LLM calls (``with_structured_output``) are
+            # excluded: their output is a schema-constrained control object
+            # (e.g. a routing decision), not a conversational turn, and folding
+            # it into the transcript pollutes ``gen_ai.input.messages``.
+            if run_type in ("llm", "chat_model") and not _is_structured_output_run(run):
                 # Seed system/user messages from the agent's top-level inputs
                 # on the first LLM call.
                 if not content.get("seeded_initial"):
@@ -688,12 +695,24 @@ def _update_span(span: Span, run: Run, enable_sensitive_data: bool = False) -> L
         # Fix "chat None" span name when model is unknown
         if invocation.request_model is None:
             span.update_name(CHAT_OPERATION_NAME)
+
+        if _should_capture_content_on_spans(enable_sensitive_data):
+            if invocation.input_messages:
+                span.set_attribute(
+                    GEN_AI_INPUT_MESSAGES_KEY,
+                    safe_json_dumps([asdict(m) for m in invocation.input_messages]),
+                )
+            if invocation.output_messages:
+                span.set_attribute(
+                    GEN_AI_OUTPUT_MESSAGES_KEY,
+                    safe_json_dumps([asdict(m) for m in invocation.output_messages]),
+                )
         # Extras not covered by LLMInvocation
         span.set_attributes(
             dict(
                 flatten(
                     chain(
-                        prompts(run.inputs),
+                        prompts(run.inputs, enable_sensitive_data),
                         invocation_parameters(run),
                         function_calls(run.outputs, enable_sensitive_data),
                         metadata(run),
