@@ -14,6 +14,7 @@ from opentelemetry.sdk.metrics.export import MetricReader
 from opentelemetry.sdk.metrics.view import View
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import SpanExporter
 from opentelemetry.sdk._logs import LoggerProvider
 from opentelemetry._logs import set_logger_provider
 from opentelemetry.instrumentation.logging.handler import LoggingHandler
@@ -613,7 +614,7 @@ def _append_spectra_components(
         )
         return
 
-    exporter = None
+    exporter: Optional[SpanExporter] = None
 
     if resolved_protocol == "grpc":
         try:

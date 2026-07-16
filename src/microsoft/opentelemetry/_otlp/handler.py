@@ -100,9 +100,9 @@ def create_otlp_components(
     Per-signal overrides follow the pattern
     ``OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_{ENDPOINT,HEADERS,TIMEOUT,COMPRESSION,PROTOCOL}``.
     """
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
-    from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor, SpanExporter
+    from opentelemetry.sdk.metrics.export import MetricExporter, PeriodicExportingMetricReader
+    from opentelemetry.sdk._logs.export import BatchLogRecordProcessor, LogRecordExporter
 
     # from opentelemetry.sdk.trace.export import SpanExporter
     # from opentelemetry.sdk.metrics.export import MetricExporter
@@ -119,11 +119,19 @@ def create_otlp_components(
 
     if enable_traces:
         if _resolve_protocol("traces") == _GRPC:
-            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-        else:
-            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+                OTLPSpanExporter as GrpcSpanExporter,
+            )
 
-        components.span_processor = BatchSpanProcessor(OTLPSpanExporter())
+            span_exporter: SpanExporter = GrpcSpanExporter()
+        else:
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+                OTLPSpanExporter as HttpSpanExporter,
+            )
+
+            span_exporter = HttpSpanExporter()
+
+        components.span_processor = BatchSpanProcessor(span_exporter)
         # span_exporter: SpanExporter = OTLPSpanExporter()
         # if record_network_sdkstats:
         #     span_exporter = _NetworkStatsSpanExporter(span_exporter)
@@ -131,11 +139,19 @@ def create_otlp_components(
 
     if enable_metrics:
         if _resolve_protocol("metrics") == _GRPC:
-            from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
-        else:
-            from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+            from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import (
+                OTLPMetricExporter as GrpcMetricExporter,
+            )
 
-        components.metric_reader = PeriodicExportingMetricReader(OTLPMetricExporter())
+            metric_exporter: MetricExporter = GrpcMetricExporter()
+        else:
+            from opentelemetry.exporter.otlp.proto.http.metric_exporter import (
+                OTLPMetricExporter as HttpMetricExporter,
+            )
+
+            metric_exporter = HttpMetricExporter()
+
+        components.metric_reader = PeriodicExportingMetricReader(metric_exporter)
         # metric_exporter: MetricExporter = OTLPMetricExporter()
         # if record_network_sdkstats:
         #     metric_exporter = _NetworkStatsMetricExporter(metric_exporter)
@@ -143,11 +159,19 @@ def create_otlp_components(
 
     if enable_logs:
         if _resolve_protocol("logs") == _GRPC:
-            from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
-        else:
-            from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+            from opentelemetry.exporter.otlp.proto.grpc._log_exporter import (
+                OTLPLogExporter as GrpcLogExporter,
+            )
 
-        components.log_record_processor = BatchLogRecordProcessor(OTLPLogExporter())
+            log_exporter: LogRecordExporter = GrpcLogExporter()
+        else:
+            from opentelemetry.exporter.otlp.proto.http._log_exporter import (
+                OTLPLogExporter as HttpLogExporter,
+            )
+
+            log_exporter = HttpLogExporter()
+
+        components.log_record_processor = BatchLogRecordProcessor(log_exporter)
         # log_exporter: LogRecordExporter = OTLPLogExporter()
         # if record_network_sdkstats:
         #     log_exporter = _NetworkStatsLogExporter(log_exporter)
