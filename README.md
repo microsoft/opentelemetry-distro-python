@@ -184,6 +184,14 @@ Automatically enabled when any `OTEL_EXPORTER_OTLP_*` endpoint variable is set:
 
 Per-signal overrides follow the pattern `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_{ENDPOINT,HEADERS,TIMEOUT,COMPRESSION,PROTOCOL}`.
 
+HTTP/protobuf is included by default. To use gRPC export, add the gRPC exporter
+to your application dependencies and set the OTLP protocol environment variable:
+
+```bash
+pip install "opentelemetry-exporter-otlp-proto-grpc~=1.43.0"
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+```
+
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 python my_app.py

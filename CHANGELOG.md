@@ -4,7 +4,8 @@
 
 ### Bugs Fixed
 - Honor standard general and per-signal OTLP protocol environment variables,
-  supporting both HTTP/protobuf and gRPC exporters.
+  supporting HTTP/protobuf by default and gRPC when the gRPC exporter is
+  installed separately.
 
 # 1.3.5 (2026-07-01)
 
