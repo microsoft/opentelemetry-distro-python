@@ -26,6 +26,21 @@ from microsoft.opentelemetry._constants import (
     _OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
     _OTEL_EXPORTER_OTLP_METRICS_ENDPOINT,
     _OTEL_EXPORTER_OTLP_LOGS_ENDPOINT,
+    _OTEL_EXPORTER_OTLP_PROTOCOL,
+    _OTEL_EXPORTER_OTLP_TRACES_PROTOCOL,
+    _OTEL_EXPORTER_OTLP_METRICS_PROTOCOL,
+    _OTEL_EXPORTER_OTLP_LOGS_PROTOCOL,
+)
+
+_OTLP_ENV_VARS = (
+    _OTEL_EXPORTER_OTLP_ENDPOINT,
+    _OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
+    _OTEL_EXPORTER_OTLP_METRICS_ENDPOINT,
+    _OTEL_EXPORTER_OTLP_LOGS_ENDPOINT,
+    _OTEL_EXPORTER_OTLP_PROTOCOL,
+    _OTEL_EXPORTER_OTLP_TRACES_PROTOCOL,
+    _OTEL_EXPORTER_OTLP_METRICS_PROTOCOL,
+    _OTEL_EXPORTER_OTLP_LOGS_PROTOCOL,
 )
 
 
@@ -33,12 +48,7 @@ class TestIsOtlpEnabled(unittest.TestCase):
     """Tests for is_otlp_enabled()."""
 
     def _clear_otlp_env(self):
-        for var in (
-            _OTEL_EXPORTER_OTLP_ENDPOINT,
-            _OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
-            _OTEL_EXPORTER_OTLP_METRICS_ENDPOINT,
-            _OTEL_EXPORTER_OTLP_LOGS_ENDPOINT,
-        ):
+        for var in _OTLP_ENV_VARS:
             os.environ.pop(var, None)
 
     def setUp(self):
@@ -83,15 +93,21 @@ def _install_fake_otlp_modules():
     import sys
     import types
 
-    mock_span_exporter = MagicMock()
-    mock_metric_exporter = MagicMock()
-    mock_log_exporter = MagicMock()
+    exporters = {
+        "http_traces": MagicMock(),
+        "http_metrics": MagicMock(),
+        "http_logs": MagicMock(),
+        "grpc_traces": MagicMock(),
+        "grpc_metrics": MagicMock(),
+        "grpc_logs": MagicMock(),
+    }
 
     module_chain = [
         "opentelemetry.exporter",
         "opentelemetry.exporter.otlp",
         "opentelemetry.exporter.otlp.proto",
         "opentelemetry.exporter.otlp.proto.http",
+        "opentelemetry.exporter.otlp.proto.grpc",
     ]
     for mod_name in module_chain:
         if mod_name not in sys.modules:
@@ -99,20 +115,35 @@ def _install_fake_otlp_modules():
 
     trace_name = "opentelemetry.exporter.otlp.proto.http.trace_exporter"
     trace_mod = types.ModuleType(trace_name)
-    trace_mod.OTLPSpanExporter = mock_span_exporter
+    trace_mod.OTLPSpanExporter = exporters["http_traces"]
     sys.modules[trace_name] = trace_mod
 
     metric_name = "opentelemetry.exporter.otlp.proto.http.metric_exporter"
     metric_mod = types.ModuleType(metric_name)
-    metric_mod.OTLPMetricExporter = mock_metric_exporter
+    metric_mod.OTLPMetricExporter = exporters["http_metrics"]
     sys.modules[metric_name] = metric_mod
 
     log_name = "opentelemetry.exporter.otlp.proto.http._log_exporter"
     log_mod = types.ModuleType(log_name)
-    log_mod.OTLPLogExporter = mock_log_exporter
+    log_mod.OTLPLogExporter = exporters["http_logs"]
     sys.modules[log_name] = log_mod
 
-    return mock_span_exporter, mock_metric_exporter, mock_log_exporter
+    trace_name = "opentelemetry.exporter.otlp.proto.grpc.trace_exporter"
+    trace_mod = types.ModuleType(trace_name)
+    trace_mod.OTLPSpanExporter = exporters["grpc_traces"]
+    sys.modules[trace_name] = trace_mod
+
+    metric_name = "opentelemetry.exporter.otlp.proto.grpc.metric_exporter"
+    metric_mod = types.ModuleType(metric_name)
+    metric_mod.OTLPMetricExporter = exporters["grpc_metrics"]
+    sys.modules[metric_name] = metric_mod
+
+    log_name = "opentelemetry.exporter.otlp.proto.grpc._log_exporter"
+    log_mod = types.ModuleType(log_name)
+    log_mod.OTLPLogExporter = exporters["grpc_logs"]
+    sys.modules[log_name] = log_mod
+
+    return exporters
 
 
 class TestCreateOtlpComponents(unittest.TestCase):
@@ -127,13 +158,19 @@ class TestCreateOtlpComponents(unittest.TestCase):
             "opentelemetry.exporter.otlp",
             "opentelemetry.exporter.otlp.proto",
             "opentelemetry.exporter.otlp.proto.http",
+            "opentelemetry.exporter.otlp.proto.grpc",
             "opentelemetry.exporter.otlp.proto.http.trace_exporter",
             "opentelemetry.exporter.otlp.proto.http.metric_exporter",
             "opentelemetry.exporter.otlp.proto.http._log_exporter",
+            "opentelemetry.exporter.otlp.proto.grpc.trace_exporter",
+            "opentelemetry.exporter.otlp.proto.grpc.metric_exporter",
+            "opentelemetry.exporter.otlp.proto.grpc._log_exporter",
         ]
         for mod in fake_modules:
             self._saved_modules[mod] = sys.modules.get(mod)
-        self._mock_span_exp, self._mock_metric_exp, self._mock_log_exp = _install_fake_otlp_modules()
+        self._exporters = _install_fake_otlp_modules()
+        for var in _OTLP_ENV_VARS:
+            os.environ.pop(var, None)
 
     def tearDown(self):
         import sys
@@ -143,6 +180,8 @@ class TestCreateOtlpComponents(unittest.TestCase):
                 sys.modules.pop(mod, None)
             else:
                 sys.modules[mod] = original
+        for var in _OTLP_ENV_VARS:
+            os.environ.pop(var, None)
 
     def test_returns_otlp_components(self):
         """create_otlp_components returns an OtlpHandlers with all three fields set."""
@@ -169,6 +208,55 @@ class TestCreateOtlpComponents(unittest.TestCase):
 
         components = create_otlp_components()
         self.assertIsInstance(components.log_record_processor, BatchLogRecordProcessor)
+
+    def test_http_protobuf_is_default(self):
+        create_otlp_components()
+
+        self._exporters["http_traces"].assert_called_once_with()
+        self._exporters["http_metrics"].assert_called_once_with()
+        self._exporters["http_logs"].assert_called_once_with()
+        self._exporters["grpc_traces"].assert_not_called()
+        self._exporters["grpc_metrics"].assert_not_called()
+        self._exporters["grpc_logs"].assert_not_called()
+
+    def test_general_grpc_protocol_selects_grpc_exporters(self):
+        os.environ[_OTEL_EXPORTER_OTLP_PROTOCOL] = "grpc"
+
+        create_otlp_components()
+
+        self._exporters["grpc_traces"].assert_called_once_with()
+        self._exporters["grpc_metrics"].assert_called_once_with()
+        self._exporters["grpc_logs"].assert_called_once_with()
+        self._exporters["http_traces"].assert_not_called()
+        self._exporters["http_metrics"].assert_not_called()
+        self._exporters["http_logs"].assert_not_called()
+
+    def test_per_signal_protocol_overrides_general_protocol(self):
+        os.environ[_OTEL_EXPORTER_OTLP_PROTOCOL] = "http/protobuf"
+        os.environ[_OTEL_EXPORTER_OTLP_TRACES_PROTOCOL] = "grpc"
+        os.environ[_OTEL_EXPORTER_OTLP_LOGS_PROTOCOL] = "grpc"
+
+        create_otlp_components()
+
+        self._exporters["grpc_traces"].assert_called_once_with()
+        self._exporters["http_metrics"].assert_called_once_with()
+        self._exporters["grpc_logs"].assert_called_once_with()
+        self._exporters["http_traces"].assert_not_called()
+        self._exporters["grpc_metrics"].assert_not_called()
+        self._exporters["http_logs"].assert_not_called()
+
+    def test_protocol_values_are_case_insensitive(self):
+        os.environ[_OTEL_EXPORTER_OTLP_PROTOCOL] = " GRPC "
+
+        create_otlp_components(enable_metrics=False, enable_logs=False)
+
+        self._exporters["grpc_traces"].assert_called_once_with()
+
+    def test_invalid_protocol_raises_value_error(self):
+        os.environ[_OTEL_EXPORTER_OTLP_TRACES_PROTOCOL] = "json"
+
+        with self.assertRaisesRegex(ValueError, "Unsupported OTLP protocol 'json' for traces"):
+            create_otlp_components(enable_metrics=False, enable_logs=False)
 
 
 class TestOtlpHandlersDefault(unittest.TestCase):

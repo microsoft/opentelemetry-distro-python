@@ -174,6 +174,7 @@ Automatically enabled when any `OTEL_EXPORTER_OTLP_*` endpoint variable is set:
 | Environment variable | Description |
 |---|---|
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | Base endpoint URL (e.g. `http://localhost:4318`). |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | Export protocol: `http/protobuf` (default) or `grpc`. |
 | `OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` | Per-signal override for traces. |
 | `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | Per-signal override for metrics. |
 | `OTEL_EXPORTER_OTLP_LOGS_ENDPOINT` | Per-signal override for logs. |
@@ -181,7 +182,7 @@ Automatically enabled when any `OTEL_EXPORTER_OTLP_*` endpoint variable is set:
 | `OTEL_EXPORTER_OTLP_TIMEOUT` | Max time in milliseconds per request. |
 | `OTEL_EXPORTER_OTLP_COMPRESSION` | `gzip` or `none`. |
 
-Per-signal overrides follow the pattern `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_{ENDPOINT,HEADERS,TIMEOUT,COMPRESSION}`.
+Per-signal overrides follow the pattern `OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_{ENDPOINT,HEADERS,TIMEOUT,COMPRESSION,PROTOCOL}`.
 
 ```bash
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318

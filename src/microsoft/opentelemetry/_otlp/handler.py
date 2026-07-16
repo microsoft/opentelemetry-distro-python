@@ -18,9 +18,22 @@ from microsoft.opentelemetry._constants import (
     _OTEL_EXPORTER_OTLP_TRACES_ENDPOINT,
     _OTEL_EXPORTER_OTLP_METRICS_ENDPOINT,
     _OTEL_EXPORTER_OTLP_LOGS_ENDPOINT,
+    _OTEL_EXPORTER_OTLP_PROTOCOL,
+    _OTEL_EXPORTER_OTLP_TRACES_PROTOCOL,
+    _OTEL_EXPORTER_OTLP_METRICS_PROTOCOL,
+    _OTEL_EXPORTER_OTLP_LOGS_PROTOCOL,
 )
 
 _logger = getLogger(__name__)
+
+_HTTP_PROTOBUF = "http/protobuf"
+_GRPC = "grpc"
+
+_SIGNAL_PROTOCOL_ENV_VARS = {
+    "traces": _OTEL_EXPORTER_OTLP_TRACES_PROTOCOL,
+    "metrics": _OTEL_EXPORTER_OTLP_METRICS_PROTOCOL,
+    "logs": _OTEL_EXPORTER_OTLP_LOGS_PROTOCOL,
+}
 
 
 @dataclass
@@ -48,18 +61,30 @@ def is_otlp_enabled() -> bool:
     )
 
 
+def _resolve_protocol(signal: str) -> str:
+    signal_env_var = _SIGNAL_PROTOCOL_ENV_VARS[signal]
+    protocol = os.environ.get(signal_env_var) or os.environ.get(_OTEL_EXPORTER_OTLP_PROTOCOL) or _HTTP_PROTOBUF
+    protocol = protocol.strip().lower()
+    if protocol not in (_HTTP_PROTOBUF, _GRPC):
+        raise ValueError(
+            f"Unsupported OTLP protocol {protocol!r} for {signal}. "
+            f"Set {signal_env_var} or {_OTEL_EXPORTER_OTLP_PROTOCOL} to {_HTTP_PROTOBUF!r} or {_GRPC!r}."
+        )
+    return protocol
+
+
 def create_otlp_components(
     enable_traces: bool = True,
     enable_metrics: bool = True,
     enable_logs: bool = True,
 ) -> OtlpHandlers:
-    """Creates OTLP HTTP exporters for the requested signals.
+    """Creates OTLP exporters for the requested signals.
 
     Only the signals that are enabled will have exporters created.
-    All configuration is driven by the standard OpenTelemetry OTLP environment
-    variables.  The underlying ``opentelemetry-exporter-otlp-proto-http``
-    packages read these variables automatically -- no programmatic config is
-    required.
+    Protocol selection and exporter configuration are driven by the standard
+    OpenTelemetry OTLP environment variables. Per-signal protocol settings
+    override the general protocol setting. HTTP/protobuf remains the default
+    for backward compatibility.
 
     Supported environment variables
     ===============================
@@ -70,17 +95,14 @@ def create_otlp_components(
     - ``OTEL_EXPORTER_OTLP_HEADERS`` -- Comma-separated key=value pairs.
     - ``OTEL_EXPORTER_OTLP_TIMEOUT`` -- Max time in milliseconds per export.
     - ``OTEL_EXPORTER_OTLP_COMPRESSION`` -- ``gzip`` or ``none``.
+    - ``OTEL_EXPORTER_OTLP_PROTOCOL`` -- ``http/protobuf`` or ``grpc``.
 
     Per-signal overrides follow the pattern
-    ``OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_{ENDPOINT,HEADERS,TIMEOUT,COMPRESSION}``.
+    ``OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_{ENDPOINT,HEADERS,TIMEOUT,COMPRESSION,PROTOCOL}``.
     """
-    from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-    from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
-    from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
     from opentelemetry.sdk.trace.export import BatchSpanProcessor
     from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
     from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
-
 
     # from opentelemetry.sdk.trace.export import SpanExporter
     # from opentelemetry.sdk.metrics.export import MetricExporter
@@ -96,6 +118,11 @@ def create_otlp_components(
     components = OtlpHandlers()
 
     if enable_traces:
+        if _resolve_protocol("traces") == _GRPC:
+            from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+        else:
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
         components.span_processor = BatchSpanProcessor(OTLPSpanExporter())
         # span_exporter: SpanExporter = OTLPSpanExporter()
         # if record_network_sdkstats:
@@ -103,6 +130,11 @@ def create_otlp_components(
         # components.span_processor = BatchSpanProcessor(span_exporter)
 
     if enable_metrics:
+        if _resolve_protocol("metrics") == _GRPC:
+            from opentelemetry.exporter.otlp.proto.grpc.metric_exporter import OTLPMetricExporter
+        else:
+            from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+
         components.metric_reader = PeriodicExportingMetricReader(OTLPMetricExporter())
         # metric_exporter: MetricExporter = OTLPMetricExporter()
         # if record_network_sdkstats:
@@ -110,6 +142,11 @@ def create_otlp_components(
         # components.metric_reader = PeriodicExportingMetricReader(metric_exporter)
 
     if enable_logs:
+        if _resolve_protocol("logs") == _GRPC:
+            from opentelemetry.exporter.otlp.proto.grpc._log_exporter import OTLPLogExporter
+        else:
+            from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+
         components.log_record_processor = BatchLogRecordProcessor(OTLPLogExporter())
         # log_exporter: LogRecordExporter = OTLPLogExporter()
         # if record_network_sdkstats:

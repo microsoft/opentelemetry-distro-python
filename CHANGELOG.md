@@ -1,5 +1,11 @@
 # Release History
 
+# Unreleased
+
+### Bugs Fixed
+- Honor standard general and per-signal OTLP protocol environment variables,
+  supporting both HTTP/protobuf and gRPC exporters.
+
 # 1.3.5 (2026-07-01)
 
 ### Features Added
@@ -336,4 +342,3 @@
   ([#10](https://github.com/microsoft/opentelemetry-distro-python/pull/10))
 - Microsoft mandatory file
   ([#2](https://github.com/microsoft/opentelemetry-distro-python/pull/2))
-
