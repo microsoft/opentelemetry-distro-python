@@ -245,6 +245,24 @@ class TestCreateOtlpComponents(unittest.TestCase):
         self._exporters["grpc_metrics"].assert_not_called()
         self._exporters["http_logs"].assert_not_called()
 
+    def test_metrics_protocol_overrides_general_protocol(self):
+        os.environ[_OTEL_EXPORTER_OTLP_PROTOCOL] = "grpc"
+        os.environ[_OTEL_EXPORTER_OTLP_METRICS_PROTOCOL] = "http/protobuf"
+
+        create_otlp_components(enable_traces=False, enable_logs=False)
+
+        self._exporters["http_metrics"].assert_called_once_with()
+        self._exporters["grpc_metrics"].assert_not_called()
+
+    def test_disabled_signal_protocol_is_ignored(self):
+        os.environ[_OTEL_EXPORTER_OTLP_METRICS_PROTOCOL] = "invalid"
+
+        components = create_otlp_components(enable_metrics=False)
+
+        self.assertIsNone(components.metric_reader)
+        self._exporters["http_metrics"].assert_not_called()
+        self._exporters["grpc_metrics"].assert_not_called()
+
     def test_protocol_values_are_case_insensitive(self):
         os.environ[_OTEL_EXPORTER_OTLP_PROTOCOL] = " GRPC "
 
