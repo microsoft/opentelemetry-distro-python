@@ -1,6 +1,6 @@
 # Release History
 
-# 1.3.6 (Unreleased)
+# 1.3.6 (2026-07-22)
 
 ### Features Added
 - Propagate the microsoft.foundry.project.id which the foundry SDK populates on the server spans
