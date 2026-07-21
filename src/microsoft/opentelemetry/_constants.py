@@ -125,5 +125,13 @@ GEN_AI_MAIN_AGENT_VERSION_KEY = "microsoft.gen_ai.main_agent.version"
 GEN_AI_MAIN_AGENT_CONVERSATION_ID_KEY = "microsoft.gen_ai.main_agent.conversation_id"
 GEN_AI_MAIN_AGENT_ATTRIBUTE_PREFIX = "microsoft.gen_ai.main_agent."
 
+# --- GenAI Project Constants ---
+GEN_AI_AZURE_AI_PROJECT_ID_KEY = "gen_ai.azure_ai_project.id"
+GEN_AI_FOUNDRY_PROJECT_ID_KEY = "microsoft.foundry.project.id"
+GEN_AI_PROJECT_ID_KEYS = (
+    GEN_AI_AZURE_AI_PROJECT_ID_KEY,
+    GEN_AI_FOUNDRY_PROJECT_ID_KEY,
+)
+
 # --- Version propagation to the exporter ---
 MICROSOFT_OPENTELEMETRY_VERSION_ENV = "MICROSOFT_OPENTELEMETRY_VERSION"

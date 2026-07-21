@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, Mock, patch
 from microsoft.opentelemetry._constants import (
     GEN_AI_MAIN_AGENT_ID_KEY,
     GEN_AI_MAIN_AGENT_NAME_KEY,
+    GEN_AI_PROJECT_ID_KEYS,
 )
 from microsoft.opentelemetry._genai.main_agent._processor import (
     GenAIMainAgentLogRecordProcessor,
@@ -86,6 +87,46 @@ class TestGenAIMainAgentLogRecordProcessorOnEmit(unittest.TestCase):
             self.processor.on_emit(log_data)
 
         self.assertEqual(log_data.log_record.attributes, {GEN_AI_MAIN_AGENT_NAME_KEY: "main"})
+
+
+class TestGenAIMainAgentLogRecordProcessorProjectId(unittest.TestCase):
+    """on_emit copies Foundry project id keys onto log records."""
+
+    def setUp(self) -> None:
+        self.processor = GenAIMainAgentLogRecordProcessor()
+
+    def test_copies_project_id_keys_to_log_record(self):
+        project_id = "/subscriptions/sub/resourceGroups/rg/providers/x/projects/p"
+        log_data = _mock_log_record({"existing": "value"})
+        span_attrs = {key: project_id for key in GEN_AI_PROJECT_ID_KEYS}
+        span_attrs["unrelated"] = "skip-me"
+
+        with patch(
+            "microsoft.opentelemetry._genai.main_agent._processor.trace.get_current_span",
+            return_value=_mock_span(span_attrs),
+        ):
+            self.processor.on_emit(log_data)
+
+        for key in GEN_AI_PROJECT_ID_KEYS:
+            self.assertEqual(log_data.log_record.attributes[key], project_id)
+        self.assertEqual(log_data.log_record.attributes["existing"], "value")
+        self.assertNotIn("unrelated", log_data.log_record.attributes)
+
+    def test_copies_project_id_alongside_main_agent_attrs(self):
+        project_id = "/subscriptions/sub/resourceGroups/rg/providers/x/projects/p"
+        log_data = _mock_log_record(None)
+        span_attrs = {GEN_AI_MAIN_AGENT_NAME_KEY: "main"}
+        span_attrs.update({key: project_id for key in GEN_AI_PROJECT_ID_KEYS})
+
+        with patch(
+            "microsoft.opentelemetry._genai.main_agent._processor.trace.get_current_span",
+            return_value=_mock_span(span_attrs),
+        ):
+            self.processor.on_emit(log_data)
+
+        self.assertEqual(log_data.log_record.attributes[GEN_AI_MAIN_AGENT_NAME_KEY], "main")
+        for key in GEN_AI_PROJECT_ID_KEYS:
+            self.assertEqual(log_data.log_record.attributes[key], project_id)
 
 
 class TestGenAIMainAgentLogRecordProcessorLifecycle(unittest.TestCase):
