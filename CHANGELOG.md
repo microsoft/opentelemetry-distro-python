@@ -1,10 +1,14 @@
 # Release History
 
-# 1.3.6 (Unreleased)
+# 1.3.6 (2026-07-22)
 
 ### Features Added
 - Propagate the microsoft.foundry.project.id which the foundry SDK populates on the server spans
   ([#227](https://github.com/microsoft/opentelemetry-distro-python/pull/227))
+
+### Bugs Fixed
+- Gate sensitive data and I/O message attributes on child spans, fix `gen_ai.tool.call.arguments`, and related LangChain fixes
+  ([#223](https://github.com/microsoft/opentelemetry-distro-python/pull/223))
 
 # 1.3.5 (2026-07-01)
 
