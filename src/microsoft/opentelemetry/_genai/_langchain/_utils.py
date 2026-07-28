@@ -1312,14 +1312,11 @@ def _extract_system_instruction(inputs: Mapping[str, Any] | None) -> list[Text]:
     # Messages path: only reached when there are no prompts.
     multiple_messages = inputs.get("messages")
     if multiple_messages and isinstance(multiple_messages, Iterable):
-        # LangChain can provide either:
-        # - nested format: {"messages": [[...]]}
-        # - flat format: {"messages": [...]} (list of message objects)
         if isinstance(multiple_messages, list) and multiple_messages:
             first_item = multiple_messages[0]
             first_messages = first_item if isinstance(first_item, list) else multiple_messages
         else:
-            first_messages = next(iter(multiple_messages), None)
+            first_messages = next(iter(multiple_messages), None)  # type: ignore[arg-type]
         if first_messages is not None:
             if not isinstance(first_messages, list):
                 first_messages = [first_messages]
