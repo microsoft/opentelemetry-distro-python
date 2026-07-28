@@ -52,6 +52,11 @@ def _make_run(**kwargs):
     return run
 
 
+def _captured_attrs(mock_span):
+    """Return the {key: value} attributes set on a mock span via set_attribute."""
+    return {c.args[0]: c.args[1] for c in mock_span.set_attribute.call_args_list if c.args}
+
+
 def _make_tracer(**kwargs):
     """Create a LangChainTracer with mocked OTel tracer."""
     otel_tracer = MagicMock()
@@ -816,8 +821,33 @@ class TestUpdateSpanSystemInstructions(TestCase):
 
         span = MagicMock()
         _update_span(span, _system_run(), enable_sensitive_data=True)
-        attrs = {c.args[0]: c.args[1] for c in span.set_attribute.call_args_list if c.args}
+        attrs = _captured_attrs(span)
         parts = json.loads(attrs[GEN_AI_SYSTEM_INSTRUCTIONS_KEY])
+        self.assertEqual(parts, [{"content": "You are a helpful assistant.", "type": "text"}])
+
+    def test_prompts_input_serialized_as_structured_parts_not_raw_list(self):
+        """Regression (PR #232): a chat_model run whose inputs use the flat
+        ``prompts`` field must emit ``gen_ai.system_instructions`` as the
+        structured content-first JSON, never the raw LangChain prompts list."""
+        import json
+
+        run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            inputs={"prompts": ["You are a helpful assistant."]},
+            outputs={
+                "llm_output": {"model_name": "gpt-4o"},
+                "generations": [[{"message": {"content": "hi"}}]],
+            },
+            extra=None,
+        )
+        span = MagicMock()
+        _update_span(span, run, enable_sensitive_data=True)
+        attrs = _captured_attrs(span)
+        value = attrs[GEN_AI_SYSTEM_INSTRUCTIONS_KEY]
+        # Must be serialized structured parts, not a raw Python list of strings.
+        self.assertIsInstance(value, str)
+        parts = json.loads(value)
         self.assertEqual(parts, [{"content": "You are a helpful assistant.", "type": "text"}])
 
 
@@ -1538,7 +1568,7 @@ class TestFinalizeAgentSpanSystemInstructions(TestCase):
         tracer._aggregate_into_parent(llm_run)
 
         tracer._finalize_agent_span(wrapper, agent_run)
-        return {c.args[0]: c.args[1] for c in wrapper.set_attribute.call_args_list if c.args}
+        return _captured_attrs(wrapper)
 
     @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
     def test_emitted_when_enable_sensitive_data_true(self, mock_ctx):

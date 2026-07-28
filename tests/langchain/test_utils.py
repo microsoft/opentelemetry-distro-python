@@ -29,7 +29,6 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     GEN_AI_REQUEST_CHOICE_COUNT_KEY,
     GEN_AI_REQUEST_MODEL_KEY,
     GEN_AI_REQUEST_TOP_K_KEY,
-    GEN_AI_SYSTEM_INSTRUCTIONS_KEY,
     GEN_AI_TOOL_ARGS_KEY,
     GEN_AI_TOOL_CALL_ID_KEY,
     GEN_AI_TOOL_CALL_RESULT_KEY,
@@ -59,7 +58,6 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     metadata,
     model_name,
     output_messages,
-    prompts,
     safe_json_dumps,
     stop_on_exception,
     token_counts,
@@ -201,39 +199,6 @@ class TestDictWithLock(TestCase):
 
 
 # ---- Data extractors ---------------------------------------------------------
-
-
-class TestPrompts(TestCase):
-    @patch(
-        "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
-        return_value=True,
-    )
-    def test_extracts_prompts(self, _mock_capture):
-        inputs = {"prompts": ["System prompt here"]}
-        result = list(prompts(inputs))
-        self.assertEqual(result, [(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, ["System prompt here"])])
-
-    @patch(
-        "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
-        return_value=False,
-    )
-    def test_skips_prompts_when_content_capture_disabled(self, _mock_capture):
-        inputs = {"prompts": ["System prompt here"]}
-        self.assertEqual(list(prompts(inputs)), [])
-
-    @patch(
-        "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
-        return_value=True,
-    )
-    def test_returns_empty_on_none(self, _mock_capture):
-        self.assertEqual(list(prompts(None)), [])
-
-    @patch(
-        "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
-        return_value=True,
-    )
-    def test_returns_empty_on_no_prompts(self, _mock_capture):
-        self.assertEqual(list(prompts({"other": "data"})), [])
 
 
 class TestInputMessages(TestCase):
@@ -1420,6 +1385,38 @@ class TestExtractSystemInstruction(TestCase):
         result = _extract_system_instruction(inputs)
         self.assertEqual(result, [Text(content="From prompts")])
 
+    def test_extracts_system_message_from_flat_message_list(self):
+        """Flat message lists ({"messages": [msg, msg]}) must be scanned in full,
+        not just the first element (regression for PR #232 feedback)."""
+        from langchain_core.messages import HumanMessage, SystemMessage
+        from opentelemetry.util.genai.types import Text
+
+        inputs = {
+            "messages": [
+                HumanMessage(content="hi"),
+                SystemMessage(content="You are a helpful assistant."),
+            ]
+        }
+        result = _extract_system_instruction(inputs)
+        self.assertEqual(result, [Text(content="You are a helpful assistant.")])
+
+    def test_extracts_multiple_system_messages_from_flat_list(self):
+        from langchain_core.messages import HumanMessage, SystemMessage
+        from opentelemetry.util.genai.types import Text
+
+        inputs = {
+            "messages": [
+                SystemMessage(content="First rule."),
+                HumanMessage(content="hi"),
+                SystemMessage(content="Second rule."),
+            ]
+        }
+        result = _extract_system_instruction(inputs)
+        self.assertEqual(
+            result,
+            [Text(content="First rule."), Text(content="Second rule.")],
+        )
+
 
 # ---- Spec-compliant input.messages (issue #172) ------------------------------
 
@@ -1527,7 +1524,7 @@ class TestSystemPromptRouting(TestCase):
         # Only the user message survives; the system message is routed out.
         self.assertEqual([m.role for m in result], ["user"])
         # Belt-and-suspenders: the system text must not appear anywhere in inputs.
-        self.assertNotIn("helpful assistant", safe_json_dumps([m for m in result]))
+        self.assertNotIn("helpful assistant", safe_json_dumps(list(result)))
 
     def test_system_message_goes_to_instructions_not_duplicated_in_inputs(self):
         from langchain_core.messages import HumanMessage, SystemMessage
