@@ -23,6 +23,7 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     GEN_AI_OUTPUT_MESSAGES_KEY,
     GEN_AI_PROVIDER_NAME_KEY,
     GEN_AI_REQUEST_CHOICE_COUNT_KEY,
+    GEN_AI_SYSTEM_INSTRUCTIONS_KEY,
     GEN_AI_TOOL_DEFINITIONS_KEY,
     INVOKE_AGENT_OPERATION_NAME,
 )
@@ -61,6 +62,7 @@ def _make_tracer(**kwargs):
         kwargs.get("separate_trace", False),
         agent_config=kwargs.get("agent_config", {}),
         event_logger=kwargs.get("event_logger", None),
+        enable_sensitive_data=kwargs.get("enable_sensitive_data", False),
     )
     return tracer, otel_tracer, mock_span
 
@@ -719,6 +721,104 @@ class TestUpdateSpan(TestCase):
         set_attr_keys = {call.args[0] for call in calls if call.args}
         self.assertNotIn(GEN_AI_INPUT_MESSAGES_KEY, set_attr_keys)
         self.assertNotIn(GEN_AI_OUTPUT_MESSAGES_KEY, set_attr_keys)
+
+
+# ---- System instructions gating (LLM span) -----------------------------------
+
+
+def _system_run():
+    """A chat_model run carrying a SystemMessage in its inputs."""
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    return _make_run(
+        run_type="chat_model",
+        name="gpt-4o",
+        inputs={
+            "messages": [
+                [
+                    SystemMessage(content="You are a helpful assistant."),
+                    HumanMessage(content="hi"),
+                ]
+            ]
+        },
+        outputs={
+            "llm_output": {"model_name": "gpt-4o"},
+            "generations": [[{"message": {"content": "hello there"}}]],
+        },
+        extra=None,
+    )
+
+
+class TestUpdateSpanSystemInstructions(TestCase):
+    """``gen_ai.system_instructions`` must follow the same content-capture
+    gate as input/output messages: emitted only when
+    ``enable_sensitive_data`` is set OR the upstream env-var mode enables it."""
+
+    def _keys_set(self, span):
+        return {call.args[0] for call in span.set_attribute.call_args_list if call.args}
+
+    def test_emitted_when_enable_sensitive_data_true(self):
+        span = MagicMock()
+        _update_span(span, _system_run(), enable_sensitive_data=True)
+        self.assertIn(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, self._keys_set(span))
+
+    def test_not_emitted_when_no_gate(self):
+        """enable_sensitive_data=False and non-experimental mode => skipped."""
+        span = MagicMock()
+        with patch(
+            "microsoft.opentelemetry._genai._langchain._utils.is_experimental_mode",
+            return_value=False,
+        ):
+            _update_span(span, _system_run(), enable_sensitive_data=False)
+        self.assertNotIn(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, self._keys_set(span))
+
+    def test_emitted_when_env_vars_enable_content_capture(self):
+        """enable_sensitive_data=False but experimental mode + SPAN content
+        capturing (the two upstream env vars) => emitted."""
+        from opentelemetry.util.genai.utils import ContentCapturingMode
+
+        span = MagicMock()
+        with (
+            patch(
+                "microsoft.opentelemetry._genai._langchain._utils.is_experimental_mode",
+                return_value=True,
+            ),
+            patch(
+                "microsoft.opentelemetry._genai._langchain._utils.get_content_capturing_mode",
+                return_value=ContentCapturingMode.SPAN_ONLY,
+            ),
+        ):
+            _update_span(span, _system_run(), enable_sensitive_data=False)
+        self.assertIn(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, self._keys_set(span))
+
+    def test_not_emitted_when_env_vars_disable_content_capture(self):
+        """Experimental mode on but content mode NO_CONTENT => skipped."""
+        from opentelemetry.util.genai.utils import ContentCapturingMode
+
+        span = MagicMock()
+        with (
+            patch(
+                "microsoft.opentelemetry._genai._langchain._utils.is_experimental_mode",
+                return_value=True,
+            ),
+            patch(
+                "microsoft.opentelemetry._genai._langchain._utils.get_content_capturing_mode",
+                return_value=ContentCapturingMode.NO_CONTENT,
+            ),
+        ):
+            _update_span(span, _system_run(), enable_sensitive_data=False)
+        self.assertNotIn(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, self._keys_set(span))
+
+    def test_serialized_shape_is_content_first_text_part(self):
+        """Matches the reference util-genai serialization (plain asdict):
+        ``[{"content": "...", "type": "text"}]``."""
+        import json
+
+        span = MagicMock()
+        _update_span(span, _system_run(), enable_sensitive_data=True)
+        attrs = {c.args[0]: c.args[1] for c in span.set_attribute.call_args_list if c.args}
+        parts = json.loads(attrs[GEN_AI_SYSTEM_INSTRUCTIONS_KEY])
+        self.assertEqual(parts, [{"content": "You are a helpful assistant.", "type": "text"}])
 
 
 # ---- Aggregation -------------------------------------------------------------
@@ -1389,6 +1489,111 @@ class TestFinalizeAgentSpanAttributes(TestCase):
         # Tool definitions preserved on the wrapper span.
         tool_defs_attr = attrs[GEN_AI_TOOL_DEFINITIONS_KEY]
         self.assertIn("get_weather", str(tool_defs_attr))
+
+
+class TestFinalizeAgentSpanSystemInstructions(TestCase):
+    """``gen_ai.system_instructions`` on the invoke_agent span follows the
+    same content-capture gate (``enable_sensitive_data`` OR the upstream
+    env-var mode) and is sourced from the agent's first real LLM child."""
+
+    def _finalize_with_system(self, mock_ctx, *, enable_sensitive_data):
+        """Drive an agent run with one LLM child that carries a SystemMessage,
+        then finalize and return the attributes set on the wrapper span."""
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer(enable_sensitive_data=enable_sensitive_data)
+        wrapper = MagicMock()
+        inner = MagicMock()
+        otel_tracer.start_span.side_effect = [wrapper, inner]
+
+        agent_run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            inputs={"messages": [("human", "hi")]},
+            outputs={"messages": []},
+        )
+        tracer.run_map[str(agent_run.id)] = agent_run
+        tracer._start_trace(agent_run)
+
+        llm_run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            parent_run_id=agent_run.id,
+            inputs={
+                "messages": [
+                    [
+                        SystemMessage(content="You are a helpful travel assistant."),
+                        HumanMessage(content="hi"),
+                    ]
+                ]
+            },
+            outputs={
+                "llm_output": {"model_name": "gpt-4o"},
+                "generations": [[{"message": {"content": "hello"}}]],
+            },
+            extra=None,
+        )
+        tracer.run_map[str(llm_run.id)] = llm_run
+        tracer._aggregate_into_parent(llm_run)
+
+        tracer._finalize_agent_span(wrapper, agent_run)
+        return {c.args[0]: c.args[1] for c in wrapper.set_attribute.call_args_list if c.args}
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_emitted_when_enable_sensitive_data_true(self, mock_ctx):
+        import json
+
+        attrs = self._finalize_with_system(mock_ctx, enable_sensitive_data=True)
+        self.assertIn(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, attrs)
+        parts = json.loads(attrs[GEN_AI_SYSTEM_INSTRUCTIONS_KEY])
+        self.assertEqual(
+            parts,
+            [{"content": "You are a helpful travel assistant.", "type": "text"}],
+        )
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_not_emitted_when_no_gate(self, mock_ctx):
+        with patch(
+            "microsoft.opentelemetry._genai._langchain._utils.is_experimental_mode",
+            return_value=False,
+        ):
+            attrs = self._finalize_with_system(mock_ctx, enable_sensitive_data=False)
+        self.assertNotIn(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, attrs)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_emitted_when_env_vars_enable_content_capture(self, mock_ctx):
+        from opentelemetry.util.genai.utils import ContentCapturingMode
+
+        with (
+            patch(
+                "microsoft.opentelemetry._genai._langchain._utils.is_experimental_mode",
+                return_value=True,
+            ),
+            patch(
+                "microsoft.opentelemetry._genai._langchain._utils.get_content_capturing_mode",
+                return_value=ContentCapturingMode.SPAN_ONLY,
+            ),
+        ):
+            attrs = self._finalize_with_system(mock_ctx, enable_sensitive_data=False)
+        self.assertIn(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, attrs)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_not_emitted_when_env_vars_disable_content_capture(self, mock_ctx):
+        from opentelemetry.util.genai.utils import ContentCapturingMode
+
+        with (
+            patch(
+                "microsoft.opentelemetry._genai._langchain._utils.is_experimental_mode",
+                return_value=True,
+            ),
+            patch(
+                "microsoft.opentelemetry._genai._langchain._utils.get_content_capturing_mode",
+                return_value=ContentCapturingMode.NO_CONTENT,
+            ),
+        ):
+            attrs = self._finalize_with_system(mock_ctx, enable_sensitive_data=False)
+        self.assertNotIn(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, attrs)
 
 
 class TestExtractAgentInputMessagesToolRole(TestCase):

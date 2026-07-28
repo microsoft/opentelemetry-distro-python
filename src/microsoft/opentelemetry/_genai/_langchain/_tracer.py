@@ -55,6 +55,7 @@ from microsoft.opentelemetry._genai._langchain._utils import (
     GEN_AI_PROVIDER_NAME_KEY,
     GEN_AI_REQUEST_CHOICE_COUNT_KEY,
     GEN_AI_REQUEST_MODEL_KEY,
+    GEN_AI_SYSTEM_INSTRUCTIONS_KEY,
     GEN_AI_TOOL_DEFINITIONS_KEY,
     GEN_AI_USAGE_INPUT_TOKENS_KEY,
     GEN_AI_USAGE_OUTPUT_TOKENS_KEY,
@@ -73,6 +74,7 @@ from microsoft.opentelemetry._genai._langchain._utils import (
     _extract_structured_output_messages,
     _extract_agent_input_messages,
     _extract_agent_output_messages,
+    _extract_system_instruction,
     _output_message_to_input,
     _is_structured_output_run,
     _seed_initial_messages,
@@ -260,6 +262,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                     "output_messages": [],
                     "pending_assistant": None,
                     "seeded_initial": False,
+                    "system_instruction": None,
                     "model": None,
                     "provider": None,
                     "request_choice_count": None,
@@ -524,6 +527,10 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             # (e.g. a routing decision), not a conversational turn, and folding
             # it into the transcript pollutes ``gen_ai.input.messages``.
             if run_type in ("llm", "chat_model") and not _is_structured_output_run(run):
+                if not content.get("system_instruction"):
+                    system_instruction = _extract_system_instruction(run.inputs)
+                    if system_instruction:
+                        content["system_instruction"] = system_instruction
                 # Seed system/user messages from the agent's top-level inputs
                 # on the first LLM call.
                 if not content.get("seeded_initial"):
@@ -634,6 +641,11 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
 
         # Set aggregated input/output messages only when content capture is enabled
         if _should_capture_content_on_spans(self._enable_sensitive_data):
+            if system_instruction := content.get("system_instruction"):
+                span.set_attribute(
+                    GEN_AI_SYSTEM_INSTRUCTIONS_KEY,
+                    safe_json_dumps([asdict(p) for p in system_instruction]),
+                )
             if tool_defs := content.get("tool_definitions"):
                 span.set_attribute(GEN_AI_TOOL_DEFINITIONS_KEY, tool_defs)
             if msgs := content.get("input_messages"):
@@ -706,6 +718,11 @@ def _update_span(span: Span, run: Run, enable_sensitive_data: bool = False) -> L
                 span.set_attribute(
                     GEN_AI_OUTPUT_MESSAGES_KEY,
                     safe_json_dumps([asdict(m) for m in invocation.output_messages]),
+                )
+            if invocation.system_instruction:
+                span.set_attribute(
+                    GEN_AI_SYSTEM_INSTRUCTIONS_KEY,
+                    safe_json_dumps([asdict(p) for p in invocation.system_instruction]),
                 )
         # Extras not covered by LLMInvocation
         span.set_attributes(
