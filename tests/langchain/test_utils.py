@@ -29,7 +29,6 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     GEN_AI_REQUEST_CHOICE_COUNT_KEY,
     GEN_AI_REQUEST_MODEL_KEY,
     GEN_AI_REQUEST_TOP_K_KEY,
-    GEN_AI_SYSTEM_INSTRUCTIONS_KEY,
     GEN_AI_TOOL_ARGS_KEY,
     GEN_AI_TOOL_CALL_ID_KEY,
     GEN_AI_TOOL_CALL_RESULT_KEY,
@@ -59,12 +58,12 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     metadata,
     model_name,
     output_messages,
-    prompts,
     safe_json_dumps,
     stop_on_exception,
     token_counts,
     _extract_agent_input_messages,
     _extract_agent_output_messages,
+    _extract_system_instruction,
     tools,
 )
 
@@ -200,39 +199,6 @@ class TestDictWithLock(TestCase):
 
 
 # ---- Data extractors ---------------------------------------------------------
-
-
-class TestPrompts(TestCase):
-    @patch(
-        "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
-        return_value=True,
-    )
-    def test_extracts_prompts(self, _mock_capture):
-        inputs = {"prompts": ["System prompt here"]}
-        result = list(prompts(inputs))
-        self.assertEqual(result, [(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, ["System prompt here"])])
-
-    @patch(
-        "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
-        return_value=False,
-    )
-    def test_skips_prompts_when_content_capture_disabled(self, _mock_capture):
-        inputs = {"prompts": ["System prompt here"]}
-        self.assertEqual(list(prompts(inputs)), [])
-
-    @patch(
-        "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
-        return_value=True,
-    )
-    def test_returns_empty_on_none(self, _mock_capture):
-        self.assertEqual(list(prompts(None)), [])
-
-    @patch(
-        "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
-        return_value=True,
-    )
-    def test_returns_empty_on_no_prompts(self, _mock_capture):
-        self.assertEqual(list(prompts({"other": "data"})), [])
 
 
 class TestInputMessages(TestCase):
@@ -1320,6 +1286,137 @@ class TestBuildLlmInvocation(TestCase):
         self.assertEqual(inv.response_model_name, "gpt-4o-2024-11-20")
         self.assertEqual(inv.response_id, "chatcmpl-kwargs")
 
+    def test_sets_system_instruction_from_messages(self):
+        from langchain_core.messages import HumanMessage, SystemMessage
+        from opentelemetry.util.genai.types import Text
+
+        run = _make_run(
+            run_type="chat_model",
+            outputs={"llm_output": {"model_name": "gpt-4o"}, "generations": []},
+            extra=None,
+            inputs={
+                "messages": [
+                    [
+                        SystemMessage(content="You are a helpful assistant."),
+                        HumanMessage(content="hi"),
+                    ]
+                ]
+            },
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(len(inv.system_instruction), 1)
+        self.assertIsInstance(inv.system_instruction[0], Text)
+        self.assertEqual(inv.system_instruction[0].content, "You are a helpful assistant.")
+
+    def test_system_instruction_empty_without_system_message(self):
+        from langchain_core.messages import HumanMessage
+
+        run = _make_run(
+            run_type="chat_model",
+            outputs={"llm_output": {"model_name": "gpt-4o"}, "generations": []},
+            extra=None,
+            inputs={"messages": [[HumanMessage(content="hi")]]},
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(inv.system_instruction, [])
+
+
+# ---- System instruction extraction -------------------------------------------
+
+
+class TestExtractSystemInstruction(TestCase):
+    """``_extract_system_instruction`` sources the system/developer prompt as
+    a flat list of ``Text`` parts (no role), matching the OTel GenAI
+    ``gen_ai.system_instructions`` shape."""
+
+    def test_returns_empty_on_none(self):
+        self.assertEqual(_extract_system_instruction(None), [])
+
+    def test_returns_empty_on_non_mapping(self):
+        self.assertEqual(_extract_system_instruction(["not", "a", "mapping"]), [])
+
+    def test_extracts_from_prompts_list(self):
+        from opentelemetry.util.genai.types import Text
+
+        result = _extract_system_instruction({"prompts": ["System prompt here"]})
+        self.assertEqual(result, [Text(content="System prompt here")])
+
+    def test_extracts_from_prompts_string(self):
+        from opentelemetry.util.genai.types import Text
+
+        result = _extract_system_instruction({"prompts": "Single prompt"})
+        self.assertEqual(result, [Text(content="Single prompt")])
+
+    def test_prompts_list_skips_empty_items(self):
+        from opentelemetry.util.genai.types import Text
+
+        result = _extract_system_instruction({"prompts": ["", "keep", None]})
+        self.assertEqual(result, [Text(content="keep")])
+
+    def test_extracts_system_message_from_messages_path(self):
+        from langchain_core.messages import HumanMessage, SystemMessage
+        from opentelemetry.util.genai.types import Text
+
+        inputs = {
+            "messages": [
+                [
+                    SystemMessage(content="You are a helpful assistant."),
+                    HumanMessage(content="hi"),
+                ]
+            ]
+        }
+        result = _extract_system_instruction(inputs)
+        self.assertEqual(result, [Text(content="You are a helpful assistant.")])
+
+    def test_messages_path_without_system_message_returns_empty(self):
+        from langchain_core.messages import HumanMessage
+
+        inputs = {"messages": [[HumanMessage(content="hi")]]}
+        self.assertEqual(_extract_system_instruction(inputs), [])
+
+    def test_prompts_takes_precedence_over_messages(self):
+        from langchain_core.messages import SystemMessage
+        from opentelemetry.util.genai.types import Text
+
+        inputs = {
+            "prompts": ["From prompts"],
+            "messages": [[SystemMessage(content="From messages")]],
+        }
+        result = _extract_system_instruction(inputs)
+        self.assertEqual(result, [Text(content="From prompts")])
+
+    def test_extracts_system_message_from_flat_message_list(self):
+        """Flat message lists ({"messages": [msg, msg]}) must be scanned in full,
+        not just the first element (regression for PR #232 feedback)."""
+        from langchain_core.messages import HumanMessage, SystemMessage
+        from opentelemetry.util.genai.types import Text
+
+        inputs = {
+            "messages": [
+                HumanMessage(content="hi"),
+                SystemMessage(content="You are a helpful assistant."),
+            ]
+        }
+        result = _extract_system_instruction(inputs)
+        self.assertEqual(result, [Text(content="You are a helpful assistant.")])
+
+    def test_extracts_multiple_system_messages_from_flat_list(self):
+        from langchain_core.messages import HumanMessage, SystemMessage
+        from opentelemetry.util.genai.types import Text
+
+        inputs = {
+            "messages": [
+                SystemMessage(content="First rule."),
+                HumanMessage(content="hi"),
+                SystemMessage(content="Second rule."),
+            ]
+        }
+        result = _extract_system_instruction(inputs)
+        self.assertEqual(
+            result,
+            [Text(content="First rule."), Text(content="Second rule.")],
+        )
+
 
 # ---- Spec-compliant input.messages (issue #172) ------------------------------
 
@@ -1395,6 +1492,87 @@ class TestExtractStructuredInputMessagesSpecCompliance(TestCase):
         self.assertEqual(tool_parts[0].type, "tool_call_response")
         self.assertEqual(tool_parts[0].id, "call_1")
         self.assertEqual(tool_parts[0].response, "rainy, 57F")
+
+
+# ---- System prompt routing / no-leak guarantees ------------------------------
+
+
+class TestSystemPromptRouting(TestCase):
+    """Guard against the system prompt leaking into the wrong attribute.
+
+    On the messages path the system message must be routed *out* of
+    ``gen_ai.input.messages`` and *into* ``gen_ai.system_instructions``
+    (no duplication). When no system message is present, neither attribute
+    may contain any system content."""
+
+    def test_system_message_routed_out_of_input_messages(self):
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        from microsoft.opentelemetry._genai._langchain._utils import (
+            _extract_structured_input_messages,
+        )
+
+        inputs = {
+            "messages": [
+                [
+                    SystemMessage(content="You are a helpful assistant."),
+                    HumanMessage(content="hi"),
+                ]
+            ]
+        }
+        result = _extract_structured_input_messages(inputs)
+        # Only the user message survives; the system message is routed out.
+        self.assertEqual([m.role for m in result], ["user"])
+        # Belt-and-suspenders: the system text must not appear anywhere in inputs.
+        self.assertNotIn("helpful assistant", safe_json_dumps(list(result)))
+
+    def test_system_message_goes_to_instructions_not_duplicated_in_inputs(self):
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        from microsoft.opentelemetry._genai._langchain._utils import (
+            _extract_structured_input_messages,
+        )
+
+        inputs = {
+            "messages": [
+                [
+                    SystemMessage(content="You are a helpful assistant."),
+                    HumanMessage(content="hi"),
+                ]
+            ]
+        }
+        instructions = _extract_system_instruction(inputs)
+        input_msgs = _extract_structured_input_messages(inputs)
+        # System content lives in exactly one place: instructions.
+        self.assertEqual(len(instructions), 1)
+        self.assertEqual(instructions[0].content, "You are a helpful assistant.")
+        self.assertNotIn("helpful assistant", safe_json_dumps(input_msgs))
+
+    def test_no_system_prompt_leaks_nowhere(self):
+        """No system message specified => empty system_instructions AND no
+        phantom system role/content in input.messages."""
+        from langchain_core.messages import HumanMessage
+
+        from microsoft.opentelemetry._genai._langchain._utils import (
+            _extract_structured_input_messages,
+        )
+
+        inputs = {"messages": [[HumanMessage(content="hi")]]}
+        instructions = _extract_system_instruction(inputs)
+        input_msgs = _extract_structured_input_messages(inputs)
+        # Nothing routed to system_instructions.
+        self.assertEqual(instructions, [])
+        # Input contains only the user turn -- no system role sneaks in.
+        self.assertEqual([m.role for m in input_msgs], ["user"])
+        self.assertEqual(input_msgs[0].parts[0].content, "hi")
+
+    def test_empty_inputs_leak_nowhere(self):
+        from microsoft.opentelemetry._genai._langchain._utils import (
+            _extract_structured_input_messages,
+        )
+
+        self.assertEqual(_extract_system_instruction({}), [])
+        self.assertEqual(_extract_structured_input_messages({}), [])
 
 
 # ---- _should_capture_content_on_spans ---------------------------------------

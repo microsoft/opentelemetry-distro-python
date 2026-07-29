@@ -264,21 +264,6 @@ LANGCHAIN_THREAD_ID = "thread_id"
 
 
 @stop_on_exception
-def prompts(
-    inputs: Mapping[str, Any] | None,
-    enable_sensitive_data: bool = False,
-) -> Iterator[tuple[str, list[str]]]:
-    if not _should_capture_content_on_spans(enable_sensitive_data):
-        return
-    if not inputs:
-        return
-    if not isinstance(inputs, Mapping):
-        return
-    if p := inputs.get("prompts"):
-        yield GEN_AI_SYSTEM_INSTRUCTIONS_KEY, p
-
-
-@stop_on_exception
 def input_messages(
     inputs: Mapping[str, Any] | None,
 ) -> Iterator[tuple[str, str]]:
@@ -1323,6 +1308,25 @@ def _extract_system_instruction(inputs: Mapping[str, Any] | None) -> list[Text]:
             return [Text(content=str(item)) for item in p if item]
         if isinstance(p, str):
             return [Text(content=p)]
+        return []
+    # Messages path: only reached when there are no prompts.
+    multiple_messages = inputs.get("messages")
+    if multiple_messages and isinstance(multiple_messages, Iterable):
+        if isinstance(multiple_messages, list) and multiple_messages:
+            first_item = multiple_messages[0]
+            first_messages = first_item if isinstance(first_item, list) else multiple_messages
+        else:
+            first_messages = next(iter(multiple_messages), None)  # type: ignore[arg-type]
+        if first_messages is not None:
+            if not isinstance(first_messages, list):
+                first_messages = [first_messages]
+            results: list[Text] = []
+            for msg in first_messages:
+                if _normalize_role(_langchain_role(msg)) == "system":
+                    content = _langchain_content(msg)
+                    if content:
+                        results.append(Text(content=content))
+            return results
     return []
 
 
@@ -1332,6 +1336,8 @@ def _extract_structured_input_messages(
     """Convert LangChain input messages to OTel ``InputMessage`` list."""
     if not inputs or not isinstance(inputs, Mapping):
         return []
+
+    route_system_out = not inputs.get("prompts")
     multiple_messages = inputs.get("messages")
     if multiple_messages and isinstance(multiple_messages, Iterable):
         first_messages = next(iter(multiple_messages), None)
@@ -1342,6 +1348,8 @@ def _extract_structured_input_messages(
             results: list[InputMessage] = []
             for msg in first_messages:
                 role = _normalize_role(_langchain_role(msg))
+                if route_system_out and role == "system":
+                    continue
                 parts: list[Any] = []
                 tool_responses = _langchain_tool_responses(msg)
                 if tool_responses:

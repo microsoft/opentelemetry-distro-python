@@ -1,5 +1,9 @@
 # Release History
 
+# 1.3.7 (Unreleased)
+### Features Added
+- Capture the agent's system prompt as the `gen_ai.system_instructions` span attribute in the LangChain instrumentation.
+
 # 1.3.6 (2026-07-22)
 
 ### Features Added
