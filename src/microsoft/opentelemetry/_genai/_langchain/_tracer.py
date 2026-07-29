@@ -508,7 +508,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                     break
 
             if run_type in ("llm", "chat_model"):
-                for key, val in invocation_parameters(run):
+                for key, val in invocation_parameters(run, self._enable_sensitive_data):
                     if key == GEN_AI_REQUEST_CHOICE_COUNT_KEY and isinstance(val, int) and val > 0:
                         previous = content.get("request_choice_count")
                         if not isinstance(previous, int) or val > previous:

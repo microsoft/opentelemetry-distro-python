@@ -651,7 +651,8 @@ class TestInvocationParameters(TestCase):
             run_type="llm",
             extra={"invocation_params": {"tools": [{"name": "get_weather"}]}},
         )
-        result = dict(invocation_parameters(run))
+        # Tool definitions are gated content; opt in via enable_sensitive_data.
+        result = dict(invocation_parameters(run, enable_sensitive_data=True))
         self.assertEqual(len(result), 1)
         self.assertIn("get_weather", result[GEN_AI_TOOL_DEFINITIONS_KEY])
 
@@ -660,8 +661,30 @@ class TestInvocationParameters(TestCase):
             run_type="chat_model",
             extra={"invocation_params": {"functions": [{"name": "get_weather"}]}},
         )
-        result = dict(invocation_parameters(run))
+        result = dict(invocation_parameters(run, enable_sensitive_data=True))
         self.assertEqual(len(result), 1)
+        self.assertIn("get_weather", result[GEN_AI_TOOL_DEFINITIONS_KEY])
+
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=False)
+    def test_omits_tool_definitions_when_content_capture_disabled(self, _mock_capture):
+        run = _make_run(
+            run_type="llm",
+            extra={"invocation_params": {"tools": [{"name": "get_weather"}]}},
+        )
+        # enable_sensitive_data defaults to False and content capture is off, so
+        # developer-authored tool definitions must not leak onto the span.
+        result = dict(invocation_parameters(run))
+        self.assertNotIn(GEN_AI_TOOL_DEFINITIONS_KEY, result)
+
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=True)
+    def test_emits_tool_definitions_when_env_content_capture_enabled(self, _mock_capture):
+        run = _make_run(
+            run_type="llm",
+            extra={"invocation_params": {"tools": [{"name": "get_weather"}]}},
+        )
+        # Even without the flag, the upstream env-var/experimental content-capture
+        # check opting in should surface the attribute.
+        result = dict(invocation_parameters(run))
         self.assertIn("get_weather", result[GEN_AI_TOOL_DEFINITIONS_KEY])
 
     def test_skips_non_llm(self):
@@ -810,6 +833,54 @@ class TestFunctionCalls(TestCase):
         self.assertEqual(result[GEN_AI_TOOL_ARGS_KEY], '{"city":"NYC"}')
         self.assertEqual(result[GEN_AI_TOOL_CALL_RESULT_KEY], '{"temperature":"72F"}')
 
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=False)
+    def test_omits_description_when_content_capture_disabled(self, _mock_capture):
+        outputs = {
+            "generations": [
+                [
+                    {
+                        "message": {
+                            "kwargs": {
+                                "additional_kwargs": {
+                                    "function_call": {
+                                        "name": "get_weather",
+                                        "description": "Fetches current weather",
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            ]
+        }
+        result = dict(function_calls(outputs))
+        self.assertEqual(result[GEN_AI_TOOL_NAME_KEY], "get_weather")
+        # Developer-authored tool description must not leak when capture is off.
+        self.assertNotIn(GEN_AI_TOOL_DESCRIPTION_KEY, result)
+
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=True)
+    def test_emits_description_when_content_capture_enabled(self, _mock_capture):
+        outputs = {
+            "generations": [
+                [
+                    {
+                        "message": {
+                            "kwargs": {
+                                "additional_kwargs": {
+                                    "function_call": {
+                                        "name": "get_weather",
+                                        "description": "Fetches current weather",
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            ]
+        }
+        result = dict(function_calls(outputs))
+        self.assertEqual(result[GEN_AI_TOOL_DESCRIPTION_KEY], "Fetches current weather")
+
     def test_returns_empty_on_none(self):
         self.assertEqual(list(function_calls(None)), [])
 
@@ -952,7 +1023,8 @@ class TestTools(TestCase):
         )
         result = dict(tools(run))
         self.assertEqual(result[GEN_AI_TOOL_NAME_KEY], "calculator")
-        self.assertEqual(result[GEN_AI_TOOL_DESCRIPTION_KEY], "Does math")
+        # Description is developer-authored content and must be gated.
+        self.assertNotIn(GEN_AI_TOOL_DESCRIPTION_KEY, result)
         self.assertEqual(result[GEN_AI_TOOL_TYPE_KEY], "function")
         self.assertNotIn(GEN_AI_TOOL_ARGS_KEY, result)
         self.assertNotIn(GEN_AI_TOOL_CALL_RESULT_KEY, result)
@@ -969,8 +1041,18 @@ class TestTools(TestCase):
         )
         result = dict(tools(run))
         self.assertEqual(result[GEN_AI_TOOL_TYPE_KEY], "function")
+        self.assertEqual(result[GEN_AI_TOOL_DESCRIPTION_KEY], "Does math")
         self.assertEqual(result[GEN_AI_TOOL_ARGS_KEY], "2+2")
         self.assertEqual(result[GEN_AI_TOOL_CALL_RESULT_KEY], "4")
+
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=True)
+    def test_emits_tool_description_via_enable_sensitive_data_flag(self, _mock_capture):
+        run = _make_run(
+            run_type="tool",
+            serialized={"name": "calculator", "description": "Does math"},
+        )
+        result = dict(tools(run, enable_sensitive_data=True))
+        self.assertEqual(result[GEN_AI_TOOL_DESCRIPTION_KEY], "Does math")
 
     def test_skips_non_tool(self):
         run = _make_run(run_type="llm", serialized={"name": "calc"})
