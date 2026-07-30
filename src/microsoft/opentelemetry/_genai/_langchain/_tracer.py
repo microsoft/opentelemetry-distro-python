@@ -108,6 +108,12 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
     # no agent semantics and should never produce their own span.
     _LANGGRAPH_START_NODE = "__start__"
     _LANGGRAPH_MIDDLEWARE_PREFIX = "Middleware."
+    # ``create_agent`` builds a small graph around the real agent whose internal
+    # nodes are named ``model`` (the LLM step) and ``tools`` (the tool step).
+    # Together with the graph entrypoint these are the only node names that must
+    # never be treated as an agent boundary; every other node name IS the
+    # boundary the user declared via ``add_node``.
+    _LANGGRAPH_INTERNAL_NODES = frozenset({_LANGGRAPH_START_NODE, "model", "tools"})
 
     run_inline = True
 
@@ -196,7 +202,26 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         # Nested agents (sub-agents with an agent ancestor) must NOT inherit
         # their identity from the shared ``_agent_config`` — that describes
         # the top-level agent only.
-        is_nested_agent = is_agent and self._find_agent_ancestor(run) is not None
+        ancestor_id = self._find_agent_ancestor(run)
+        is_nested_agent = is_agent and ancestor_id is not None
+
+        # LangGraph propagates a node's agent metadata (e.g. ``agent_name``) to
+        # every descendant run and also emits the boundary node twice (the outer
+        # task and the subgraph root), so a single nested agent surfaces as
+        # multiple agent-classified runs that all share the SAME name. Suppress
+        # those inherited duplicates and keep only the outermost occurrence; the
+        # duplicates' content still aggregates into the surviving ancestor agent
+        # span via ``_find_agent_ancestor``. A genuinely distinct sub-agent
+        # (different name from its nearest agent ancestor, e.g. a supervisor
+        # delegating to a named worker) is NOT a duplicate and keeps its span.
+        if is_nested_agent:
+            ancestor_run = self.run_map.get(str(ancestor_id))
+            ancestor_name = (
+                self._resolve_agent_name(ancestor_run, use_config=False) if ancestor_run else None
+            )
+            this_name = self._resolve_agent_name(run, use_config=False)
+            if this_name and ancestor_name and this_name.lower() == ancestor_name.lower():
+                return
 
         # Determine span name based on run type
         if is_agent:
@@ -379,19 +404,28 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         return str(node) if node else None
 
     def _should_ignore_langgraph_node(self, run: Run) -> bool:  # pylint: disable=too-many-return-statements
-        """Decide whether a genuine LangGraph node should be suppressed."""
+        """Decide whether a genuine LangGraph node should be suppressed.
+
+        The decision is driven entirely by ``langgraph_node`` -- the one marker
+        LangGraph attaches to every node run. Internal orchestration nodes
+        (the graph entrypoint and ``create_agent``'s ``model`` / ``tools``
+        steps) plus middleware wrappers are suppressed; any other node name is
+        the agent/workflow boundary the user declared and is emitted.
+        """
         meta = self._run_metadata(run)
+        print("Meta data is ", meta)
+        node_name = meta.get("langgraph_node")
         # 1. Explicit per-node opt-in/opt-out always wins.
         otel_trace_flag = meta.get("otel_trace")
         if otel_trace_flag is not None:
             return not bool(otel_trace_flag)
-        node_name = meta.get("langgraph_node")
-        # 2. LangGraph entrypoint never represents an agent.
-        if node_name == self._LANGGRAPH_START_NODE:
-            return True
         otel_agent_flag = meta.get("otel_agent_span")
         if otel_agent_flag is not None:
             return not bool(otel_agent_flag)
+        # 2. Framework-internal nodes (entrypoint, create_agent's model/tools)
+        #    never represent an agent boundary.
+        if node_name in self._LANGGRAPH_INTERNAL_NODES:
+            return True
         # 3. Middleware wrappers carry no agent semantics.
         if node_name and str(node_name).startswith(self._LANGGRAPH_MIDDLEWARE_PREFIX):
             return True
