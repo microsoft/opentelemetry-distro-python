@@ -70,6 +70,8 @@ from microsoft.opentelemetry._genai._langchain._utils import (
     llm_provider,
     metadata,
     model_name,
+    output_has_modern_tool_calls,
+    prompts,
     _extract_structured_output_messages,
     _extract_agent_input_messages,
     _extract_agent_output_messages,
@@ -724,17 +726,15 @@ def _update_span(span: Span, run: Run, enable_sensitive_data: bool = False) -> L
                     safe_json_dumps([asdict(p) for p in invocation.system_instruction]),
                 )
         # Extras not covered by LLMInvocation
-        span.set_attributes(
-            dict(
-                flatten(
-                    chain(
-                        invocation_parameters(run),
-                        function_calls(run.outputs, enable_sensitive_data),
-                        metadata(run),
-                    )
-                )
-            )
-        )
+        extras = [
+            prompts(run.inputs, enable_sensitive_data),
+            invocation_parameters(run),
+            metadata(run),
+        ]
+
+        if not output_has_modern_tool_calls(run.outputs):
+            extras.append(function_calls(run.outputs, enable_sensitive_data))
+        span.set_attributes(dict(flatten(chain(*extras))))
         return invocation
 
     # --- Tool / chain / other runs ---
