@@ -71,7 +71,6 @@ from microsoft.opentelemetry._genai._langchain._utils import (
     metadata,
     model_name,
     output_has_modern_tool_calls,
-    prompts,
     _extract_structured_output_messages,
     _extract_agent_input_messages,
     _extract_agent_output_messages,
@@ -727,7 +726,6 @@ def _update_span(span: Span, run: Run, enable_sensitive_data: bool = False) -> L
                 )
         # Extras not covered by LLMInvocation
         extras = [
-            prompts(run.inputs, enable_sensitive_data),
             invocation_parameters(run),
             metadata(run),
         ]

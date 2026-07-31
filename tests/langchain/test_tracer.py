@@ -860,11 +860,11 @@ class TestUpdateSpanFunctionCallGuard(TestCase):
 
     Only the legacy singular ``additional_kwargs.function_call`` is suppressed
     (and only when modern plural ``tool_calls`` are present). The other extras
-    (``prompts``, ``invocation_parameters``, ``metadata``) must always be
+    (``invocation_parameters``, ``metadata``) must always be
     carried forward regardless of the guard.
     """
 
-    _EXTRA = {"invocation_params": {"model": "gpt-4o"}}
+    _EXTRA = {"invocation_params": {"use_responses_api": True, "model": "gpt-4o"}}
 
     @staticmethod
     def _merged_attrs(span):
