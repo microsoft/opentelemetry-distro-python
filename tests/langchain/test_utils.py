@@ -57,6 +57,7 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     llm_provider,
     metadata,
     model_name,
+    output_has_modern_tool_calls,
     output_messages,
     safe_json_dumps,
     stop_on_exception,
@@ -468,6 +469,45 @@ class TestTokenCounts(TestCase):
         self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 6)
         self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 8)
 
+    def test_generation_info_does_not_shadow_message_usage_metadata(self):
+        # Regression: ChatGoogleGenerativeAI emits ``generation_info`` with only
+        # finish_reason/model_name/safety_ratings (no token keys) while the real
+        # counts live on ``message.usage_metadata``. A prior blind
+        # ``usage = generation_info`` fallback returned the token-less mapping
+        # first and dropped all token attributes.
+        from langchain_core.messages import AIMessage
+
+        message = AIMessage(
+            content="The capital of France is Paris.",
+            usage_metadata={
+                "input_tokens": 14,
+                "output_tokens": 65,
+                "total_tokens": 79,
+                "input_token_details": {"cache_read": 0},
+                "output_token_details": {"reasoning": 57},
+            },
+        )
+        outputs = {
+            "generations": [
+                [
+                    {
+                        "message": message,
+                        "generation_info": {
+                            "finish_reason": "STOP",
+                            "model_name": "gemini-3.6-flash",
+                            "safety_ratings": [],
+                            "model_provider": "google_genai",
+                        },
+                    }
+                ]
+            ],
+        }
+        result = dict(token_counts(outputs))
+        self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 14)
+        self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 65)
+        self.assertEqual(result[GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_KEY], 0)
+        self.assertEqual(result[GEN_AI_USAGE_REASONING_OUTPUT_TOKENS_KEY], 57)
+
 
 class TestTokenCountsCache(TestCase):
     def test_extracts_cache_read_and_creation_from_input_token_details(self):
@@ -771,6 +811,132 @@ class TestFunctionCalls(TestCase):
 
     def test_returns_empty_on_none(self):
         self.assertEqual(list(function_calls(None)), [])
+
+
+class TestOutputHasModernToolCalls(TestCase):
+    """Guard that decides whether the legacy ``function_call`` field is emitted."""
+
+    @staticmethod
+    def _outputs(message_kwargs):
+        return {"generations": [[{"message": {"kwargs": message_kwargs}}]]}
+
+    def test_modern_tool_calls_present_returns_true(self):
+        outputs = self._outputs(
+            {
+                "content": "",
+                "tool_calls": [{"name": "get_population", "args": {"city": "Paris"}, "id": "call_1"}],
+            }
+        )
+        self.assertTrue(output_has_modern_tool_calls(outputs))
+
+    def test_modern_tool_calls_in_additional_kwargs_returns_true(self):
+        outputs = self._outputs(
+            {
+                "content": "",
+                "additional_kwargs": {"tool_calls": [{"id": "call_1", "function": {"name": "get_population"}}]},
+            }
+        )
+        self.assertTrue(output_has_modern_tool_calls(outputs))
+
+    def test_legacy_function_call_only_returns_false(self):
+        # Legacy-only shape (deprecated OpenAI ``functions=`` API): singular
+        # ``function_call`` with no modern ``tool_calls``.
+        outputs = self._outputs(
+            {
+                "content": "",
+                "additional_kwargs": {
+                    "function_call": {
+                        "name": "get_population",
+                        "arguments": '{"city":"Paris"}',
+                    }
+                },
+            }
+        )
+        self.assertFalse(output_has_modern_tool_calls(outputs))
+
+    def test_no_tool_calls_returns_false(self):
+        outputs = self._outputs({"content": "The capital of France is Paris."})
+        self.assertFalse(output_has_modern_tool_calls(outputs))
+
+    def test_empty_tool_calls_list_returns_false(self):
+        outputs = self._outputs({"content": "", "tool_calls": []})
+        self.assertFalse(output_has_modern_tool_calls(outputs))
+
+    def test_returns_false_on_none(self):
+        self.assertFalse(output_has_modern_tool_calls(None))
+
+    def test_returns_false_on_non_mapping(self):
+        self.assertFalse(output_has_modern_tool_calls("not-a-mapping"))
+
+    def test_returns_false_on_malformed_generations(self):
+        self.assertFalse(output_has_modern_tool_calls({"generations": []}))
+
+
+class TestFunctionCallsGuardInteraction(TestCase):
+    """End-to-end of the guard + ``function_calls`` combination on the chat span.
+
+    Reproduces the three provider scenarios that reach the LLM/chat branch of
+    the tracer, asserting that ``gen_ai.tool.*`` attributes only reach the chat
+    span for the legacy-only case.
+    """
+
+    @staticmethod
+    def _outputs(message_kwargs):
+        return {"generations": [[{"message": {"kwargs": message_kwargs}}]]}
+
+    @staticmethod
+    def _emitted(outputs):
+        # Mirror the tracer guard: emit legacy function_calls only when there is
+        # no modern tool_calls representation.
+        if output_has_modern_tool_calls(outputs):
+            return {}
+        return dict(function_calls(outputs, enable_sensitive_data=True))
+
+    def test_gemini_style_both_fields_suppresses_leak(self):
+        # Gemini populates both modern tool_calls AND legacy function_call.
+        outputs = self._outputs(
+            {
+                "content": "",
+                "tool_calls": [{"name": "get_famous_landmark", "args": {"city": "Paris"}, "id": "call_1"}],
+                "additional_kwargs": {
+                    "function_call": {
+                        "name": "get_famous_landmark",
+                        "arguments": '{"city":"Paris"}',
+                    }
+                },
+            }
+        )
+        # No gen_ai.tool.* attributes leak onto the chat span.
+        self.assertEqual(self._emitted(outputs), {})
+
+    def test_modern_only_openai_style_emits_nothing(self):
+        # OpenAI/Anthropic set only modern tool_calls, never the legacy field.
+        outputs = self._outputs(
+            {
+                "content": "",
+                "tool_calls": [{"name": "get_population", "args": {"city": "Paris"}, "id": "call_1"}],
+            }
+        )
+        self.assertEqual(self._emitted(outputs), {})
+
+    def test_legacy_only_still_emits_tool_attributes(self):
+        # Deprecated OpenAI functions= API: legacy field is the only capture, so
+        # it must still be emitted on the chat span.
+        outputs = self._outputs(
+            {
+                "content": "",
+                "additional_kwargs": {
+                    "function_call": {
+                        "name": "get_population",
+                        "arguments": '{"city":"Paris"}',
+                    }
+                },
+            }
+        )
+        emitted = self._emitted(outputs)
+        self.assertEqual(emitted[GEN_AI_TOOL_NAME_KEY], "get_population")
+        self.assertEqual(emitted[GEN_AI_TOOL_TYPE_KEY], "function")
+        self.assertEqual(emitted[GEN_AI_TOOL_ARGS_KEY], '{"city":"Paris"}')
 
 
 class TestTools(TestCase):

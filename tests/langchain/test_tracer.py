@@ -25,6 +25,7 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     GEN_AI_REQUEST_CHOICE_COUNT_KEY,
     GEN_AI_SYSTEM_INSTRUCTIONS_KEY,
     GEN_AI_TOOL_DEFINITIONS_KEY,
+    GEN_AI_TOOL_NAME_KEY,
     INVOKE_AGENT_OPERATION_NAME,
 )
 
@@ -849,6 +850,91 @@ class TestUpdateSpanSystemInstructions(TestCase):
         self.assertIsInstance(value, str)
         parts = json.loads(value)
         self.assertEqual(parts, [{"content": "You are a helpful assistant.", "type": "text"}])
+
+
+# ---- _update_span function_call / tool_calls guard ---------------------------
+
+
+class TestUpdateSpanFunctionCallGuard(TestCase):
+    """Verify the legacy ``function_call`` guard on the chat/LLM span.
+
+    Only the legacy singular ``additional_kwargs.function_call`` is suppressed
+    (and only when modern plural ``tool_calls`` are present). The other extras
+    (``invocation_parameters``, ``metadata``) must always be
+    carried forward regardless of the guard.
+    """
+
+    _EXTRA = {"invocation_params": {"use_responses_api": True, "model": "gpt-4o"}}
+
+    @staticmethod
+    def _merged_attrs(span):
+        merged = {}
+        for call in span.set_attributes.call_args_list:
+            if call.args and isinstance(call.args[0], dict):
+                merged.update(call.args[0])
+        return merged
+
+    def _run_with(self, message_kwargs):
+        return _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            extra=self._EXTRA,
+            inputs=None,
+            outputs={"generations": [[{"message": {"kwargs": message_kwargs}}]]},
+        )
+
+    def test_both_present_suppresses_legacy_but_keeps_extras(self):
+        span = MagicMock()
+        run = self._run_with(
+            {
+                "content": "",
+                "additional_kwargs": {"function_call": {"name": "get_population", "arguments": '{"city":"Paris"}'}},
+                "tool_calls": [{"name": "get_population", "args": {"city": "Paris"}, "id": "1"}],
+            }
+        )
+
+        _update_span(span, run, enable_sensitive_data=True)
+
+        merged = self._merged_attrs(span)
+
+        self.assertNotIn(GEN_AI_TOOL_NAME_KEY, merged)
+
+        self.assertEqual(merged.get(GEN_AI_PROVIDER_NAME_KEY), "openai")
+
+    def test_legacy_only_emits_tool_attributes(self):
+        span = MagicMock()
+        run = self._run_with(
+            {
+                "content": "",
+                "additional_kwargs": {"function_call": {"name": "get_population", "arguments": '{"city":"Paris"}'}},
+            }
+        )
+
+        _update_span(span, run, enable_sensitive_data=True)
+
+        merged = self._merged_attrs(span)
+
+        self.assertEqual(merged.get(GEN_AI_TOOL_NAME_KEY), "get_population")
+
+        self.assertEqual(merged.get(GEN_AI_PROVIDER_NAME_KEY), "openai")
+
+    def test_modern_only_no_tool_leak_and_keeps_extras(self):
+        """Modern OpenAI/Anthropic case: only tool_calls -> no gen_ai.tool.*."""
+        span = MagicMock()
+        run = self._run_with(
+            {
+                "content": "",
+                "tool_calls": [{"name": "get_population", "args": {"city": "Paris"}, "id": "1"}],
+            }
+        )
+
+        _update_span(span, run, enable_sensitive_data=True)
+
+        merged = self._merged_attrs(span)
+
+        self.assertNotIn(GEN_AI_TOOL_NAME_KEY, merged)
+
+        self.assertEqual(merged.get(GEN_AI_PROVIDER_NAME_KEY), "openai")
 
 
 # ---- Aggregation -------------------------------------------------------------

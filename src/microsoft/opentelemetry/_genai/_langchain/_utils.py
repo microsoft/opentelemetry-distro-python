@@ -784,10 +784,10 @@ def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
         return token_usage
     if outputs and hasattr(outputs, "get") and (top_usage := outputs.get("usage")):
         return top_usage
-    # Fallback for code paths (e.g. OpenAI Responses API in langchain-openai) where
-    # ``llm_output["token_usage"]`` is not populated and usage lives on each
-    # generation's ``message.usage_metadata`` (langchain_core ``UsageMetadata``) or
-    # in ``message.response_metadata.token_usage``.
+    # Fallback for code paths (e.g. OpenAI Responses API in langchain-openai, or
+    # ChatGoogleGenerativeAI) where ``llm_output["token_usage"]`` is not populated
+    # and usage lives on each generation's ``message.usage_metadata``
+    # (langchain_core ``UsageMetadata``) or in ``message.response_metadata``.
     if not isinstance(outputs, Mapping):
         return None
     for generation in _iter_generation_mappings(outputs):
@@ -796,8 +796,6 @@ def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
         gen_info = generation.get("generation_info")
         if isinstance(gen_info, Mapping):
             usage = get_first_value(gen_info, ("token_usage", "usage"))
-            if usage is None:
-                usage = gen_info
 
         message_data = generation.get("message")
         if usage is None:
@@ -819,6 +817,24 @@ def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
         if usage_mapping := _as_usage_mapping(usage):
             return usage_mapping
     return None
+
+
+def output_has_modern_tool_calls(outputs: Mapping[str, Any] | None) -> bool:
+    """Return True if the run output already carries modern ``tool_calls``."""
+    if not isinstance(outputs, Mapping):
+        return False
+    try:
+        message_kwargs = outputs["generations"][0][0]["message"]["kwargs"]
+    except Exception:
+        return False
+    if not isinstance(message_kwargs, Mapping):
+        return False
+    if message_kwargs.get("tool_calls"):
+        return True
+    additional_kwargs = message_kwargs.get("additional_kwargs")
+    if isinstance(additional_kwargs, Mapping) and additional_kwargs.get("tool_calls"):
+        return True
+    return False
 
 
 @stop_on_exception

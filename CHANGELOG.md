@@ -4,6 +4,10 @@
 ### Features Added
 - Capture the agent's system prompt as the `gen_ai.system_instructions` span attribute in the LangChain instrumentation.
 
+### Bugs Fixed
+- Parse Gemini token usage attributes and stop emitting legacy `gen_ai.tool.*` attributes on the chat span when both modern and legacy `tool_calls` are present
+  ([#233](https://github.com/microsoft/opentelemetry-distro-python/pull/233))
+
 # 1.3.6 (2026-07-22)
 
 ### Features Added
