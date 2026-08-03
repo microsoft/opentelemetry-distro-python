@@ -776,14 +776,15 @@ def _iter_generation_response_metadata(outputs: Mapping[str, Any] | None) -> Ite
 
 
 def _served_model_from_outputs(outputs: Mapping[str, Any] | None) -> str | None:
-    """Return the Azure Foundry served-model snapshot from response headers. """
+    """Return the Azure Foundry served-model snapshot from response headers."""
     for meta in _iter_generation_response_metadata(outputs):
         headers = meta.get("headers")
         if not isinstance(headers, Mapping):
             continue
         for header_name, header_value in headers.items():
-            if isinstance(header_name, str) and header_name.lower() in _SERVED_MODEL_HEADERS and header_value:
-                return str(header_value)
+            if isinstance(header_name, str) and header_name.lower() in _SERVED_MODEL_HEADERS:
+                if isinstance(header_value, str) and header_value.strip():
+                    return str(header_value)
     return None
 
 

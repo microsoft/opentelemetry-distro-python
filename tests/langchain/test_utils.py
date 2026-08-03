@@ -1630,6 +1630,31 @@ class TestExtractSystemInstruction(TestCase):
         inv = build_llm_invocation(run)
         self.assertEqual(inv.response_model_name, "gpt-4.1-2025-04-14")
 
+    def test_served_model_header_does_not_override_llm_output_model_when_response_header_empty(self):
+        run = _make_run(
+            run_type="llm",
+            outputs={
+                "llm_output": {"model_name": "gpt-4.1-deployment", "id": "resp-1"},
+                "generations": [
+                    [
+                        {
+                            "message": {
+                                "content": "hi",
+                                "response_metadata": {
+                                    "headers": {"x-ms-served-model": " "},
+                                },
+                            },
+                            "generation_info": {"finish_reason": "stop"},
+                        }
+                    ]
+                ],
+            },
+            extra=None,
+            inputs=None,
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(inv.response_model_name, "gpt-4.1-deployment")
+
     def test_response_model_falls_back_when_no_served_model_header(self):
         # No ``x-ms-served-model`` header present -> fall back to llm_output.
         run = _make_run(
