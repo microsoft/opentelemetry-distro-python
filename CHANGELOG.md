@@ -2,7 +2,11 @@
 
 # 1.3.7 (Unreleased)
 ### Features Added
-- Capture the agent's system prompt as the `gen_ai.system_instructions` span attribute in the LangChain instrumentation.
+- Respect RAPI headers in order to populate the gen_ai.response.model with the served model if available
+  ([#234](https://github.com/microsoft/opentelemetry-distro-python/pull/234))
+
+- Capture the agent's system prompt as the `gen_ai.system_instructions` span attribute in the LangChain instrumentation
+  ([#232](https://github.com/microsoft/opentelemetry-distro-python/pull/232))
 
 ### Bugs Fixed
 - Parse Gemini token usage attributes and stop emitting legacy `gen_ai.tool.*` attributes on the chat span when both modern and legacy `tool_calls` are present
