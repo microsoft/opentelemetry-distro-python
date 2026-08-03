@@ -223,3 +223,41 @@ def test_register_guardrail_payload_logging_is_idempotent(monkeypatch):
     text = output.getvalue()
     assert text.count(PAYLOAD_START_MARKER) == 1
     assert text.count(PAYLOAD_END_MARKER) == 1
+
+
+def test_guardrail_payload_uses_active_parent_span_id(monkeypatch):
+    provider = TracerProvider()
+    exporter = GuardrailPayloadLoggingExporter()
+    provider.add_span_processor(SimpleSpanProcessor(exporter))
+    tracer = provider.get_tracer("kairo-parent-span-test")
+    monkeypatch.setenv("ENABLE_OBSERVABILITY", "true")
+    monkeypatch.setattr(
+        OpenTelemetryScope,
+        "_tracer",
+        tracer,
+    )
+    output = StringIO()
+
+    try:
+        with redirect_stdout(output):
+            with tracer.start_as_current_span("invoke_agent parent") as parent_span:
+                evaluate_input_guardrail(
+                    "ordinary request",
+                    AgentDetails(
+                        agent_id="agent-123",
+                        agent_name="Kairo Guardrail Sample",
+                        tenant_id="tenant-456",
+                    ),
+                    Request(conversation_id="conversation-789"),
+                )
+                parent_span_id = f"{parent_span.get_span_context().span_id:016x}"
+    finally:
+        provider.shutdown()
+        OpenTelemetryScope._tracer = None
+
+    text = output.getvalue()
+    body = text.split(PAYLOAD_START_MARKER, 1)[1].split(PAYLOAD_END_MARKER, 1)[0].strip()
+    payload = json.loads(body)
+    span = payload["resourceSpans"][0]["scopeSpans"][0]["spans"][0]
+
+    assert span["parentSpanId"] == parent_span_id

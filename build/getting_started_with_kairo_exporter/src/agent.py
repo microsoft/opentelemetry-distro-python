@@ -19,10 +19,6 @@ from microsoft_agents.hosting.core.storage import (
     ConsoleTranscriptLogger,
     TranscriptLoggerMiddleware,
 )
-from microsoft.opentelemetry.a365.core import (
-    AgentDetails as GuardrailAgentDetails,
-    Request as GuardrailRequest,
-)
 from microsoft_agents_a365.observability.core.invoke_agent_details import InvokeAgentScopeDetails
 from microsoft_agents_a365.observability.core.invoke_agent_scope import InvokeAgentScope
 from microsoft_agents_a365.observability.core.middleware.baggage_builder import BaggageBuilder
@@ -34,7 +30,7 @@ from microsoft_agents_a365.observability.hosting.token_cache_helpers import (
 from microsoft_agents_a365.runtime.environment_utils import (
     get_observability_authentication_scope,
 )
-from services.guardrail_service import evaluate_input_guardrail
+from services.message_pipeline import GuardrailContext, handle_message_turn
 from services.openai_service import call_azure_openai
 from services.tool_service import execute_tool
 from utils.observability_helpers import (
@@ -103,7 +99,7 @@ async def on_message(context: TurnContext, _state: TurnState):
 
     # Create request details
     request_details = create_request_details(
-        user_message, context.activity.conversation.id if context.activity.conversation else None
+        context.activity.conversation.id if context.activity.conversation else None
     )
 
     try:
@@ -124,56 +120,34 @@ async def on_message(context: TurnContext, _state: TurnState):
 
         try:
             with invoke_scope:
-                # Get the agentic user token with observability scope
-                invoke_scope.record_input_messages([user_message])
-                guardrail_result = evaluate_input_guardrail(
+                await handle_message_turn(
                     user_message=user_message,
-                    agent_details=GuardrailAgentDetails(
+                    guardrail_context=GuardrailContext(
                         agent_id=agent_details.agent_id,
                         agent_name=agent_details.agent_name,
                         tenant_id=agent_details.tenant_id,
-                    ),
-                    request=GuardrailRequest(
                         conversation_id=(
                             context.activity.conversation.id
                             if context.activity.conversation
                             else None
                         ),
                     ),
+                    invoke_scope=invoke_scope,
+                    send_activity=context.send_activity,
+                    exchange_token=lambda: AGENT_APP.auth.exchange_token(
+                        context,
+                        scopes=get_observability_authentication_scope(),
+                        auth_handler_id="AGENTIC",
+                    ),
+                    cache_token=cache_agentic_token,
+                    execute_tool=lambda tool_name, arguments: execute_tool(
+                        tool_name,
+                        arguments,
+                        context,
+                    ),
+                    call_llm=lambda message: call_azure_openai(message, context),
+                    logger=logger,
                 )
-                if not guardrail_result.allowed:
-                    await context.send_activity(guardrail_result.response_message)
-                    return
-
-                exaau_token = await AGENT_APP.auth.exchange_token(
-                    context,
-                    scopes=get_observability_authentication_scope(),
-                    auth_handler_id="AGENTIC",
-                )
-
-                # Cache the agentic token for exporter use (old approach - for reference)
-                cache_agentic_token(
-                    agent_details.tenant_id, agent_details.agent_id, exaau_token.token
-                )
-
-                logger.info(f"Processing user message: {user_message}")
-
-                # Demo: Execute a tool if user asks about weather or calculations
-                tool_result = None
-                if "weather" in user_message.lower():
-                    tool_result = await execute_tool("get_weather", "current location", context)
-                elif "calculate" in user_message.lower() or "math" in user_message.lower():
-                    tool_result = await execute_tool("calculate", "2 + 2", context)
-
-                # Call Azure OpenAI with inference scope tracing
-                enhanced_message = user_message
-                if tool_result:
-                    enhanced_message = f"{user_message}\n\nTool result: {tool_result}"
-
-                ai_response = await call_azure_openai(enhanced_message, context)
-
-                # Send the AI response back to the user
-                await context.send_activity(ai_response)
 
             # Record output in a separate OutputScope outside the invoke scope,
             # linked to the invoke scope via parent_id

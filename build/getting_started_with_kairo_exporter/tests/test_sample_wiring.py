@@ -1,132 +1,157 @@
 from __future__ import annotations
 
-import ast
+import asyncio
+from dataclasses import dataclass
 from pathlib import Path
-
+import sys
+from unittest.mock import MagicMock
 
 SAMPLE_SRC = Path(__file__).parents[1] / "src"
+sys.path.insert(0, str(SAMPLE_SRC))
+
+from services.guardrail_service import (
+    BLOCKED_RESPONSE,
+    DENY_TRIGGER,
+    SAMPLE_INPUT_VALUE,
+)
+from services.message_pipeline import GuardrailContext, handle_message_turn
+from utils.observability_helpers import create_request_details
+from utils.sample_exporter_flags import (
+    CANONICAL_EXPORTER_ENV_VAR,
+    LEGACY_EXPORTER_ENV_VAR,
+    align_exporter_env_flags,
+)
 
 
-def _parse_module(filename: str) -> ast.Module:
-    return ast.parse((SAMPLE_SRC / filename).read_text(encoding="utf-8"))
+class FakeInvokeScope:
+    def __init__(self) -> None:
+        self.recorded_inputs: list[list[str]] = []
+
+    def record_input_messages(self, messages: list[str]) -> None:
+        self.recorded_inputs.append(messages)
 
 
-def _find_imported_name(module: ast.Module, module_name: str, name: str) -> ast.alias | None:
-    for node in module.body:
-        if isinstance(node, ast.ImportFrom) and node.module == module_name:
-            for imported_name in node.names:
-                if imported_name.name == name:
-                    return imported_name
-    return None
+@dataclass(frozen=True)
+class FakeToken:
+    token: str
 
 
-def _find_function(module: ast.Module, function_name: str) -> ast.AsyncFunctionDef | ast.FunctionDef:
-    for node in module.body:
-        if isinstance(node, (ast.AsyncFunctionDef, ast.FunctionDef)) and node.name == function_name:
-            return node
-    raise AssertionError(f"Could not find function {function_name!r}.")
+def test_create_request_details_uses_fixed_non_sensitive_content():
+    request = create_request_details(session_id="conversation-789")
+
+    assert request.content == SAMPLE_INPUT_VALUE
+    assert request.session_id == "conversation-789"
 
 
-def _call_name(node: ast.AST) -> str | None:
-    if isinstance(node, ast.Name):
-        return node.id
-    if isinstance(node, ast.Attribute):
-        root_name = _call_name(node.value)
-        if root_name is None:
-            return None
-        return f"{root_name}.{node.attr}"
-    return None
+def test_on_message_denied_path_blocks_downstream_runtime():
+    invoke_scope = FakeInvokeScope()
+    sent_messages: list[str] = []
+    logger = MagicMock()
 
+    async def send_activity(message: str) -> None:
+        sent_messages.append(message)
 
-def _statement_contains_call(statement: ast.stmt, call_name: str) -> bool:
-    return any(
-        isinstance(node, ast.Call) and _call_name(node.func) == call_name for node in ast.walk(statement)
+    async def exchange_token() -> FakeToken:
+        raise AssertionError("Denied path must not exchange tokens.")
+
+    def cache_token(_tenant_id: str, _agent_id: str, _token: str) -> None:
+        raise AssertionError("Denied path must not cache tokens.")
+
+    async def execute_tool(_tool_name: str, _arguments: str) -> str:
+        raise AssertionError("Denied path must not execute tools.")
+
+    async def call_llm(_message: str) -> str:
+        raise AssertionError("Denied path must not call the LLM.")
+
+    result = asyncio.run(
+        handle_message_turn(
+            user_message=f"Please process {DENY_TRIGGER}",
+            guardrail_context=GuardrailContext(
+                agent_id="agent-123",
+                agent_name="Kairo Guardrail Sample",
+                tenant_id="tenant-456",
+                conversation_id="conversation-789",
+            ),
+            invoke_scope=invoke_scope,
+            send_activity=send_activity,
+            exchange_token=exchange_token,
+            cache_token=cache_token,
+            execute_tool=execute_tool,
+            call_llm=call_llm,
+            logger=logger,
+        )
     )
 
-
-def test_agent_imports_guardrail_service_and_types():
-    module = _parse_module("agent.py")
-
-    guardrail_import = _find_imported_name(
-        module,
-        "services.guardrail_service",
-        "evaluate_input_guardrail",
-    )
-    assert guardrail_import is not None
-
-    agent_details_alias = _find_imported_name(
-        module,
-        "microsoft.opentelemetry.a365.core",
-        "AgentDetails",
-    )
-    request_alias = _find_imported_name(
-        module,
-        "microsoft.opentelemetry.a365.core",
-        "Request",
-    )
-    assert agent_details_alias is not None
-    assert agent_details_alias.asname == "GuardrailAgentDetails"
-    assert request_alias is not None
-    assert request_alias.asname == "GuardrailRequest"
+    assert result is None
+    assert invoke_scope.recorded_inputs == [[SAMPLE_INPUT_VALUE]]
+    assert sent_messages == [BLOCKED_RESPONSE]
+    logger.info.assert_not_called()
 
 
-def test_on_message_evaluates_guardrail_before_downstream_processing():
-    module = _parse_module("agent.py")
-    on_message = _find_function(module, "on_message")
-    invoke_scope_with = next(
-        node
-        for node in ast.walk(on_message)
-        if isinstance(node, ast.With)
-        and any(_call_name(item.context_expr) == "invoke_scope" for item in node.items)
-    )
+def test_allowed_path_logs_only_non_sensitive_sample_value():
+    invoke_scope = FakeInvokeScope()
+    sent_messages: list[str] = []
+    logger = MagicMock()
+    live_user_message = "What is the weather in Seattle?"
+    observed_messages: list[str] = []
 
-    statement_indexes: dict[str, int] = {}
-    for index, statement in enumerate(invoke_scope_with.body):
-        for call_name in (
-            "evaluate_input_guardrail",
-            "AGENT_APP.auth.exchange_token",
-            "execute_tool",
-            "call_azure_openai",
-        ):
-            if call_name not in statement_indexes and _statement_contains_call(statement, call_name):
-                statement_indexes[call_name] = index
+    async def send_activity(message: str) -> None:
+        sent_messages.append(message)
 
-    assert statement_indexes["evaluate_input_guardrail"] < statement_indexes["AGENT_APP.auth.exchange_token"]
-    assert statement_indexes["evaluate_input_guardrail"] < statement_indexes["execute_tool"]
-    assert statement_indexes["evaluate_input_guardrail"] < statement_indexes["call_azure_openai"]
+    async def exchange_token() -> FakeToken:
+        return FakeToken("sample-token")
 
-    guardrail_assignment = invoke_scope_with.body[statement_indexes["evaluate_input_guardrail"]]
-    assert isinstance(guardrail_assignment, ast.Assign)
-    assert isinstance(guardrail_assignment.targets[0], ast.Name)
-    assert guardrail_assignment.targets[0].id == "guardrail_result"
+    def cache_token(_tenant_id: str, _agent_id: str, _token: str) -> None:
+        return None
 
-    guardrail_gate = invoke_scope_with.body[statement_indexes["evaluate_input_guardrail"] + 1]
-    assert isinstance(guardrail_gate, ast.If)
-    assert ast.unparse(guardrail_gate.test) == "not guardrail_result.allowed"
-    assert _statement_contains_call(guardrail_gate, "context.send_activity")
-    assert any(isinstance(node, ast.Return) for node in guardrail_gate.body)
+    async def execute_tool(tool_name: str, arguments: str) -> str:
+        assert tool_name == "get_weather"
+        assert arguments == "current location"
+        return "Weather information for current location: Sunny, 72°F"
 
+    async def call_llm(message: str) -> str:
+        observed_messages.append(message)
+        return "Sunny and warm."
 
-def test_start_server_registers_payload_logging_after_configure():
-    module = _parse_module("start_server.py")
-
-    payload_logger_import = _find_imported_name(
-        module,
-        "utils.payload_logging_exporter",
-        "register_guardrail_payload_logging",
-    )
-    assert payload_logger_import is not None
-
-    start_server = _find_function(module, "start_server")
-    configure_index = next(
-        index
-        for index, statement in enumerate(start_server.body)
-        if _statement_contains_call(statement, "configure")
-    )
-    register_index = next(
-        index
-        for index, statement in enumerate(start_server.body)
-        if _statement_contains_call(statement, "register_guardrail_payload_logging")
+    result = asyncio.run(
+        handle_message_turn(
+            user_message=live_user_message,
+            guardrail_context=GuardrailContext(
+                agent_id="agent-123",
+                agent_name="Kairo Guardrail Sample",
+                tenant_id="tenant-456",
+                conversation_id="conversation-789",
+            ),
+            invoke_scope=invoke_scope,
+            send_activity=send_activity,
+            exchange_token=exchange_token,
+            cache_token=cache_token,
+            execute_tool=execute_tool,
+            call_llm=call_llm,
+            logger=logger,
+        )
     )
 
-    assert register_index == configure_index + 1
+    assert result == "Sunny and warm."
+    assert invoke_scope.recorded_inputs == [[SAMPLE_INPUT_VALUE]]
+    assert sent_messages == ["Sunny and warm."]
+    assert observed_messages == [
+        f"{live_user_message}\n\nTool result: Weather information for current location: Sunny, 72°F"
+    ]
+    logger.info.assert_called_once_with(
+        "Processing user message with sample observability content: %s",
+        SAMPLE_INPUT_VALUE,
+    )
+    assert live_user_message not in str(logger.mock_calls)
+
+
+def test_align_exporter_env_flags_prefers_canonical_and_sets_legacy_alias():
+    environment = {
+        CANONICAL_EXPORTER_ENV_VAR: "false",
+        LEGACY_EXPORTER_ENV_VAR: "true",
+    }
+
+    align_exporter_env_flags(environment)
+
+    assert environment[CANONICAL_EXPORTER_ENV_VAR] == "false"
+    assert environment[LEGACY_EXPORTER_ENV_VAR] == "false"

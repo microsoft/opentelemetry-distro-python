@@ -71,8 +71,10 @@ ENABLE_OBSERVABILITY=true
 ENABLE_A365_OBSERVABILITY_EXPORTER=true   # Canonical; enables Agent365 telemetry exporter
 PYTHON_ENVIRONMENT=development
 ```
-```
-Legacy alias still accepted (deprecated):
+
+The sample startup path treats `ENABLE_A365_OBSERVABILITY_EXPORTER` as the
+canonical setting and mirrors the same value to the legacy compatibility alias
+only for older Kairo sample dependencies:
 
 ```properties
 ENABLE_KAIRO_EXPORTER=true
@@ -175,7 +177,9 @@ before tools or Azure OpenAI.
 - Deny example: `Please process sample-blocked-content`
 
 The sample records fixed non-sensitive content values rather than the live user
-message. The normal Kairo exporter remains enabled. A second sample-only
+message in sample observability spans and sample logs; the live value is used
+only for the local guardrail decision, tool routing, and the post-allow Azure
+OpenAI request. The normal Kairo exporter remains enabled. A second sample-only
 exporter runs the same Agent365 exporter serialization and prints only the
 `apply_guardrail` request body:
 

@@ -24,6 +24,7 @@ from microsoft_agents_a365.observability.hosting.middleware import (
 )
 from microsoft_agents_a365.observability.hosting.token_cache_helpers import AgenticTokenCache
 from utils.payload_logging_exporter import register_guardrail_payload_logging
+from utils.sample_exporter_flags import align_exporter_env_flags
 from utils.token_cache import get_cached_agentic_token
 
 logger = logging.getLogger(__name__)
@@ -101,8 +102,9 @@ def start_server(agent_application: AgentApplication, auth_configuration: AgentA
     # Make token cache available to agent handlers via application storage
     agent_application.adapter.app_context = {"token_cache": token_cache}
 
-    # Enable Kairo exporter via environment variable
-    environ["ENABLE_KAIRO_EXPORTER"] = "true"
+    # Prefer the canonical A365 exporter flag and mirror it to the legacy
+    # Kairo alias for sample compatibility with older dependencies.
+    align_exporter_env_flags(environ)
 
     # Create token resolver with injected token cache dependency
     token_resolver_func = create_token_resolver(token_cache)
