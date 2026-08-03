@@ -144,3 +144,12 @@ def test_deny_result_and_complete_span(monkeypatch):
     assert span.attributes[GEN_AI_SECURITY_DECISION_CODE_KEY] == "SAMPLE_BLOCKED_CONTENT"
     assert span.attributes[GEN_AI_SECURITY_CONTENT_OUTPUT_VALUE_KEY] == SAMPLE_BLOCKED_OUTPUT
     assert span.events[0].attributes[GEN_AI_SECURITY_RISK_SEVERITY_KEY] == "high"
+
+
+def test_deny_trigger_is_case_insensitive(monkeypatch):
+    result, _spans = _run_guardrail(
+        f"PLEASE PROCESS {DENY_TRIGGER.upper()}",
+        monkeypatch,
+    )
+
+    assert result.allowed is False
