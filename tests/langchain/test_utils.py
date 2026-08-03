@@ -65,6 +65,7 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     _extract_agent_input_messages,
     _extract_agent_output_messages,
     _extract_system_instruction,
+    _served_model_from_outputs,
     tools,
 )
 
@@ -1582,6 +1583,174 @@ class TestExtractSystemInstruction(TestCase):
             result,
             [Text(content="First rule."), Text(content="Second rule.")],
         )
+
+    def test_response_model_prefers_served_model_header(self):
+        from langchain_core.messages import AIMessage
+
+        ai_msg = AIMessage(content="hi")
+        ai_msg.response_metadata = {
+            "model_name": "gpt-4.1",
+            "id": "resp-123",
+            "headers": {"x-ms-served-model": "gpt-4.1-2025-04-14"},
+        }
+        run = _make_run(
+            run_type="llm",
+            outputs={
+                "llm_output": None,
+                "generations": [[{"message": ai_msg, "generation_info": {"finish_reason": "stop"}}]],
+            },
+            extra=None,
+            inputs=None,
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(inv.response_model_name, "gpt-4.1-2025-04-14")
+
+    def test_served_model_header_overrides_llm_output_model(self):
+        run = _make_run(
+            run_type="llm",
+            outputs={
+                "llm_output": {"model_name": "gpt-4.1", "id": "resp-1"},
+                "generations": [
+                    [
+                        {
+                            "message": {
+                                "content": "hi",
+                                "response_metadata": {
+                                    "headers": {"x-ms-served-model": "gpt-4.1-2025-04-14"},
+                                },
+                            },
+                            "generation_info": {"finish_reason": "stop"},
+                        }
+                    ]
+                ],
+            },
+            extra=None,
+            inputs=None,
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(inv.response_model_name, "gpt-4.1-2025-04-14")
+
+    def test_served_model_header_does_not_override_llm_output_model_when_response_header_empty(self):
+        run = _make_run(
+            run_type="llm",
+            outputs={
+                "llm_output": {"model_name": "gpt-4.1-deployment", "id": "resp-1"},
+                "generations": [
+                    [
+                        {
+                            "message": {
+                                "content": "hi",
+                                "response_metadata": {
+                                    "headers": {"x-ms-served-model": " "},
+                                },
+                            },
+                            "generation_info": {"finish_reason": "stop"},
+                        }
+                    ]
+                ],
+            },
+            extra=None,
+            inputs=None,
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(inv.response_model_name, "gpt-4.1-deployment")
+
+    def test_response_model_falls_back_when_no_served_model_header(self):
+        # No ``x-ms-served-model`` header present -> fall back to llm_output.
+        run = _make_run(
+            run_type="llm",
+            outputs={
+                "llm_output": {"model_name": "gpt-4.1-2025-04-14", "id": "resp-1"},
+                "generations": [
+                    [
+                        {
+                            "message": {
+                                "content": "hi",
+                                "response_metadata": {"headers": {"content-type": "application/json"}},
+                            }
+                        }
+                    ]
+                ],
+            },
+            extra=None,
+            inputs=None,
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(inv.response_model_name, "gpt-4.1-2025-04-14")
+
+
+# ---- _served_model_from_outputs ---------------------------------------------
+
+
+class TestServedModelFromOutputs(TestCase):
+    def test_returns_none_for_none_outputs(self):
+        self.assertIsNone(_served_model_from_outputs(None))
+
+    def test_returns_none_when_no_headers(self):
+        outputs = {
+            "generations": [[{"message": {"content": "hi"}, "generation_info": {"finish_reason": "stop"}}]],
+        }
+        self.assertIsNone(_served_model_from_outputs(outputs))
+
+    def test_extracts_from_generation_info_headers(self):
+        outputs = {
+            "generations": [
+                [
+                    {
+                        "message": {"content": "hi"},
+                        "generation_info": {"headers": {"x-ms-served-model": "gpt-4o-2024-11-20"}},
+                    }
+                ]
+            ],
+        }
+        self.assertEqual(_served_model_from_outputs(outputs), "gpt-4o-2024-11-20")
+
+    def test_extracts_from_message_response_metadata_headers(self):
+        from langchain_core.messages import AIMessage
+
+        ai_msg = AIMessage(content="hi")
+        ai_msg.response_metadata = {"headers": {"x-ms-served-model": "gpt-4.1-2025-04-14"}}
+        outputs = {"generations": [[{"message": ai_msg, "generation_info": {}}]]}
+        self.assertEqual(_served_model_from_outputs(outputs), "gpt-4.1-2025-04-14")
+
+    def test_header_lookup_is_case_insensitive(self):
+        outputs = {
+            "generations": [
+                [
+                    {
+                        "message": {"content": "hi"},
+                        "generation_info": {"headers": {"X-MS-Served-Model": "gpt-4o-2024-11-20"}},
+                    }
+                ]
+            ],
+        }
+        self.assertEqual(_served_model_from_outputs(outputs), "gpt-4o-2024-11-20")
+
+    def test_ignores_empty_header_value(self):
+        outputs = {
+            "generations": [
+                [
+                    {
+                        "message": {"content": "hi"},
+                        "generation_info": {"headers": {"x-ms-served-model": ""}},
+                    }
+                ]
+            ],
+        }
+        self.assertIsNone(_served_model_from_outputs(outputs))
+
+    def test_ignores_non_mapping_headers(self):
+        outputs = {
+            "generations": [
+                [
+                    {
+                        "message": {"content": "hi"},
+                        "generation_info": {"headers": "x-ms-served-model: gpt-4o"},
+                    }
+                ]
+            ],
+        }
+        self.assertIsNone(_served_model_from_outputs(outputs))
 
 
 # ---- Spec-compliant input.messages (issue #172) ------------------------------
