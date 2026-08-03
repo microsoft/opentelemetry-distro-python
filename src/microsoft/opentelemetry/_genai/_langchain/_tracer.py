@@ -398,8 +398,6 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         the agent/workflow boundary the user declared and is emitted.
         """
         meta = self._run_metadata(run)
-        print("Meta data is ", meta)
-        node_name = meta.get("langgraph_node")
         # 1. Explicit per-node opt-in/opt-out always wins.
         otel_trace_flag = meta.get("otel_trace")
         if otel_trace_flag is not None:
