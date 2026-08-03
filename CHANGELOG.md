@@ -1,6 +1,6 @@
 # Release History
 
-# 1.3.7 (2026-08-03)
+# 1.3.7 (2026-08-04)
 ### Features Added
 - Mark `gen_ai.tool.description` and `gen_ai.tool.definitions` as sensitive attributes per [GenAI Spec](https://github.com/open-telemetry/semantic-conventions-genai/pull/431)
  ([#237](https://github.com/microsoft/opentelemetry-distro-python/pull/237))
