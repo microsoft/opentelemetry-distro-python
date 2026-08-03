@@ -97,7 +97,7 @@ try:
 except ImportError:
     GEN_AI_AGENT_VERSION = "gen_ai.agent.version"  # type: ignore[misc]
 
-_SERVED_MODEL_HEADER = "x-ms-served-model"
+_SERVED_MODEL_HEADERS = ("x-ms-served-model",)
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -782,7 +782,7 @@ def _served_model_from_outputs(outputs: Mapping[str, Any] | None) -> str | None:
         if not isinstance(headers, Mapping):
             continue
         for header_name, header_value in headers.items():
-            if isinstance(header_name, str) and header_name.lower() == _SERVED_MODEL_HEADER and header_value:
+            if isinstance(header_name, str) and header_name.lower() in _SERVED_MODEL_HEADERS and header_value:
                 return str(header_value)
     return None
 
