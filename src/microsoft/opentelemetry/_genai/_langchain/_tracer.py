@@ -389,14 +389,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         return str(node) if node else None
 
     def _should_ignore_langgraph_node(self, run: Run) -> bool:  # pylint: disable=too-many-return-statements
-        """Decide whether a genuine LangGraph node should be suppressed.
-
-        The decision is driven entirely by ``langgraph_node`` -- the one marker
-        LangGraph attaches to every node run. Internal orchestration nodes
-        (the graph entrypoint and ``create_agent``'s ``model`` / ``tools``
-        steps) plus middleware wrappers are suppressed; any other node name is
-        the agent/workflow boundary the user declared and is emitted.
-        """
+        """Decide whether a genuine LangGraph node should be suppressed."""
         meta = self._run_metadata(run)
         # 1. Explicit per-node opt-in/opt-out always wins.
         otel_trace_flag = meta.get("otel_trace")
