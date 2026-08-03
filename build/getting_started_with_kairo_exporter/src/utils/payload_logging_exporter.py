@@ -11,6 +11,7 @@ from microsoft.opentelemetry.a365.core.exporters.agent365_exporter import _Agent
 
 PAYLOAD_START_MARKER = "=== BEGIN KAIRO GUARDRAIL EXPORT JSON ==="
 PAYLOAD_END_MARKER = "=== END KAIRO GUARDRAIL EXPORT JSON ==="
+_REGISTERED_PROCESSOR_FLAG = "_kairo_guardrail_payload_logging_registered"
 
 
 class GuardrailPayloadLoggingExporter(_Agent365Exporter):
@@ -44,4 +45,18 @@ def register_guardrail_payload_logging() -> None:
     add_span_processor = getattr(provider, "add_span_processor", None)
     if add_span_processor is None:
         raise RuntimeError("The configured tracer provider cannot register span processors.")
+    if getattr(provider, _REGISTERED_PROCESSOR_FLAG, False):
+        return
+
+    active_span_processor = getattr(provider, "_active_span_processor", None)
+    span_processors = getattr(active_span_processor, "_span_processors", ())
+    for processor in span_processors:
+        if isinstance(processor, SimpleSpanProcessor) and isinstance(
+            getattr(processor, "span_exporter", None),
+            GuardrailPayloadLoggingExporter,
+        ):
+            setattr(provider, _REGISTERED_PROCESSOR_FLAG, True)
+            return
+
     add_span_processor(SimpleSpanProcessor(GuardrailPayloadLoggingExporter()))
+    setattr(provider, _REGISTERED_PROCESSOR_FLAG, True)

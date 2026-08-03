@@ -5,6 +5,7 @@ from pathlib import Path
 import re
 import sys
 
+from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import SimpleSpanProcessor
 
@@ -55,6 +56,7 @@ from utils.payload_logging_exporter import (
     PAYLOAD_END_MARKER,
     PAYLOAD_START_MARKER,
     GuardrailPayloadLoggingExporter,
+    register_guardrail_payload_logging,
 )
 
 
@@ -90,12 +92,15 @@ def test_guardrail_payload_uses_exact_exporter_contract(monkeypatch):
     payload = json.loads(body)
 
     assert set(payload) == {"resourceSpans"}
+    assert len(payload["resourceSpans"]) == 1
     resource_span = payload["resourceSpans"][0]
     assert set(resource_span) == {"resource", "scopeSpans"}
     assert set(resource_span["resource"]) == {"attributes"}
+    assert len(resource_span["scopeSpans"]) == 1
     scope_span = resource_span["scopeSpans"][0]
     assert set(scope_span) == {"scope", "spans"}
     assert set(scope_span["scope"]) == {"name", "version"}
+    assert len(scope_span["spans"]) == 1
 
     span = scope_span["spans"][0]
     assert set(span) == {
@@ -113,8 +118,10 @@ def test_guardrail_payload_uses_exact_exporter_contract(monkeypatch):
     }
     assert re.fullmatch(r"[0-9a-f]{32}", span["traceId"])
     assert re.fullmatch(r"[0-9a-f]{16}", span["spanId"])
+    assert span["parentSpanId"] is None
     assert isinstance(span["startTimeUnixNano"], int)
     assert isinstance(span["endTimeUnixNano"], int)
+    assert span["links"] is None
     assert set(span["status"]) == {"code", "message"}
 
     attributes = span["attributes"]
@@ -139,6 +146,7 @@ def test_guardrail_payload_uses_exact_exporter_contract(monkeypatch):
         USER_EMAIL_KEY: "sample.user@example.invalid",
         USER_NAME_KEY: "Sample User",
         GEN_AI_CALLER_CLIENT_IP_KEY: "192.0.2.1",
+        GEN_AI_SECURITY_CONTENT_INPUT_HASH_KEY: None,
         GEN_AI_SECURITY_CONTENT_INPUT_VALUE_KEY: "sample://guardrail/input",
         GEN_AI_SECURITY_CONTENT_OUTPUT_VALUE_KEY: "sample://guardrail/allowed",
         GEN_AI_AGENT_ID_KEY: "agent-123",
@@ -147,7 +155,10 @@ def test_guardrail_payload_uses_exact_exporter_contract(monkeypatch):
         TELEMETRY_SDK_NAME_KEY: "microsoft-opentelemetry",
         TELEMETRY_SDK_LANGUAGE_KEY: "python",
     }
+    assert set(attributes) == set(expected_attributes) | {TELEMETRY_SDK_VERSION_KEY}
     for key, value in expected_attributes.items():
+        if value is None:
+            continue
         assert attributes[key] == value
     assert isinstance(attributes[TELEMETRY_SDK_VERSION_KEY], str)
     assert attributes[TELEMETRY_SDK_VERSION_KEY]
@@ -156,8 +167,11 @@ def test_guardrail_payload_uses_exact_exporter_contract(monkeypatch):
         attributes[GEN_AI_SECURITY_CONTENT_INPUT_HASH_KEY],
     )
 
+    assert len(span["events"]) == 1
     event = span["events"][0]
     assert set(event) == {"timeUnixNano", "name", "attributes"}
+    assert isinstance(event["timeUnixNano"], int)
+    assert span["startTimeUnixNano"] <= event["timeUnixNano"] <= span["endTimeUnixNano"]
     assert event["name"] == GEN_AI_SECURITY_FINDING_EVENT_NAME
     assert event["attributes"] == {
         GEN_AI_SECURITY_RISK_CATEGORY_KEY: "sample_blocked_content",
@@ -172,3 +186,40 @@ def test_guardrail_payload_uses_exact_exporter_contract(monkeypatch):
         GEN_AI_SECURITY_POLICY_NAME_KEY: "Sample Blocked Content Policy",
         GEN_AI_SECURITY_POLICY_VERSION_KEY: "1.0.0",
     }
+
+
+def test_register_guardrail_payload_logging_is_idempotent(monkeypatch):
+    provider = TracerProvider()
+    monkeypatch.setenv("ENABLE_OBSERVABILITY", "true")
+    monkeypatch.setattr(trace, "get_tracer_provider", lambda: provider)
+    monkeypatch.setattr(
+        OpenTelemetryScope,
+        "_tracer",
+        provider.get_tracer("kairo-register-payload-test"),
+    )
+    output = StringIO()
+
+    try:
+        register_guardrail_payload_logging()
+        register_guardrail_payload_logging()
+
+        processors = provider._active_span_processor._span_processors
+        assert len(processors) == 1
+
+        with redirect_stdout(output):
+            evaluate_input_guardrail(
+                "ordinary request",
+                AgentDetails(
+                    agent_id="agent-123",
+                    agent_name="Kairo Guardrail Sample",
+                    tenant_id="tenant-456",
+                ),
+                Request(conversation_id="conversation-789"),
+            )
+    finally:
+        provider.shutdown()
+        OpenTelemetryScope._tracer = None
+
+    text = output.getvalue()
+    assert text.count(PAYLOAD_START_MARKER) == 1
+    assert text.count(PAYLOAD_END_MARKER) == 1
