@@ -196,8 +196,8 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         # Nested agents (sub-agents with an agent ancestor) must NOT inherit
         # their identity from the shared ``_agent_config`` — that describes
         # the top-level agent only.
-        ancestor_id = self._find_agent_ancestor(run)
-        is_nested_agent = is_agent and ancestor_id is not None
+        ancestor_id = self._find_agent_ancestor(run) if is_agent else None
+        is_nested_agent = ancestor_id is not None
 
         if is_nested_agent:
             ancestor_run = self.run_map.get(str(ancestor_id))
