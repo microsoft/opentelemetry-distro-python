@@ -3,6 +3,7 @@
 # 1.3.7 (Unreleased)
 ### Features Added
 - Mark `gen_ai.tool.description` and `gen_ai.tool.definitions` as sensitive attributes per [GenAI Spec](https://github.com/open-telemetry/semantic-conventions-genai/pull/431)
+ ([#237](https://github.com/microsoft/opentelemetry-distro-python/pull/237))
 - Respect RAPI headers in order to populate the `gen_ai.response.model` with the served model if available
   ([#234](https://github.com/microsoft/opentelemetry-distro-python/pull/234))
 - Capture the agent's system prompt as the `gen_ai.system_instructions` span attribute in the LangChain instrumentation
