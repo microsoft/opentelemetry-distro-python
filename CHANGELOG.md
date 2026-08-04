@@ -8,6 +8,8 @@
   ([#232](https://github.com/microsoft/opentelemetry-distro-python/pull/232))
 
 ### Bugs Fixed
+- Suppress duplicate `invoke_agent` spans for nested LangGraph agents that resolve to the same name as their agent ancestor
+  ([#236](https://github.com/microsoft/opentelemetry-distro-python/pull/236))
 - Parse Gemini token usage attributes and stop emitting legacy `gen_ai.tool.*` attributes on the chat span when both modern and legacy `tool_calls` are present
   ([#233](https://github.com/microsoft/opentelemetry-distro-python/pull/233))
 

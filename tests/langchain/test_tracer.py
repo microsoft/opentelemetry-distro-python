@@ -542,6 +542,127 @@ class TestStartTrace(TestCase):
             self.assertIs(mock_sic.call_args_list[0][0][0], agent_span)
 
 
+class TestNestedAgentSameNameDedup(TestCase):
+    """A nested agent whose resolved name matches its agent ancestor's is a
+    LangGraph wrapper of the same logical agent (e.g. a ``create_agent``
+    re-invoked as its own node) and must NOT emit a duplicate
+    ``invoke_agent`` span."""
+
+    def _start_agent(self, tracer, otel_tracer, *, name, run_id=None, parent_run_id=None):
+        span = MagicMock(name=f"span-{name}")
+        otel_tracer.start_span.return_value = span
+        run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            id=run_id or uuid4(),
+            parent_run_id=parent_run_id,
+            extra={"metadata": {"agent_name": name}},
+        )
+        tracer._start_trace(run)
+        return run
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_same_name_nested_agent_suppressed(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        parent = self._start_agent(tracer, otel_tracer, name="Travel_Assistant")
+        otel_tracer.start_span.reset_mock()
+
+        child = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            parent_run_id=parent.id,
+            extra={"metadata": {"agent_name": "Travel_Assistant"}},
+        )
+        tracer._start_trace(child)
+
+        otel_tracer.start_span.assert_not_called()
+        self.assertNotIn(child.id, tracer._spans_by_run)
+        self.assertNotIn(child.id, tracer._agent_run_ids)
+        self.assertIn(str(child.id), tracer.run_map)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_same_name_case_insensitive_suppressed(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        parent = self._start_agent(tracer, otel_tracer, name="Travel_Assistant")
+        otel_tracer.start_span.reset_mock()
+
+        child = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            parent_run_id=parent.id,
+            extra={"metadata": {"agent_name": "travel_assistant"}},
+        )
+        tracer._start_trace(child)
+
+        otel_tracer.start_span.assert_not_called()
+        self.assertNotIn(child.id, tracer._spans_by_run)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_different_name_nested_agent_emits_span(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        parent = self._start_agent(tracer, otel_tracer, name="Coordinator")
+
+        child_span = MagicMock(name="child")
+        otel_tracer.start_span.return_value = child_span
+        otel_tracer.start_span.reset_mock()
+
+        child = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            parent_run_id=parent.id,
+            extra={"metadata": {"agent_name": "Travel_Assistant"}},
+        )
+        tracer._start_trace(child)
+
+        otel_tracer.start_span.assert_called_once()
+        self.assertEqual(
+            otel_tracer.start_span.call_args.kwargs["name"],
+            f"{INVOKE_AGENT_OPERATION_NAME} Travel_Assistant",
+        )
+        self.assertIn(child.id, tracer._spans_by_run)
+        self.assertIn(child.id, tracer._agent_run_ids)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_top_level_agent_matching_name_not_suppressed(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer(agent_config={"agent_name": "Travel_Assistant"})
+        run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            parent_run_id=None,
+            extra={"metadata": {"agent_name": "Travel_Assistant"}},
+        )
+        tracer._start_trace(run)
+        otel_tracer.start_span.assert_called_once()
+        self.assertIn(run.id, tracer._spans_by_run)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_unresolvable_ancestor_name_does_not_suppress(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        parent_span = MagicMock(name="parent")
+        otel_tracer.start_span.return_value = parent_span
+        parent = _make_run(run_type="chain", name="LangGraph", parent_run_id=None)
+        tracer._start_trace(parent)
+        self.assertIsNone(tracer._resolve_agent_name(parent, use_config=False))
+
+        child_span = MagicMock(name="child")
+        otel_tracer.start_span.return_value = child_span
+        otel_tracer.start_span.reset_mock()
+        child = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            parent_run_id=parent.id,
+            extra={"metadata": {"agent_name": "Flight_Specialist"}},
+        )
+        tracer._start_trace(child)
+        otel_tracer.start_span.assert_called_once()
+        self.assertIn(child.id, tracer._spans_by_run)
+
+
 class TestEndTrace(TestCase):
     @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
     def test_ends_span(self, mock_ctx):
