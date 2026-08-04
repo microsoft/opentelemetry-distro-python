@@ -736,7 +736,7 @@ def _update_span(span: Span, run: Run, enable_sensitive_data: bool = False) -> L
                 )
         # Extras not covered by LLMInvocation
         extras = [
-            invocation_parameters(run),
+            invocation_parameters(run, enable_sensitive_data),
             metadata(run),
         ]
 

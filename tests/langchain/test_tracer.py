@@ -1039,6 +1039,35 @@ class TestUpdateSpanFunctionCallGuard(TestCase):
 
         self.assertEqual(merged.get(GEN_AI_PROVIDER_NAME_KEY), "openai")
 
+    def test_child_llm_emits_tool_definitions_when_sensitive_data_enabled(self):
+        """The agent wrapper aggregates tool definitions, but the child LLM
+        span must retain the same opted-in attribute as well."""
+        span = MagicMock()
+        run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            extra={
+                "invocation_params": {
+                    "model": "gpt-4o",
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {"name": "get_weather", "parameters": {}},
+                        }
+                    ],
+                }
+            },
+            inputs=None,
+            outputs={"generations": [[{"message": {"kwargs": {"content": "Sunny."}}}]]},
+        )
+
+        _update_span(span, run, enable_sensitive_data=True)
+
+        self.assertIn(
+            "get_weather",
+            self._merged_attrs(span)[GEN_AI_TOOL_DEFINITIONS_KEY],
+        )
+
     def test_modern_only_no_tool_leak_and_keeps_extras(self):
         """Modern OpenAI/Anthropic case: only tool_calls -> no gen_ai.tool.*."""
         span = MagicMock()
@@ -1543,6 +1572,54 @@ class TestAggregateExcludesStructuredOutput(TestCase):
 
 class TestAggregateToolDefinitions(TestCase):
     """Aggregate gen_ai.tool.definitions from LLM children onto the wrapper."""
+
+    @staticmethod
+    def _all_attributes(span):
+        """Merge attributes applied through either OTel setter method."""
+        attributes = _captured_attrs(span)
+        for call in span.set_attributes.call_args_list:
+            if call.args and isinstance(call.args[0], dict):
+                attributes.update(call.args[0])
+        return attributes
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_sensitive_data_emits_tool_definitions_on_agent_and_llm_spans(self, mock_ctx):
+        """A single opted-in run must place tool definitions on the LLM span
+        and on the agent span that aggregates its children."""
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer(enable_sensitive_data=True)
+        agent_span = MagicMock(name="agent")
+        llm_span = MagicMock(name="llm")
+        otel_tracer.start_span.side_effect = [agent_span, llm_span]
+
+        agent_run = _make_run(run_type="chain", name="LangGraph")
+        tracer._start_trace(agent_run)
+        llm_run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            parent_run_id=agent_run.id,
+            extra={
+                "invocation_params": {
+                    "model": "gpt-4o",
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {"name": "get_weather", "parameters": {}},
+                        }
+                    ],
+                }
+            },
+            inputs=None,
+            outputs={"generations": [[{"message": {"kwargs": {"content": "Sunny."}}}]]},
+        )
+        tracer._start_trace(llm_run)
+        tracer._end_trace(llm_run)
+        tracer._end_trace(agent_run)
+
+        for span in (agent_span, llm_span):
+            attributes = self._all_attributes(span)
+            self.assertIn(GEN_AI_TOOL_DEFINITIONS_KEY, attributes)
+            self.assertIn("get_weather", attributes[GEN_AI_TOOL_DEFINITIONS_KEY])
 
     @patch(
         "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
