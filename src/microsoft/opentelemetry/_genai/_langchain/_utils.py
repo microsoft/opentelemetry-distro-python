@@ -389,7 +389,9 @@ def output_messages(
 
 
 @stop_on_exception
-def invocation_parameters(run: Run) -> Iterator[tuple[str, AttributeValue]]:  # pylint: disable=too-many-statements
+def invocation_parameters(  # pylint: disable=too-many-statements
+    run: Run, enable_sensitive_data: bool = False
+) -> Iterator[tuple[str, AttributeValue]]:
     if run.run_type.lower() not in ("llm", "chat_model"):
         return
     if not (extra := run.extra):
@@ -429,7 +431,7 @@ def invocation_parameters(run: Run) -> Iterator[tuple[str, AttributeValue]]:  # 
                 tool_list = source.get(source_key, [])
                 if isinstance(tool_list, list):
                     tool_defs.extend(tool_list)
-        if tool_defs:
+        if tool_defs and _should_capture_content_on_spans(enable_sensitive_data):
             yield GEN_AI_TOOL_DEFINITIONS_KEY, safe_json_dumps(tool_defs)
 
         # gen_ai.request.choice_count (OpenAI/Anthropic "n")
@@ -869,7 +871,7 @@ def function_calls(outputs: Mapping[str, Any] | None, enable_sensitive_data: boo
     if isinstance(name, str):
         yield GEN_AI_TOOL_NAME_KEY, name
     desc = fc.get("description")
-    if isinstance(desc, str):
+    if isinstance(desc, str) and _should_capture_content_on_spans(enable_sensitive_data):
         yield GEN_AI_TOOL_DESCRIPTION_KEY, desc
     call_id = fc.get("id")
     if isinstance(call_id, str):
@@ -902,7 +904,8 @@ def tools(run: Run, enable_sensitive_data: bool = False) -> Iterator[tuple[str, 
     if name := serialized.get("name"):
         yield GEN_AI_TOOL_NAME_KEY, name
     if description := serialized.get("description"):
-        yield GEN_AI_TOOL_DESCRIPTION_KEY, description
+        if _should_capture_content_on_spans(enable_sensitive_data):
+            yield GEN_AI_TOOL_DESCRIPTION_KEY, description
     if run.extra and hasattr(run.extra, "get"):
         if tool_call_id := run.extra.get("tool_call_id"):
             yield GEN_AI_TOOL_CALL_ID_KEY, tool_call_id
