@@ -546,9 +546,7 @@ class TestNetworkStatsbeatHook(unittest.TestCase):
                 "x-ms-correlation-id": "test-correlation-id",
             },
         )
-        with self.assertLogs(
-            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter", level="ERROR"
-        ) as log:
+        with self.assertLogs("microsoft.opentelemetry.a365.core.exporters.agent365_exporter", level="ERROR") as log:
             result = exporter._post_with_retries(self.URL, "{}", {})
 
         self.assertFalse(result)

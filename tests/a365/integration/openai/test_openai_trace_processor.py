@@ -64,9 +64,7 @@ class TestOpenAITraceProcessorIntegration:
         agent = Agent(
             name="TestAgent",
             instructions="You are a helpful assistant.",
-            model=OpenAIChatCompletionsModel(
-                model=azure_openai_config["deployment"], openai_client=openai_client
-            ),
+            model=OpenAIChatCompletionsModel(model=azure_openai_config["deployment"], openai_client=openai_client),
         )
 
         # Execute a simple prompt using async runner
@@ -111,9 +109,7 @@ class TestOpenAITraceProcessorIntegration:
         agent = Agent(
             name="MathAgent",
             instructions="You are a helpful math assistant. Use the add_numbers tool to perform calculations.",
-            model=OpenAIChatCompletionsModel(
-                model=azure_openai_config["deployment"], openai_client=openai_client
-            ),
+            model=OpenAIChatCompletionsModel(model=azure_openai_config["deployment"], openai_client=openai_client),
             tools=[add_numbers],
         )
 
@@ -162,9 +158,7 @@ class TestOpenAITraceProcessorIntegration:
         agent = Agent(
             name="TestAgent",
             instructions="You are a helpful assistant. Answer briefly.",
-            model=OpenAIChatCompletionsModel(
-                model=azure_openai_config["deployment"], openai_client=openai_client
-            ),
+            model=OpenAIChatCompletionsModel(model=azure_openai_config["deployment"], openai_client=openai_client),
         )
 
         import asyncio
@@ -195,10 +189,7 @@ class TestOpenAITraceProcessorIntegration:
         # 1. The InvokeAgentScope span (parent) - has gen_ai.agent.id/name
         # 2. The instrumentor span (child) - has gen_ai.input/output.messages
         # Find the scope span (has gen_ai.agent.id) for attribute validation
-        invoke_agent_spans = [
-            s for s in distro_exporter.spans
-            if s.name.startswith(INVOKE_AGENT_OPERATION_NAME)
-        ]
+        invoke_agent_spans = [s for s in distro_exporter.spans if s.name.startswith(INVOKE_AGENT_OPERATION_NAME)]
         assert len(invoke_agent_spans) >= 1, "No invoke_agent spans found"
 
         # The scope span is the one with gen_ai.agent.id set
@@ -252,10 +243,7 @@ class TestOpenAITraceProcessorIntegration:
                 assert attributes[GEN_AI_AGENT_ID_KEY] == agent365_config["agent_id"]
 
             # Check for LLM spans (generation spans)
-            if (
-                GEN_AI_PROVIDER_NAME_KEY in attributes
-                and attributes[GEN_AI_PROVIDER_NAME_KEY] == "openai"
-            ):
+            if GEN_AI_PROVIDER_NAME_KEY in attributes and attributes[GEN_AI_PROVIDER_NAME_KEY] == "openai":
                 if GEN_AI_REQUEST_MODEL_KEY in attributes:
                     llm_spans_found += 1
                     # Validate LLM span attributes
@@ -302,10 +290,7 @@ class TestOpenAITraceProcessorIntegration:
                 assert attributes[GEN_AI_AGENT_ID_KEY] == agent365_config["agent_id"]
 
             # Check for LLM spans (generation spans)
-            if (
-                GEN_AI_PROVIDER_NAME_KEY in attributes
-                and attributes[GEN_AI_PROVIDER_NAME_KEY] == "openai"
-            ):
+            if GEN_AI_PROVIDER_NAME_KEY in attributes and attributes[GEN_AI_PROVIDER_NAME_KEY] == "openai":
                 if GEN_AI_REQUEST_MODEL_KEY in attributes:
                     llm_spans_found += 1
                     print(f"✓ Found LLM span with model: {attributes[GEN_AI_REQUEST_MODEL_KEY]}")
