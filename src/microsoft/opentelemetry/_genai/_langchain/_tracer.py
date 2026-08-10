@@ -201,9 +201,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
 
         if is_nested_agent:
             ancestor_run = self.run_map.get(str(ancestor_id))
-            ancestor_name = (
-                self._resolve_agent_name(ancestor_run, use_config=False) if ancestor_run else None
-            )
+            ancestor_name = self._resolve_agent_name(ancestor_run, use_config=False) if ancestor_run else None
             this_name = self._resolve_agent_name(run, use_config=False)
             if this_name and ancestor_name and this_name.lower() == ancestor_name.lower():
                 return

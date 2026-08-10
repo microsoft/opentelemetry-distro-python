@@ -81,7 +81,6 @@ def create_otlp_components(
     from opentelemetry.sdk.metrics.export import PeriodicExportingMetricReader
     from opentelemetry.sdk._logs.export import BatchLogRecordProcessor
 
-
     # from opentelemetry.sdk.trace.export import SpanExporter
     # from opentelemetry.sdk.metrics.export import MetricExporter
     # from opentelemetry.sdk._logs.export import LogRecordExporter
