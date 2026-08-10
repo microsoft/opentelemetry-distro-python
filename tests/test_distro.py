@@ -47,7 +47,12 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
         call_order = []
         config_manager_mock = get_config_manager_mock.return_value
         config_manager_mock.initialize.side_effect = lambda *args, **kwargs: call_order.append("initialize")
-        append_mock.side_effect = lambda *args, **kwargs: call_order.append("exporter") or (None, None, None)
+
+        def append_azure_monitor_components(*args, **kwargs):
+            call_order.append("exporter")
+            return None, None, None
+
+        append_mock.side_effect = append_azure_monitor_components
 
         use_microsoft_opentelemetry(
             enable_azure_monitor=True,
