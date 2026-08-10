@@ -42,7 +42,7 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
     """Tests for use_microsoft_opentelemetry() orchestration."""
 
     @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
-    @patch("microsoft.opentelemetry._distro.get_configuration_manager")
+    @patch("microsoft.opentelemetry._distro._get_configuration_manager")
     def test_initializes_config_manager_before_exporters(self, get_config_manager_mock, append_mock):
         call_order = []
         config_manager_mock = get_config_manager_mock.return_value
@@ -57,11 +57,15 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
         config_manager_mock.initialize.assert_called_once_with(component="mot", version=VERSION)
         self.assertEqual(call_order, ["initialize", "exporter"])
 
-    @patch("microsoft.opentelemetry._distro.get_configuration_manager", return_value=None)
+    @patch("microsoft.opentelemetry._distro._get_configuration_manager", return_value=None)
     def test_configuration_manager_can_be_disabled(self, get_config_manager_mock):
         use_microsoft_opentelemetry()
 
         get_config_manager_mock.assert_called_once_with()
+
+    @patch("microsoft.opentelemetry._distro._get_configuration_manager", None)
+    def test_configuration_manager_can_be_unavailable(self):
+        use_microsoft_opentelemetry()
 
     @patch("microsoft.opentelemetry._distro._setup_logging")
     @patch("microsoft.opentelemetry._distro._setup_metrics")

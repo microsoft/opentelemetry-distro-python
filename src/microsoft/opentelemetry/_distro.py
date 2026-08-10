@@ -23,9 +23,13 @@ from opentelemetry.util._importlib_metadata import (
     distributions,
     entry_points,
 )
-from azure.monitor.opentelemetry.exporter._configuration._state import (  # pylint: disable=import-error,no-name-in-module
-    get_configuration_manager,
-)
+
+try:
+    from azure.monitor.opentelemetry.exporter._configuration._state import (  # pylint: disable=import-error,no-name-in-module
+        get_configuration_manager as _get_configuration_manager,
+    )
+except ImportError:
+    _get_configuration_manager = None
 
 from microsoft.opentelemetry._constants import (
     DISABLE_LOGGING_ARG,
@@ -100,7 +104,10 @@ _logger = getLogger(__name__)
 
 def _initialize_configuration_manager() -> None:
     """Contribute the Microsoft distro identity to the shared OneSettings profile."""
-    config_manager = get_configuration_manager()
+    if _get_configuration_manager is None:
+        return
+
+    config_manager = _get_configuration_manager()
     if config_manager:
         # Profile fields are first-wins, so initialize before exporters add their fields.
         config_manager.initialize(component="mot", version=VERSION)
