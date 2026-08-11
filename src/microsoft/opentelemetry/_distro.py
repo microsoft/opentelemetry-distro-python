@@ -6,7 +6,7 @@
 import os
 from functools import cached_property
 from logging import getLogger, Formatter
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from opentelemetry.metrics import set_meter_provider
 from opentelemetry.sdk.metrics import MeterProvider
@@ -24,6 +24,7 @@ from opentelemetry.util._importlib_metadata import (
     entry_points,
 )
 
+_get_configuration_manager: Optional[Callable[[], Any]]
 try:
     from azure.monitor.opentelemetry.exporter._configuration._state import (  # pylint: disable=import-error,no-name-in-module
         get_configuration_manager as _get_configuration_manager,
