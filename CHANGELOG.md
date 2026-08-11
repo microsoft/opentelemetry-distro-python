@@ -1,7 +1,5 @@
 # Release History
 
-<!-- CI rebuild trigger -->
-
 # 1.3.8 (Unreleased)
 
 ### Other Changes
