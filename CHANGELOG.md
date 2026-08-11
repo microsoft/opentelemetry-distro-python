@@ -4,6 +4,9 @@
 
 ### Other Changes
 - Contribute Microsoft distro profile information (`component="mot"` and distro version) to the OneSettings control plane during `use_microsoft_opentelemetry()`.
+### Features Added
+- Add support for agent identity propagation for compiled agents in nested graph
+  ([#245](https://github.com/microsoft/opentelemetry-distro-python/pull/245))
 
 # 1.3.7 (2026-08-05)
 ### Features Added
