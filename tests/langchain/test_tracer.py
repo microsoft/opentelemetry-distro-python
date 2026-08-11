@@ -203,6 +203,18 @@ def _node_run(node_name, *, parent_run_id=None, **meta):
     )
 
 
+def _subgraph_body_run(graph_name, node_name, *, parent_run_id=None, **meta):
+    """Build the *body* run of a nested compiled graph (subgraph / compiled
+    agent) invoked as node ``node_name`` inside an outer graph."""
+    metadata = {"langgraph_node": node_name, **meta}
+    return _make_run(
+        run_type="chain",
+        name=graph_name,
+        parent_run_id=parent_run_id or uuid4(),
+        extra={"metadata": metadata},
+    )
+
+
 class TestShouldIgnoreLangGraphNode(TestCase):
     """Guards the suppression rules for genuine LangGraph nodes.  These
     rules decide which framework-internal nodes (``__start__``, middleware,
@@ -275,6 +287,45 @@ class TestShouldIgnoreLangGraphNode(TestCase):
         run = _node_run("model", parent_run_id=uuid4())
         self.assertTrue(self.tracer._should_ignore_langgraph_node(run))
 
+    def test_nested_subgraph_boundary_kept(self):
+        run = _subgraph_body_run("Travel_Assistant", "assistant", parent_run_id=uuid4())
+        self.assertFalse(self.tracer._should_ignore_langgraph_node(run))
+
+
+class TestIsSubgraphBoundary(TestCase):
+    """The ``run.name != langgraph_node`` rule that auto-detects a nested
+    compiled graph (subgraph / compiled agent) invoked as a node inside an
+    outer graph -- the framework-native signal used to emit nested agents
+    without requiring the user to supply metadata."""
+
+    def test_subgraph_body_run_is_boundary(self):
+        run = _subgraph_body_run("Travel_Assistant", "assistant")
+        self.assertTrue(LangChainTracer._is_subgraph_boundary(run))
+
+    def test_task_run_is_not_boundary(self):
+        run = _make_run(
+            run_type="chain",
+            name="model",
+            extra={"metadata": {"langgraph_node": "model"}},
+        )
+        self.assertFalse(LangChainTracer._is_subgraph_boundary(run))
+
+    def test_generic_langgraph_name_is_not_boundary(self):
+        run = _node_run("model", parent_run_id=uuid4())
+        self.assertFalse(LangChainTracer._is_subgraph_boundary(run))
+
+    def test_no_langgraph_node_is_not_boundary(self):
+        run = _make_run(run_type="chain", name="Travel_Assistant")
+        self.assertFalse(LangChainTracer._is_subgraph_boundary(run))
+
+    def test_empty_run_name_is_not_boundary(self):
+        run = _make_run(
+            run_type="chain",
+            name="",
+            extra={"metadata": {"langgraph_node": "assistant"}},
+        )
+        self.assertFalse(LangChainTracer._is_subgraph_boundary(run))
+
 
 # ---- Agent name resolution ---------------------------------------------------
 
@@ -330,6 +381,15 @@ class TestResolveAgentName(TestCase):
             extra={"metadata": {"langgraph_node": "researcher"}},
         )
         self.assertEqual(tracer._resolve_agent_name(run), "researcher")
+
+    def test_subgraph_boundary_resolves_to_graph_name(self):
+        """At a nested subgraph boundary the wrapper ``langgraph_node`` name is
+        skipped and the compiled graph's own ``run.name`` supplies the agent
+        identity (so a nested ``create_agent(name=...)`` renders under its real
+        name, not the outer wrapper node name)."""
+        tracer, _, _ = _make_tracer()
+        run = _subgraph_body_run("Travel_Assistant", "assistant")
+        self.assertEqual(tracer._resolve_agent_name(run), "Travel_Assistant")
 
     def test_langgraph_start_node_skipped(self):
         """The ``__start__`` entrypoint node name is never used as a label;
@@ -661,6 +721,83 @@ class TestNestedAgentSameNameDedup(TestCase):
         tracer._start_trace(child)
         otel_tracer.start_span.assert_called_once()
         self.assertIn(child.id, tracer._spans_by_run)
+
+
+class TestNestedSubgraphEmission(TestCase):
+    """End-to-end ``_start_trace`` behaviour for compiled agents auto-detected
+    as nested subgraph boundaries (``run.name != langgraph_node``)"""
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_nested_compiled_agent_emits_span_with_graph_name(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, mock_span = _make_tracer()
+        run = _subgraph_body_run("Travel_Assistant", "assistant", parent_run_id=uuid4())
+        tracer._start_trace(run)
+        otel_tracer.start_span.assert_called_once()
+        span_name = otel_tracer.start_span.call_args.kwargs["name"]
+        self.assertEqual(span_name, f"{INVOKE_AGENT_OPERATION_NAME} Travel_Assistant")
+        mock_span.set_attribute.assert_any_call(GEN_AI_AGENT_NAME_KEY, "Travel_Assistant")  # pylint: disable=no-member
+        self.assertIn(run.id, tracer._spans_by_run)
+        self.assertIn(run.id, tracer._agent_run_ids)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_two_level_nesting_emits_both_agents(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        coordinator_span = MagicMock(name="coordinator")
+        assistant_span = MagicMock(name="assistant")
+        otel_tracer.start_span.side_effect = [coordinator_span, assistant_span]
+
+        # Outer graph invokes the coordinator subgraph as node ``coordinator``.
+        coordinator = _subgraph_body_run(
+            "Travel_Coordinator", "coordinator", parent_run_id=uuid4()
+        )
+        with patch("microsoft.opentelemetry._genai._langchain._tracer.trace_api.set_span_in_context"):
+            tracer._start_trace(coordinator)
+
+        # Coordinator invokes the assistant subgraph as node ``assistant``.
+        assistant = _subgraph_body_run(
+            "Travel_Assistant", "assistant", parent_run_id=coordinator.id
+        )
+        with patch("microsoft.opentelemetry._genai._langchain._tracer.trace_api.set_span_in_context"):
+            tracer._start_trace(assistant)
+
+        self.assertEqual(otel_tracer.start_span.call_count, 2)
+        names = [c.kwargs["name"] for c in otel_tracer.start_span.call_args_list]
+        self.assertEqual(
+            names,
+            [
+                f"{INVOKE_AGENT_OPERATION_NAME} Travel_Coordinator",
+                f"{INVOKE_AGENT_OPERATION_NAME} Travel_Assistant",
+            ],
+        )
+        self.assertIn(coordinator.id, tracer._agent_run_ids)
+        self.assertIn(assistant.id, tracer._agent_run_ids)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_internal_node_of_nested_agent_is_suppressed(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        agent_span = MagicMock(name="agent")
+        otel_tracer.start_span.side_effect = [agent_span]
+
+        agent = _subgraph_body_run("Travel_Assistant", "assistant", parent_run_id=uuid4())
+        with patch("microsoft.opentelemetry._genai._langchain._tracer.trace_api.set_span_in_context"):
+            tracer._start_trace(agent)
+        otel_tracer.start_span.reset_mock()
+
+        # The agent's internal model node: run.name == langgraph_node -> not a
+        # boundary, no explicit identity -> suppressed.
+        model_node = _make_run(
+            run_type="chain",
+            name="model",
+            parent_run_id=agent.id,
+            extra={"metadata": {"langgraph_node": "model"}},
+        )
+        tracer._start_trace(model_node)
+        otel_tracer.start_span.assert_not_called()
+        self.assertNotIn(model_node.id, tracer._spans_by_run)
+        self.assertIn(str(model_node.id), tracer.run_map)
 
 
 class TestEndTrace(TestCase):
