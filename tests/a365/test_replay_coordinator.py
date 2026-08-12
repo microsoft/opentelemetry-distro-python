@@ -16,7 +16,10 @@ from microsoft.opentelemetry.a365.core.exporters.durable_delivery import (
     TransmissionGate,
 )
 from microsoft.opentelemetry.a365.core.exporters.persistent_storage import DurableRecord
-from microsoft.opentelemetry.a365.core.exporters.replay_coordinator import ReplayCoordinator
+from microsoft.opentelemetry.a365.core.exporters.replay_coordinator import (
+    ReplayCoordinator,
+    ReplayIdentityError,
+)
 
 
 IDENTITY = IdentityKey(
@@ -146,14 +149,15 @@ def test_replay_deletes_permanent_record() -> None:
     gate.record_success.assert_called_once_with(IDENTITY)
 
 
-def test_replay_releases_record_when_send_raises_and_continues() -> None:
+def test_replay_releases_record_when_identity_error_and_continues() -> None:
+    """ReplayIdentityError: release current record and continue the batch."""
     storage = FakeStorage([[RECORD, SECOND_RECORD]])
     gate = MagicMock(spec=TransmissionGate)
     gate.try_acquire.return_value = True
 
     def send(record: DurableRecord) -> DeliveryResult:
         if record.record_id == RECORD.record_id:
-            raise RuntimeError("token resolution failed")
+            raise ReplayIdentityError("token resolution failed")
         return DeliveryResult(DeliveryDisposition.DELIVERED)
 
     coordinator = ReplayCoordinator(storage, gate, send=send)
@@ -162,6 +166,27 @@ def test_replay_releases_record_when_send_raises_and_continues() -> None:
 
     assert storage.released == [RECORD.record_id]
     assert storage.deleted == [SECOND_RECORD.record_id]
+    gate.release_probe.assert_called_once_with(IDENTITY)
+
+
+def test_general_exception_releases_current_and_remaining_and_stops() -> None:
+    """Unexpected exceptions: release current + remaining records and stop the pass."""
+    storage = FakeStorage([[RECORD, SECOND_RECORD]])
+    gate = MagicMock(spec=TransmissionGate)
+    gate.try_acquire.return_value = True
+
+    def send(record: DurableRecord) -> DeliveryResult:
+        if record.record_id == RECORD.record_id:
+            raise RuntimeError("unexpected crash")
+        return DeliveryResult(DeliveryDisposition.DELIVERED)
+
+    coordinator = ReplayCoordinator(storage, gate, send=send)
+
+    coordinator.run_once()
+
+    assert RECORD.record_id in storage.released
+    assert SECOND_RECORD.record_id in storage.released
+    assert storage.deleted == []
     gate.release_probe.assert_called_once_with(IDENTITY)
 
 
@@ -223,3 +248,60 @@ def test_shutdown_is_bounded_and_idempotent() -> None:
     finally:
         storage.block_event.set()
         coordinator.shutdown(1.0)
+
+
+def test_gate_blocked_releases_record_without_send() -> None:
+    """When the gate blocks an identity, the record is released without calling send."""
+    storage = FakeStorage([[RECORD]])
+    gate = MagicMock(spec=TransmissionGate)
+    gate.try_acquire.return_value = False
+    send = MagicMock()
+    coordinator = ReplayCoordinator(storage, gate, send=send)
+
+    coordinator.run_once()
+
+    assert storage.released == [RECORD.record_id]
+    assert storage.deleted == []
+    send.assert_not_called()
+
+
+def test_start_after_shutdown_is_safe_noop() -> None:
+    """Calling start() after shutdown() is a safe no-op: no new thread is spawned."""
+    storage = FakeStorage([[]])
+    gate = MagicMock(spec=TransmissionGate)
+    gate.try_acquire.return_value = True
+    coordinator = ReplayCoordinator(
+        storage,
+        gate,
+        send=lambda record: DeliveryResult(DeliveryDisposition.DELIVERED),
+    )
+
+    coordinator.start()
+    coordinator.shutdown(1.0)
+    thread_before = coordinator._thread
+
+    # start() after shutdown must not raise and must not spawn a new thread
+    coordinator.start()
+
+    assert coordinator._thread is thread_before
+
+
+def test_mid_batch_stop_releases_remaining_records() -> None:
+    """When stop_event fires mid-batch, all un-processed records are released."""
+    storage = FakeStorage([[RECORD, SECOND_RECORD]])
+    gate = MagicMock(spec=TransmissionGate)
+    gate.try_acquire.return_value = True
+    coordinator = ReplayCoordinator(
+        storage,
+        gate,
+        send=lambda record: DeliveryResult(DeliveryDisposition.DELIVERED),
+    )
+
+    # Simulate stop being set before the first record is processed
+    coordinator._stop_event.set()
+
+    coordinator.run_once()
+
+    assert RECORD.record_id in storage.released
+    assert SECOND_RECORD.record_id in storage.released
+    assert storage.deleted == []

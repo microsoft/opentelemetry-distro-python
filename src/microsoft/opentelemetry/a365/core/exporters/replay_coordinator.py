@@ -26,6 +26,20 @@ _MAX_RECORDS_PER_PASS = 10
 _LEASE_SECONDS = 30.0
 
 
+class ReplayIdentityError(Exception):
+    """Raised by the send callback when an identity or token cannot be resolved.
+
+    When the coordinator catches this exception, it releases the current record
+    and releases the gate probe for that identity, then continues processing
+    remaining records in the batch.  This is appropriate for transient,
+    per-identity failures (e.g. credential look-up errors) that should not
+    block delivery of records belonging to other identities.
+
+    Contrast with unexpected / general exceptions, which cause the coordinator
+    to release *all* remaining leased records and abort the current pass.
+    """
+
+
 class ReplayCoordinator:
     """Drive durable record replay on a single daemon thread."""
 
@@ -44,12 +58,18 @@ class ReplayCoordinator:
         self._thread: threading.Thread | None = None
 
     def start(self) -> None:
-        """Start the replay loop on one daemon thread."""
+        """Start the replay loop on one daemon thread.
+
+        Calling ``start()`` after ``shutdown()`` is a deliberate safe no-op:
+        once the stop event has been set the coordinator is permanently
+        stopped and a new instance should be created instead.
+        """
         with self._lock:
             if self._thread is not None and self._thread.is_alive():
                 self._wake_event.set()
                 return
             if self._stop_event.is_set():
+                _logger.debug("ReplayCoordinator: start() called after shutdown — ignored")
                 return
 
             self._wake_event.set()
@@ -93,11 +113,29 @@ class ReplayCoordinator:
 
             try:
                 result = self._send(record)
-            except Exception as exc:  # pylint: disable=broad-except
-                _logger.debug("Replay send failed for record %s: %s", record.record_id, exc)
+            except ReplayIdentityError as exc:
+                # Per-identity token/credential failure: release this record and
+                # its gate probe, but continue processing the rest of the batch.
+                _logger.debug(
+                    "Replay identity error for record %s: %s", record.record_id, exc
+                )
                 self._release_record(record)
                 self._gate.release_probe(identity)
                 continue
+            except Exception as exc:  # pylint: disable=broad-except
+                # Unexpected failure: release the current record and all
+                # remaining leased records, then abort the pass so we do not
+                # send stale data after an unknown error.
+                _logger.warning(
+                    "Unexpected error during replay for record %s: %s",
+                    record.record_id,
+                    exc,
+                    exc_info=True,
+                )
+                self._release_record(record)
+                self._gate.release_probe(identity)
+                self._release_remaining(records, index + 1)
+                return
 
             if result.disposition is DeliveryDisposition.DELIVERED:
                 self._delete_record(record)
@@ -105,6 +143,11 @@ class ReplayCoordinator:
                 continue
 
             if result.disposition is DeliveryDisposition.PERMANENT:
+                # Permanent failures (e.g. 400 Bad Request) indicate the
+                # payload is undeliverable regardless of retry count.  We
+                # delete the record to avoid re-queuing it forever and call
+                # record_success so the gate resets: the identity itself is
+                # healthy; only this particular record was rejected.
                 self._delete_record(record)
                 self._gate.record_success(identity)
                 continue
@@ -144,4 +187,4 @@ class ReplayCoordinator:
             self._release_record(record)
 
 
-__all__ = ["ReplayCoordinator"]
+__all__ = ["ReplayCoordinator", "ReplayIdentityError"]
