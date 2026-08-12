@@ -749,16 +749,12 @@ class TestNestedSubgraphEmission(TestCase):
         otel_tracer.start_span.side_effect = [coordinator_span, assistant_span]
 
         # Outer graph invokes the coordinator subgraph as node ``coordinator``.
-        coordinator = _subgraph_body_run(
-            "Travel_Coordinator", "coordinator", parent_run_id=uuid4()
-        )
+        coordinator = _subgraph_body_run("Travel_Coordinator", "coordinator", parent_run_id=uuid4())
         with patch("microsoft.opentelemetry._genai._langchain._tracer.trace_api.set_span_in_context"):
             tracer._start_trace(coordinator)
 
         # Coordinator invokes the assistant subgraph as node ``assistant``.
-        assistant = _subgraph_body_run(
-            "Travel_Assistant", "assistant", parent_run_id=coordinator.id
-        )
+        assistant = _subgraph_body_run("Travel_Assistant", "assistant", parent_run_id=coordinator.id)
         with patch("microsoft.opentelemetry._genai._langchain._tracer.trace_api.set_span_in_context"):
             tracer._start_trace(assistant)
 
