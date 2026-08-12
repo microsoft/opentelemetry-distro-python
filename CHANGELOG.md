@@ -1,10 +1,22 @@
 # Release History
 
-# 1.3.7 (Unreleased)
+# 1.3.8 (Unreleased)
+
+### Other Changes
+- Contribute Microsoft distro profile information (`component="mot"` and distro version) to the OneSettings control plane during `use_microsoft_opentelemetry()`.
+
+# 1.3.7 (2026-08-05)
 ### Features Added
-- Capture the agent's system prompt as the `gen_ai.system_instructions` span attribute in the LangChain instrumentation.
+- Mark `gen_ai.tool.description` and `gen_ai.tool.definitions` as sensitive attributes per [GenAI Spec](https://github.com/open-telemetry/semantic-conventions-genai/pull/431)
+ ([#237](https://github.com/microsoft/opentelemetry-distro-python/pull/237))
+- Respect RAPI headers in order to populate the `gen_ai.response.model` with the served model if available
+  ([#234](https://github.com/microsoft/opentelemetry-distro-python/pull/234))
+- Capture the agent's system prompt as the `gen_ai.system_instructions` span attribute in the LangChain instrumentation
+  ([#232](https://github.com/microsoft/opentelemetry-distro-python/pull/232))
 
 ### Bugs Fixed
+- Suppress duplicate `invoke_agent` spans for nested LangGraph agents that resolve to the same name as their agent ancestor
+  ([#236](https://github.com/microsoft/opentelemetry-distro-python/pull/236))
 - Parse Gemini token usage attributes and stop emitting legacy `gen_ai.tool.*` attributes on the chat span when both modern and legacy `tool_calls` are present
   ([#233](https://github.com/microsoft/opentelemetry-distro-python/pull/233))
 
@@ -354,4 +366,3 @@
   ([#10](https://github.com/microsoft/opentelemetry-distro-python/pull/10))
 - Microsoft mandatory file
   ([#2](https://github.com/microsoft/opentelemetry-distro-python/pull/2))
-

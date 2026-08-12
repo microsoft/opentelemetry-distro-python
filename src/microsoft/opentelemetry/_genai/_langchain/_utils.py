@@ -97,6 +97,8 @@ try:
 except ImportError:
     GEN_AI_AGENT_VERSION = "gen_ai.agent.version"  # type: ignore[misc]
 
+_SERVED_MODEL_HEADERS = ("x-ms-served-model",)
+
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
@@ -387,7 +389,9 @@ def output_messages(
 
 
 @stop_on_exception
-def invocation_parameters(run: Run) -> Iterator[tuple[str, AttributeValue]]:  # pylint: disable=too-many-statements
+def invocation_parameters(  # pylint: disable=too-many-statements
+    run: Run, enable_sensitive_data: bool = False
+) -> Iterator[tuple[str, AttributeValue]]:
     if run.run_type.lower() not in ("llm", "chat_model"):
         return
     if not (extra := run.extra):
@@ -427,7 +431,7 @@ def invocation_parameters(run: Run) -> Iterator[tuple[str, AttributeValue]]:  # 
                 tool_list = source.get(source_key, [])
                 if isinstance(tool_list, list):
                     tool_defs.extend(tool_list)
-        if tool_defs:
+        if tool_defs and _should_capture_content_on_spans(enable_sensitive_data):
             yield GEN_AI_TOOL_DEFINITIONS_KEY, safe_json_dumps(tool_defs)
 
         # gen_ai.request.choice_count (OpenAI/Anthropic "n")
@@ -773,6 +777,19 @@ def _iter_generation_response_metadata(outputs: Mapping[str, Any] | None) -> Ite
             yield meta
 
 
+def _served_model_from_outputs(outputs: Mapping[str, Any] | None) -> str | None:
+    """Return the Azure Foundry served-model snapshot from response headers."""
+    for meta in _iter_generation_response_metadata(outputs):
+        headers = meta.get("headers")
+        if not isinstance(headers, Mapping):
+            continue
+        for header_name, header_value in headers.items():
+            if isinstance(header_name, str) and header_name.lower() in _SERVED_MODEL_HEADERS:
+                if isinstance(header_value, str) and header_value.strip():
+                    return str(header_value)
+    return None
+
+
 def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
     if (
         outputs
@@ -854,7 +871,7 @@ def function_calls(outputs: Mapping[str, Any] | None, enable_sensitive_data: boo
     if isinstance(name, str):
         yield GEN_AI_TOOL_NAME_KEY, name
     desc = fc.get("description")
-    if isinstance(desc, str):
+    if isinstance(desc, str) and _should_capture_content_on_spans(enable_sensitive_data):
         yield GEN_AI_TOOL_DESCRIPTION_KEY, desc
     call_id = fc.get("id")
     if isinstance(call_id, str):
@@ -887,7 +904,8 @@ def tools(run: Run, enable_sensitive_data: bool = False) -> Iterator[tuple[str, 
     if name := serialized.get("name"):
         yield GEN_AI_TOOL_NAME_KEY, name
     if description := serialized.get("description"):
-        yield GEN_AI_TOOL_DESCRIPTION_KEY, description
+        if _should_capture_content_on_spans(enable_sensitive_data):
+            yield GEN_AI_TOOL_DESCRIPTION_KEY, description
     if run.extra and hasattr(run.extra, "get"):
         if tool_call_id := run.extra.get("tool_call_id"):
             yield GEN_AI_TOOL_CALL_ID_KEY, tool_call_id
@@ -1061,8 +1079,12 @@ def build_llm_invocation(run: Run) -> LLMInvocation:  # pylint: disable=too-many
                         inv.server_address = normalized_addr
                         break
 
-    # --- Response model name (from llm_output) ---
-    if run.outputs and isinstance(run.outputs, Mapping):
+    # Prefer the real served-model snapshot from the ``x-ms-served-model``
+    # response header (foundry responses protocol) when available.
+    if served_model := _served_model_from_outputs(run.outputs):
+        inv.response_model_name = served_model
+
+    if not inv.response_model_name and run.outputs and isinstance(run.outputs, Mapping):
         llm_output = run.outputs.get("llm_output")
         if llm_output and hasattr(llm_output, "get"):
             for key in ("model_name", "model"):

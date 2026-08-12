@@ -117,9 +117,7 @@ def serialize_messages(
     message parts contain non-JSON-serializable values.
     """
     try:
-        serialized_list = [
-            asdict(msg, dict_factory=_message_dict_factory) for msg in wrapper.messages
-        ]
+        serialized_list = [asdict(msg, dict_factory=_message_dict_factory) for msg in wrapper.messages]
         return json.dumps(
             serialized_list,
             default=str,

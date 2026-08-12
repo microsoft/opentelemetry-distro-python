@@ -170,22 +170,19 @@ class TestAgentFrameworkObservabilityPipeline:
 
         # --- 1. All spans share the same trace_id ---
         invoke_spans = _find_spans_by_name_prefix(spans, "invoke_agent")
-        assert len(invoke_spans) >= 1, (
-            f"Expected at least 1 invoke_agent span, got: {[s.name for s in spans]}"
-        )
+        assert len(invoke_spans) >= 1, f"Expected at least 1 invoke_agent span, got: {[s.name for s in spans]}"
         invoke_span = invoke_spans[0]
         trace_id = invoke_span.context.trace_id
 
         for s in spans:
             assert s.context.trace_id == trace_id, (
-                f"Span '{s.name}' has different trace_id: "
-                f"{s.context.trace_id:032x} vs {trace_id:032x}"
+                f"Span '{s.name}' has different trace_id: " f"{s.context.trace_id:032x} vs {trace_id:032x}"
             )
 
         # --- 2. invoke_agent span is the root (no parent) ---
-        assert invoke_span.parent is None, (
-            f"invoke_agent span should be root but has parent: {invoke_span.parent.span_id:016x}"
-        )
+        assert (
+            invoke_span.parent is None
+        ), f"invoke_agent span should be root but has parent: {invoke_span.parent.span_id:016x}"
 
         # --- 3. invoke_agent has correct operation name ---
         assert _get_span_attr(invoke_span, GEN_AI_OPERATION_NAME_KEY) == INVOKE_AGENT_OPERATION_NAME
@@ -200,15 +197,11 @@ class TestAgentFrameworkObservabilityPipeline:
             if _get_span_attr(s, GEN_AI_OPERATION_NAME_KEY) == "chat"
             or (s.name.startswith("chat") and _get_span_attr(s, GEN_AI_REQUEST_MODEL_KEY))
         ]
-        assert len(chat_spans) >= 1, (
-            f"Expected at least 1 chat span, got: {[s.name for s in spans]}"
-        )
+        assert len(chat_spans) >= 1, f"Expected at least 1 chat span, got: {[s.name for s in spans]}"
 
         invoke_span_id = invoke_span.context.span_id
         for chat_span in chat_spans:
-            assert chat_span.parent is not None, (
-                f"Chat span '{chat_span.name}' should have a parent"
-            )
+            assert chat_span.parent is not None, f"Chat span '{chat_span.name}' should have a parent"
             # Chat span should be a child of invoke_agent (directly or transitively)
             self._assert_ancestor(
                 chat_span,
@@ -223,13 +216,9 @@ class TestAgentFrameworkObservabilityPipeline:
             # Also check by operation name
             tool_spans = _find_spans_by_operation(spans, EXECUTE_TOOL_OPERATION_NAME)
 
-        assert len(tool_spans) >= 1, (
-            f"Expected at least 1 execute_tool span. All spans: {[s.name for s in spans]}"
-        )
+        assert len(tool_spans) >= 1, f"Expected at least 1 execute_tool span. All spans: {[s.name for s in spans]}"
         for tool_span in tool_spans:
-            assert tool_span.parent is not None, (
-                f"Tool span '{tool_span.name}' should have a parent"
-            )
+            assert tool_span.parent is not None, f"Tool span '{tool_span.name}' should have a parent"
             self._assert_ancestor(
                 tool_span,
                 invoke_span_id,
@@ -259,9 +248,9 @@ class TestAgentFrameworkObservabilityPipeline:
             attrs = dict(tool_span.attributes or {})
             op = str(attrs.get(GEN_AI_OPERATION_NAME_KEY, ""))
             if op == EXECUTE_TOOL_OPERATION_NAME or tool_span.name.startswith("execute_tool"):
-                assert GEN_AI_TOOL_NAME_KEY in attrs or "add_numbers" in tool_span.name, (
-                    f"Tool span missing tool name attribute: {list(attrs.keys())}"
-                )
+                assert (
+                    GEN_AI_TOOL_NAME_KEY in attrs or "add_numbers" in tool_span.name
+                ), f"Tool span missing tool name attribute: {list(attrs.keys())}"
 
         print("\n✓ All pipeline assertions passed")
 

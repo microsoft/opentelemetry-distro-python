@@ -196,7 +196,15 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         # Nested agents (sub-agents with an agent ancestor) must NOT inherit
         # their identity from the shared ``_agent_config`` — that describes
         # the top-level agent only.
-        is_nested_agent = is_agent and self._find_agent_ancestor(run) is not None
+        ancestor_id = self._find_agent_ancestor(run) if is_agent else None
+        is_nested_agent = ancestor_id is not None
+
+        if is_nested_agent:
+            ancestor_run = self.run_map.get(str(ancestor_id))
+            ancestor_name = self._resolve_agent_name(ancestor_run, use_config=False) if ancestor_run else None
+            this_name = self._resolve_agent_name(run, use_config=False)
+            if this_name and ancestor_name and this_name.lower() == ancestor_name.lower():
+                return
 
         # Determine span name based on run type
         if is_agent:
@@ -498,7 +506,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                     break
 
             if run_type in ("llm", "chat_model"):
-                for key, val in invocation_parameters(run):
+                for key, val in invocation_parameters(run, self._enable_sensitive_data):
                     if key == GEN_AI_REQUEST_CHOICE_COUNT_KEY and isinstance(val, int) and val > 0:
                         previous = content.get("request_choice_count")
                         if not isinstance(previous, int) or val > previous:
@@ -726,7 +734,7 @@ def _update_span(span: Span, run: Run, enable_sensitive_data: bool = False) -> L
                 )
         # Extras not covered by LLMInvocation
         extras = [
-            invocation_parameters(run),
+            invocation_parameters(run, enable_sensitive_data),
             metadata(run),
         ]
 

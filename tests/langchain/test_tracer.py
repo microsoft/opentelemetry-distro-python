@@ -542,6 +542,127 @@ class TestStartTrace(TestCase):
             self.assertIs(mock_sic.call_args_list[0][0][0], agent_span)
 
 
+class TestNestedAgentSameNameDedup(TestCase):
+    """A nested agent whose resolved name matches its agent ancestor's is a
+    LangGraph wrapper of the same logical agent (e.g. a ``create_agent``
+    re-invoked as its own node) and must NOT emit a duplicate
+    ``invoke_agent`` span."""
+
+    def _start_agent(self, tracer, otel_tracer, *, name, run_id=None, parent_run_id=None):
+        span = MagicMock(name=f"span-{name}")
+        otel_tracer.start_span.return_value = span
+        run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            id=run_id or uuid4(),
+            parent_run_id=parent_run_id,
+            extra={"metadata": {"agent_name": name}},
+        )
+        tracer._start_trace(run)
+        return run
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_same_name_nested_agent_suppressed(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        parent = self._start_agent(tracer, otel_tracer, name="Travel_Assistant")
+        otel_tracer.start_span.reset_mock()
+
+        child = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            parent_run_id=parent.id,
+            extra={"metadata": {"agent_name": "Travel_Assistant"}},
+        )
+        tracer._start_trace(child)
+
+        otel_tracer.start_span.assert_not_called()
+        self.assertNotIn(child.id, tracer._spans_by_run)
+        self.assertNotIn(child.id, tracer._agent_run_ids)
+        self.assertIn(str(child.id), tracer.run_map)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_same_name_case_insensitive_suppressed(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        parent = self._start_agent(tracer, otel_tracer, name="Travel_Assistant")
+        otel_tracer.start_span.reset_mock()
+
+        child = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            parent_run_id=parent.id,
+            extra={"metadata": {"agent_name": "travel_assistant"}},
+        )
+        tracer._start_trace(child)
+
+        otel_tracer.start_span.assert_not_called()
+        self.assertNotIn(child.id, tracer._spans_by_run)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_different_name_nested_agent_emits_span(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        parent = self._start_agent(tracer, otel_tracer, name="Coordinator")
+
+        child_span = MagicMock(name="child")
+        otel_tracer.start_span.return_value = child_span
+        otel_tracer.start_span.reset_mock()
+
+        child = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            parent_run_id=parent.id,
+            extra={"metadata": {"agent_name": "Travel_Assistant"}},
+        )
+        tracer._start_trace(child)
+
+        otel_tracer.start_span.assert_called_once()
+        self.assertEqual(
+            otel_tracer.start_span.call_args.kwargs["name"],
+            f"{INVOKE_AGENT_OPERATION_NAME} Travel_Assistant",
+        )
+        self.assertIn(child.id, tracer._spans_by_run)
+        self.assertIn(child.id, tracer._agent_run_ids)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_top_level_agent_matching_name_not_suppressed(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer(agent_config={"agent_name": "Travel_Assistant"})
+        run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            parent_run_id=None,
+            extra={"metadata": {"agent_name": "Travel_Assistant"}},
+        )
+        tracer._start_trace(run)
+        otel_tracer.start_span.assert_called_once()
+        self.assertIn(run.id, tracer._spans_by_run)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_unresolvable_ancestor_name_does_not_suppress(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        parent_span = MagicMock(name="parent")
+        otel_tracer.start_span.return_value = parent_span
+        parent = _make_run(run_type="chain", name="LangGraph", parent_run_id=None)
+        tracer._start_trace(parent)
+        self.assertIsNone(tracer._resolve_agent_name(parent, use_config=False))
+
+        child_span = MagicMock(name="child")
+        otel_tracer.start_span.return_value = child_span
+        otel_tracer.start_span.reset_mock()
+        child = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            parent_run_id=parent.id,
+            extra={"metadata": {"agent_name": "Flight_Specialist"}},
+        )
+        tracer._start_trace(child)
+        otel_tracer.start_span.assert_called_once()
+        self.assertIn(child.id, tracer._spans_by_run)
+
+
 class TestEndTrace(TestCase):
     @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
     def test_ends_span(self, mock_ctx):
@@ -917,6 +1038,35 @@ class TestUpdateSpanFunctionCallGuard(TestCase):
         self.assertEqual(merged.get(GEN_AI_TOOL_NAME_KEY), "get_population")
 
         self.assertEqual(merged.get(GEN_AI_PROVIDER_NAME_KEY), "openai")
+
+    def test_child_llm_emits_tool_definitions_when_sensitive_data_enabled(self):
+        """The agent wrapper aggregates tool definitions, but the child LLM
+        span must retain the same opted-in attribute as well."""
+        span = MagicMock()
+        run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            extra={
+                "invocation_params": {
+                    "model": "gpt-4o",
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {"name": "get_weather", "parameters": {}},
+                        }
+                    ],
+                }
+            },
+            inputs=None,
+            outputs={"generations": [[{"message": {"kwargs": {"content": "Sunny."}}}]]},
+        )
+
+        _update_span(span, run, enable_sensitive_data=True)
+
+        self.assertIn(
+            "get_weather",
+            self._merged_attrs(span)[GEN_AI_TOOL_DEFINITIONS_KEY],
+        )
 
     def test_modern_only_no_tool_leak_and_keeps_extras(self):
         """Modern OpenAI/Anthropic case: only tool_calls -> no gen_ai.tool.*."""
@@ -1423,8 +1573,60 @@ class TestAggregateExcludesStructuredOutput(TestCase):
 class TestAggregateToolDefinitions(TestCase):
     """Aggregate gen_ai.tool.definitions from LLM children onto the wrapper."""
 
+    @staticmethod
+    def _all_attributes(span):
+        """Merge attributes applied through either OTel setter method."""
+        attributes = _captured_attrs(span)
+        for call in span.set_attributes.call_args_list:
+            if call.args and isinstance(call.args[0], dict):
+                attributes.update(call.args[0])
+        return attributes
+
     @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
-    def test_captures_tool_definitions_from_invocation_params(self, mock_ctx):
+    def test_sensitive_data_emits_tool_definitions_on_agent_and_llm_spans(self, mock_ctx):
+        """A single opted-in run must place tool definitions on the LLM span
+        and on the agent span that aggregates its children."""
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer(enable_sensitive_data=True)
+        agent_span = MagicMock(name="agent")
+        llm_span = MagicMock(name="llm")
+        otel_tracer.start_span.side_effect = [agent_span, llm_span]
+
+        agent_run = _make_run(run_type="chain", name="LangGraph")
+        tracer._start_trace(agent_run)
+        llm_run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            parent_run_id=agent_run.id,
+            extra={
+                "invocation_params": {
+                    "model": "gpt-4o",
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {"name": "get_weather", "parameters": {}},
+                        }
+                    ],
+                }
+            },
+            inputs=None,
+            outputs={"generations": [[{"message": {"kwargs": {"content": "Sunny."}}}]]},
+        )
+        tracer._start_trace(llm_run)
+        tracer._end_trace(llm_run)
+        tracer._end_trace(agent_run)
+
+        for span in (agent_span, llm_span):
+            attributes = self._all_attributes(span)
+            self.assertIn(GEN_AI_TOOL_DEFINITIONS_KEY, attributes)
+            self.assertIn("get_weather", attributes[GEN_AI_TOOL_DEFINITIONS_KEY])
+
+    @patch(
+        "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
+        return_value=True,
+    )
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_captures_tool_definitions_from_invocation_params(self, mock_ctx, _mock_capture):
         mock_ctx.get_value.return_value = None
         tracer, otel_tracer, _ = _make_tracer()
         wrapper = MagicMock()
@@ -1459,15 +1661,59 @@ class TestAggregateToolDefinitions(TestCase):
         self.assertIn("tool_definitions", content)
         self.assertIn("get_weather", content["tool_definitions"])
 
+    @patch(
+        "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
+        return_value=False,
+    )
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_omits_tool_definitions_when_content_capture_disabled(self, mock_ctx, _mock_capture):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        wrapper = MagicMock()
+        inner = MagicMock()
+        otel_tracer.start_span.side_effect = [wrapper, inner]
+
+        agent_run = _make_run(run_type="chain", name="LangGraph")
+        tracer._start_trace(agent_run)
+
+        tool_defs = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "description": "Get weather",
+                    "parameters": {"type": "object", "properties": {"location": {"type": "string"}}},
+                },
+            }
+        ]
+        llm_run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            parent_run_id=agent_run.id,
+            extra={"invocation_params": {"model": "gpt-4o", "tools": tool_defs}},
+            outputs={"generations": []},
+            inputs=None,
+        )
+        tracer.run_map[str(llm_run.id)] = llm_run
+        tracer._aggregate_into_parent(llm_run)
+
+        content = tracer._agent_content[agent_run.id]
+        # Tool definitions must not leak into agent content when capture is off.
+        self.assertNotIn("tool_definitions", content)
+
 
 class TestFinalizeAgentSpanAttributes(TestCase):
     """End-to-end finalize: assert the wrapper invoke_agent span actually
     receives ``gen_ai.input.messages``, ``gen_ai.output.messages``, and
     ``gen_ai.tool.definitions`` attributes with the correct shape."""
 
+    @patch(
+        "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
+        return_value=True,
+    )
     @patch("microsoft.opentelemetry._genai._langchain._tracer._should_capture_content_on_spans")
     @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
-    def test_finalize_writes_input_output_and_tool_definitions(self, mock_ctx, mock_capture):
+    def test_finalize_writes_input_output_and_tool_definitions(self, mock_ctx, mock_capture, _mock_utils_capture):
         import json
 
         mock_ctx.get_value.return_value = None
