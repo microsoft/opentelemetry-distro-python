@@ -805,6 +805,140 @@ class TestA365BatchProcessorKwargs(unittest.TestCase):
         self.assertEqual(proc_kwargs["max_export_batch_size"], 0)
 
 
+class TestA365OfflineStorageKwargs(unittest.TestCase):
+    """Tests for a365_exporter_disable_offline_storage and a365_exporter_storage_directory."""
+
+    @patch("microsoft.opentelemetry._sdkstats._network_metrics.register_network_gauges")
+    @patch("microsoft.opentelemetry._distro._setup_logging")
+    @patch("microsoft.opentelemetry._distro._setup_metrics")
+    @patch("microsoft.opentelemetry._distro._setup_tracing")
+    @patch("microsoft.opentelemetry._distro._append_a365_components")
+    def test_disable_offline_storage_forwarded_to_append_a365(self, a365_mock, *_):
+        """a365_exporter_disable_offline_storage is parsed and forwarded to _append_a365_components."""
+        use_microsoft_opentelemetry(
+            enable_a365=True,
+            a365_exporter_disable_offline_storage=True,
+        )
+        a365_mock.assert_called_once()
+        _, kwargs = a365_mock.call_args
+        self.assertTrue(kwargs["disable_offline_storage"])
+
+    @patch("microsoft.opentelemetry._sdkstats._network_metrics.register_network_gauges")
+    @patch("microsoft.opentelemetry._distro._setup_logging")
+    @patch("microsoft.opentelemetry._distro._setup_metrics")
+    @patch("microsoft.opentelemetry._distro._setup_tracing")
+    @patch("microsoft.opentelemetry._distro._append_a365_components")
+    def test_storage_directory_forwarded_to_append_a365(self, a365_mock, *_):
+        """a365_exporter_storage_directory is parsed and forwarded to _append_a365_components."""
+        use_microsoft_opentelemetry(
+            enable_a365=True,
+            a365_exporter_storage_directory="C:\\telemetry",
+        )
+        a365_mock.assert_called_once()
+        _, kwargs = a365_mock.call_args
+        self.assertEqual(kwargs["storage_directory"], "C:\\telemetry")
+
+    @patch("microsoft.opentelemetry._sdkstats._network_metrics.register_network_gauges")
+    @patch("microsoft.opentelemetry._distro._setup_logging")
+    @patch("microsoft.opentelemetry._distro._setup_metrics")
+    @patch("microsoft.opentelemetry._distro._setup_tracing")
+    @patch("microsoft.opentelemetry._distro._append_a365_components")
+    def test_offline_storage_kwargs_default_to_none(self, a365_mock, *_):
+        """Defaults: disable_offline_storage=False, storage_directory=None."""
+        use_microsoft_opentelemetry(enable_a365=True)
+        a365_mock.assert_called_once()
+        _, kwargs = a365_mock.call_args
+        self.assertFalse(kwargs["disable_offline_storage"])
+        self.assertIsNone(kwargs["storage_directory"])
+
+    @patch("microsoft.opentelemetry._sdkstats._network_metrics.register_network_gauges")
+    @patch("microsoft.opentelemetry._distro._setup_logging")
+    @patch("microsoft.opentelemetry._distro._setup_metrics")
+    @patch("microsoft.opentelemetry._distro._setup_tracing")
+    @patch("microsoft.opentelemetry._distro._append_a365_components")
+    def test_offline_storage_kwargs_not_leaked_to_otel(self, a365_mock, *_):
+        """a365_exporter_disable_offline_storage/storage_directory do not appear in otel_kwargs."""
+        use_microsoft_opentelemetry(
+            enable_a365=True,
+            a365_exporter_disable_offline_storage=True,
+            a365_exporter_storage_directory="C:\\telemetry",
+        )
+        otel_kwargs = a365_mock.call_args[0][1]
+        self.assertNotIn("a365_exporter_disable_offline_storage", otel_kwargs)
+        self.assertNotIn("a365_exporter_storage_directory", otel_kwargs)
+        self.assertNotIn("disable_offline_storage", otel_kwargs)
+        self.assertNotIn("storage_directory", otel_kwargs)
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
+    def test_disable_offline_storage_true_disables_durable_delivery(self, default_resolver_mock):
+        """disable_offline_storage=True maps to enable_durable_delivery=False on _Agent365Exporter."""
+        default_resolver_mock.return_value = lambda aid, tid: "token"
+        with patch(
+            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"
+        ) as exporter_mock:
+            otel_kwargs = {"span_processors": []}
+            _append_a365_components(
+                True,
+                otel_kwargs,
+                enable_observability_exporter=True,
+                disable_offline_storage=True,
+            )
+        _, exporter_kwargs = exporter_mock.call_args
+        self.assertFalse(exporter_kwargs["enable_durable_delivery"])
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
+    def test_disable_offline_storage_false_enables_durable_delivery(self, default_resolver_mock):
+        """disable_offline_storage=False (default) maps to enable_durable_delivery=True."""
+        default_resolver_mock.return_value = lambda aid, tid: "token"
+        with patch(
+            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"
+        ) as exporter_mock:
+            otel_kwargs = {"span_processors": []}
+            _append_a365_components(
+                True,
+                otel_kwargs,
+                enable_observability_exporter=True,
+                disable_offline_storage=False,
+            )
+        _, exporter_kwargs = exporter_mock.call_args
+        self.assertTrue(exporter_kwargs["enable_durable_delivery"])
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
+    def test_storage_directory_passed_to_exporter(self, default_resolver_mock):
+        """storage_directory kwarg is forwarded to _Agent365Exporter as a Path."""
+        from pathlib import Path
+
+        default_resolver_mock.return_value = lambda aid, tid: "token"
+        with patch(
+            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"
+        ) as exporter_mock:
+            otel_kwargs = {"span_processors": []}
+            _append_a365_components(
+                True,
+                otel_kwargs,
+                enable_observability_exporter=True,
+                storage_directory="C:\\telemetry",
+            )
+        _, exporter_kwargs = exporter_mock.call_args
+        self.assertEqual(exporter_kwargs["storage_directory"], Path("C:\\telemetry"))
+
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
+    def test_storage_directory_none_by_default(self, default_resolver_mock):
+        """storage_directory defaults to None when not provided."""
+        default_resolver_mock.return_value = lambda aid, tid: "token"
+        with patch(
+            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"
+        ) as exporter_mock:
+            otel_kwargs = {"span_processors": []}
+            _append_a365_components(
+                True,
+                otel_kwargs,
+                enable_observability_exporter=True,
+            )
+        _, exporter_kwargs = exporter_mock.call_args
+        self.assertIsNone(exporter_kwargs["storage_directory"])
+
+
 class TestA365Components(unittest.TestCase):
     """Tests for A365 enable_a365 flag and _append_a365_components."""
 

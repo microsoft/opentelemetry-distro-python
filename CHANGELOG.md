@@ -7,6 +7,14 @@
 ### Features Added
 - Add support for agent identity propagation for compiled agents in nested graph
   ([#245](https://github.com/microsoft/opentelemetry-distro-python/pull/245))
+- Expose A365 offline storage options: `a365_exporter_disable_offline_storage` (default `False`)
+  and `a365_exporter_storage_directory` (default `None`) on `use_microsoft_opentelemetry`,
+  `Agent365ExporterOptions`, and `create_a365_components`.
+  When `a365_enable_observability_exporter=True`, the exporter provides at-least-once delivery
+  by persisting failed payloads to disk (up to 2 days / 50 MB) and replaying them on recovery.
+  Set `a365_exporter_disable_offline_storage=True` to opt out.
+  Stored payloads are unencrypted; restrict the storage path to the service account, especially
+  when `enable_sensitive_data=True` (payloads may contain prompts or completions).
 
 # 1.3.7 (2026-08-05)
 ### Features Added

@@ -42,6 +42,8 @@ use_microsoft_opentelemetry(
 | `a365_scheduled_delay_ms` | `int` | `5000` | — | Delay between A365 export batches in milliseconds. |
 | `a365_exporter_timeout_ms` | `int` | `30000` | — | Timeout for a single A365 export operation in milliseconds. |
 | `a365_max_export_batch_size` | `int` | `512` | — | Maximum batch size for a single A365 export operation. |
+| `a365_exporter_disable_offline_storage` | `bool` | `False` | — | Disable durable offline storage. When `True`, failed exports are not persisted to disk and at-least-once delivery is not guaranteed. Defaults to `False` (storage enabled). |
+| `a365_exporter_storage_directory` | `str` | `None` | — | Custom directory for durable offline storage. When `None`, a platform default path is used. Choose a path that only the current user or service account can read, because stored OTLP payloads may contain prompts or completions when sensitive-data capture is enabled. |
 
 ### Resource / Service Name
 
@@ -82,6 +84,43 @@ use_microsoft_opentelemetry(
     a365_max_export_batch_size=256,
 )
 ```
+
+### Durable Delivery (Offline Storage)
+
+When `a365_enable_observability_exporter=True`, the A365 exporter persists failed export payloads to disk and replays them once connectivity is restored — providing **at-least-once delivery** semantics.
+
+Key defaults and limits:
+
+| Property | Value |
+|---|---|
+| Enabled by default | Yes (when exporter is active) |
+| Retention window | 2 days |
+| Maximum storage size | 50 MB |
+| Storage path | Platform default (see below) |
+
+The default path is a sub-directory of the platform's local app data folder, isolated per process to avoid collisions.
+
+**To disable durable storage** (no disk writes, best-effort delivery only):
+
+```python
+use_microsoft_opentelemetry(
+    enable_a365=True,
+    a365_enable_observability_exporter=True,
+    a365_exporter_disable_offline_storage=True,
+)
+```
+
+**To specify a custom storage directory:**
+
+```python
+use_microsoft_opentelemetry(
+    enable_a365=True,
+    a365_enable_observability_exporter=True,
+    a365_exporter_storage_directory="/var/lib/my-agent/telemetry",
+)
+```
+
+> **Security note:** Stored OTLP payloads are unencrypted. When sensitive-data capture is enabled (`enable_sensitive_data=True`), payloads may include prompts, completions, or tool arguments. Restrict the storage directory to the service account running the agent (e.g., `chmod 700`).
 
 ## Auto-Instrumented Libraries
 

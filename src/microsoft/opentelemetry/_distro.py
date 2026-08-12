@@ -4,6 +4,7 @@
 # license information.
 # --------------------------------------------------------------------------
 import os
+from pathlib import Path
 from functools import cached_property
 from logging import getLogger, Formatter
 from typing import Any, Callable, Dict, List, Optional
@@ -53,6 +54,8 @@ from microsoft.opentelemetry._constants import (
     A365_SCHEDULED_DELAY_MS_ARG,
     A365_EXPORTER_TIMEOUT_MS_ARG,
     A365_MAX_EXPORT_BATCH_SIZE_ARG,
+    A365_EXPORTER_DISABLE_OFFLINE_STORAGE_ARG,
+    A365_EXPORTER_STORAGE_DIRECTORY_ARG,
     ENABLE_AZURE_MONITOR_ARG,
     ENABLE_CONSOLE_ARG,
     INSTRUMENTATION_OPTIONS_ARG,
@@ -201,6 +204,15 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
     :keyword int a365_max_export_batch_size:
         Maximum batch size for a single A365 export operation. Defaults to 512
         when omitted (BatchSpanProcessor default).
+    :keyword bool a365_exporter_disable_offline_storage:
+        Disable durable offline storage for the A365 exporter. When ``True``,
+        failed export payloads are not persisted to disk and at-least-once
+        delivery is not guaranteed. Defaults to ``False`` (storage enabled).
+    :keyword str a365_exporter_storage_directory:
+        Custom directory for durable offline storage. When ``None``, a
+        platform default path is used. Stored payloads are unencrypted; choose
+        a path that only the service account can read, especially when
+        sensitive-data capture is enabled.
     :keyword bool enable_console:
         Enable console exporter for traces, metrics, and logs (development
         only).  Mirrors ``ExportTarget.Console`` from the .NET distro.
@@ -242,6 +254,10 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
     a365_scheduled_delay_ms = kwargs.pop(A365_SCHEDULED_DELAY_MS_ARG, None)
     a365_exporter_timeout_ms = kwargs.pop(A365_EXPORTER_TIMEOUT_MS_ARG, None)
     a365_max_export_batch_size = kwargs.pop(A365_MAX_EXPORT_BATCH_SIZE_ARG, None)
+    a365_exporter_disable_offline_storage: bool = bool(
+        kwargs.pop(A365_EXPORTER_DISABLE_OFFLINE_STORAGE_ARG, False)
+    )
+    a365_exporter_storage_directory = kwargs.pop(A365_EXPORTER_STORAGE_DIRECTORY_ARG, None)
 
     enable_spectra: bool = bool(kwargs.pop(ENABLE_SPECTRA_ARG, False))
     spectra_endpoint = kwargs.pop(SPECTRA_ENDPOINT_ARG, None)
@@ -321,6 +337,8 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
         scheduled_delay_ms=a365_scheduled_delay_ms,
         exporter_timeout_ms=a365_exporter_timeout_ms,
         max_export_batch_size=a365_max_export_batch_size,
+        disable_offline_storage=a365_exporter_disable_offline_storage,
+        storage_directory=a365_exporter_storage_directory,
     )
 
     # ---- Console exporters (dev-only, mirrors ExportTarget.Console) ----
@@ -477,6 +495,8 @@ def _append_a365_components(
     scheduled_delay_ms: Any = None,
     exporter_timeout_ms: Any = None,
     max_export_batch_size: Any = None,
+    disable_offline_storage: bool = False,
+    storage_directory: Any = None,
 ) -> None:
     """Build and append Agent365 span processors to ``otel_kwargs``.
 
@@ -565,6 +585,8 @@ def _append_a365_components(
             contextual_token_resolver=contextual_token_resolver,
             cluster_category=resolved_cluster_category,
             use_s2s_endpoint=resolved_use_s2s,
+            enable_durable_delivery=not disable_offline_storage,
+            storage_directory=Path(storage_directory) if storage_directory else None,
         )
 
         # Enriching batch processor wrapping the exporter.

@@ -19,6 +19,7 @@ import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Optional, TypeVar
 from urllib.parse import urlparse
 
@@ -623,6 +624,8 @@ def _env_bool(name: str, default: bool = False) -> bool:
 def create_a365_components(
     token_resolver: Callable[[str, str], Optional[str]] | None = None,
     contextual_token_resolver: Callable[[TokenResolverContext], Optional[str]] | None = None,
+    disable_offline_storage: bool = False,
+    storage_directory: Optional[str] = None,
 ) -> A365Handlers:
     """Create Agent365 span processors ready to be added to a TracerProvider.
 
@@ -632,6 +635,10 @@ def create_a365_components(
     :param contextual_token_resolver: Optional callable ``(TokenResolverContext) -> str | None``.
         Provides rich context including the agentic user ID. Takes precedence over
         ``token_resolver`` when set.
+    :param disable_offline_storage: When True, disables durable delivery (no disk writes or
+        replay). Defaults to False.
+    :param storage_directory: Custom directory for durable offline storage. When None, a
+        platform default path is used. Defaults to None.
 
     All other configuration is read from environment variables:
       - ``ENABLE_A365_OBSERVABILITY_EXPORTER`` -- must be true for the HTTP exporter
@@ -660,6 +667,8 @@ def create_a365_components(
         token_resolver=resolved_token_resolver,
         contextual_token_resolver=contextual_token_resolver,
         use_s2s_endpoint=use_s2s_endpoint,
+        disable_offline_storage=disable_offline_storage,
+        storage_directory=storage_directory,
     )
 
     # Create the exporter (Agent365 HTTP or console fallback)
@@ -671,6 +680,8 @@ def create_a365_components(
             cluster_category=options.cluster_category,
             use_s2s_endpoint=options.use_s2s_endpoint,
             max_payload_bytes=options.max_payload_bytes,
+            enable_durable_delivery=not options.disable_offline_storage,
+            storage_directory=Path(options.storage_directory) if options.storage_directory else None,
         )
     else:
         logger.warning(

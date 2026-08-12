@@ -117,6 +117,8 @@ See the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/bl
 | `a365_scheduled_delay_ms` | `int` | `5000` | Delay between A365 export batches (ms). |
 | `a365_exporter_timeout_ms` | `int` | `30000` | Timeout for a single A365 export operation (ms). |
 | `a365_max_export_batch_size` | `int` | `512` | Maximum batch size for a single A365 export operation. |
+| `a365_exporter_disable_offline_storage` | `bool` | `False` | Disable durable offline storage. When `True`, failed exports are not persisted to disk. |
+| `a365_exporter_storage_directory` | `str` | `None` | Custom directory for durable offline storage. Restrict to the service account; payloads may contain prompts or completions when sensitive-data capture is enabled. |
 
 > For A365 token resolver patterns, baggage, and scope classes, see the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md).
 
