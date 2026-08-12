@@ -94,12 +94,16 @@ def _ensure_private_directory(directory: Path) -> None:
     """Create the directory with mode 0700, or validate ownership if it exists."""
     if directory.exists():
         if os.name != "nt":
-            st = directory.stat()
+            st = os.stat(directory)
             if st.st_uid != os.getuid():
                 raise PermissionError(
                     f"Durable queue directory has unsafe ownership: {directory}"
                 )
+            os.chmod(directory, 0o700)
         return
+    # Create parents first (no mode enforcement needed for intermediate dirs),
+    # then create the final directory with explicit mode so the kernel sets it
+    # before any child entry can appear. chmod follows to override a restrictive umask.
     directory.mkdir(parents=True, exist_ok=True)
     if os.name != "nt":
         os.chmod(directory, 0o700)
@@ -122,15 +126,17 @@ class PersistentStorage:
         _ensure_private_directory(self._directory)
 
         self.database_path = self._directory / "queue.db"
+        # isolation_level=None → autocommit; all transactions are explicit.
         self._conn = sqlite3.connect(
-            str(self.database_path), check_same_thread=False
+            str(self.database_path), check_same_thread=False, isolation_level=None
         )
         if os.name != "nt":
             os.chmod(self.database_path, 0o600)
 
         self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("BEGIN")
         self._conn.execute(_DDL)
-        self._conn.commit()
+        self._conn.execute("COMMIT")
 
     # ------------------------------------------------------------------
     # Public API
@@ -143,6 +149,7 @@ class PersistentStorage:
                 now = time.time()
                 expire_before = now - self._retention_seconds
 
+                self._conn.execute("BEGIN IMMEDIATE")
                 # Prune expired rows first
                 self._conn.execute(
                     "DELETE FROM durable_records WHERE created_at < ?",
@@ -155,6 +162,7 @@ class PersistentStorage:
                 ).fetchone()
                 current_bytes = row[0] if row and row[0] else 0
                 if current_bytes + len(record.payload.encode()) > self._capacity_bytes:
+                    self._conn.execute("ROLLBACK")
                     _logger.error(
                         "PersistentStorage: capacity exceeded (%d bytes used, limit %d)",
                         current_bytes,
@@ -178,10 +186,14 @@ class PersistentStorage:
                         record.created_at,
                     ),
                 )
-                self._conn.commit()
+                self._conn.execute("COMMIT")
                 return True
             except sqlite3.Error as exc:
                 _logger.error("PersistentStorage.store failed: %s", exc)
+                try:
+                    self._conn.execute("ROLLBACK")
+                except sqlite3.Error:
+                    pass
                 return False
 
     def claim(self, limit: int, lease_seconds: float) -> list[DurableRecord]:
@@ -193,6 +205,13 @@ class PersistentStorage:
                 lease_until = now + lease_seconds
 
                 self._conn.execute("BEGIN IMMEDIATE")
+
+                # Prune expired rows inside the same transaction
+                self._conn.execute(
+                    "DELETE FROM durable_records WHERE created_at < ?",
+                    (expire_before,),
+                )
+
                 rows = self._conn.execute(
                     """SELECT id, schema_version, tenant_id, agent_id, agentic_user_id,
                               use_s2s_endpoint, url, payload, created_at, lease_until, retry_count
@@ -240,27 +259,39 @@ class PersistentStorage:
         """Delete a record by id. Returns False if not found or on error."""
         with self._lock:
             try:
+                self._conn.execute("BEGIN IMMEDIATE")
                 cur = self._conn.execute(
                     "DELETE FROM durable_records WHERE id = ?", (record_id,)
                 )
-                self._conn.commit()
-                return cur.rowcount > 0
+                found = cur.rowcount > 0
+                self._conn.execute("COMMIT")
+                return found
             except sqlite3.Error as exc:
                 _logger.error("PersistentStorage.delete failed: %s", exc)
+                try:
+                    self._conn.execute("ROLLBACK")
+                except sqlite3.Error:
+                    pass
                 return False
 
     def release(self, record_id: int) -> bool:
         """Release a lease so the record becomes claimable again."""
         with self._lock:
             try:
+                self._conn.execute("BEGIN IMMEDIATE")
                 cur = self._conn.execute(
                     "UPDATE durable_records SET lease_until = NULL WHERE id = ?",
                     (record_id,),
                 )
-                self._conn.commit()
-                return cur.rowcount > 0
+                found = cur.rowcount > 0
+                self._conn.execute("COMMIT")
+                return found
             except sqlite3.Error as exc:
                 _logger.error("PersistentStorage.release failed: %s", exc)
+                try:
+                    self._conn.execute("ROLLBACK")
+                except sqlite3.Error:
+                    pass
                 return False
 
     def close(self) -> None:

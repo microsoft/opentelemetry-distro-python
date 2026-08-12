@@ -27,6 +27,52 @@ KEY = IdentityKey(
 
 
 # ---------------------------------------------------------------------------
+# Transaction safety: isolation_level=None (autocommit mode)
+# ---------------------------------------------------------------------------
+
+
+def test_connection_is_in_autocommit_mode(tmp_path):
+    """The connection must use isolation_level=None so transactions are explicit."""
+    storage = PersistentStorage(tmp_path, capacity_bytes=1024 * 1024, retention_seconds=3600)
+    assert storage._conn.isolation_level is None
+    storage.close()
+
+
+# ---------------------------------------------------------------------------
+# claim() prunes expired rows during the transaction
+# ---------------------------------------------------------------------------
+
+
+def test_claim_prunes_expired_rows(tmp_path):
+    """Expired records stored before a claim call must be deleted by claim itself."""
+    storage = PersistentStorage(tmp_path, capacity_bytes=1024 * 1024, retention_seconds=0)
+    record = DurableRecord.new(KEY, "https://example.test", '{"stale":true}')
+    # Insert directly with a very old created_at so it expires immediately
+    import sqlite3 as _sq
+
+    with storage._lock:
+        storage._conn.execute("BEGIN IMMEDIATE")
+        storage._conn.execute(
+            """INSERT INTO durable_records
+               (schema_version, tenant_id, agent_id, agentic_user_id,
+                use_s2s_endpoint, url, payload, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (1, "t1", "a1", None, 0, "https://example.test", '{"stale":true}', 0.0),
+        )
+        storage._conn.execute("COMMIT")
+
+    # claim must prune the expired row and return nothing
+    claimed = storage.claim(limit=10, lease_seconds=30)
+    assert claimed == []
+
+    # Row must actually be gone
+    with storage._lock:
+        row = storage._conn.execute("SELECT COUNT(*) FROM durable_records").fetchone()
+    assert row[0] == 0
+    storage.close()
+
+
+# ---------------------------------------------------------------------------
 # Round-trip
 # ---------------------------------------------------------------------------
 
@@ -121,8 +167,8 @@ def test_storage_permissions_are_private(tmp_path):
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX ownership check")
 def test_rejects_directory_owned_by_another_uid(tmp_path):
-    from pathlib import Path
     import types
+    import microsoft.opentelemetry.a365.core.exporters.persistent_storage as _mod
 
     foreign_uid = os.getuid() + 1
 
@@ -134,9 +180,12 @@ def test_rejects_directory_owned_by_another_uid(tmp_path):
         st_mtime=real_stat.st_mtime,
     )
 
-    with patch.object(Path, "stat", return_value=mock_result):
+    target_dir = tmp_path / "queue_foreign"
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    with patch.object(_mod.os, "stat", return_value=mock_result):
         with pytest.raises(PermissionError, match="unsafe ownership"):
-            PersistentStorage(tmp_path / "queue_foreign")
+            PersistentStorage(target_dir)
 
 
 # ---------------------------------------------------------------------------
