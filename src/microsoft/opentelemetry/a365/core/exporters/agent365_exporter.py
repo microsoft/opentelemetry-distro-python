@@ -18,6 +18,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable, Sequence
+from pathlib import Path
 from typing import Any, Optional, final
 
 import requests
@@ -26,6 +27,20 @@ from opentelemetry.sdk.trace.export import SpanExporter, SpanExportResult
 from opentelemetry.trace import StatusCode
 
 from microsoft.opentelemetry._sdkstats import is_sdkstats_enabled
+from microsoft.opentelemetry.a365.core.exporters.durable_delivery import (
+    DeliveryDisposition,
+    DeliveryResult,
+    IdentityKey,
+    TransmissionGate,
+)
+from microsoft.opentelemetry.a365.core.exporters.persistent_storage import (
+    DurableRecord,
+    PersistentStorage,
+)
+from microsoft.opentelemetry.a365.core.exporters.replay_coordinator import (
+    ReplayCoordinator,
+    ReplayIdentityError,
+)
 from microsoft.opentelemetry.a365.core.exporters.token_resolver_context import (
     AgentIdentity,
     TokenResolverContext,
@@ -50,122 +65,15 @@ from microsoft.opentelemetry.a365.constants import A365_HTTP_TIMEOUT_SECONDS, GE
 
 # Hardcoded constants - not configurable
 DEFAULT_HTTP_TIMEOUT_SECONDS = A365_HTTP_TIMEOUT_SECONDS
-DEFAULT_MAX_RETRIES = 3
 DEFAULT_ENDPOINT_URL = "https://agent365.svc.cloud.microsoft"
 
 _403_DOCS_URL = "https://aka.ms/a365-403"
 _403_FOUNDRY_URL = "https://aka.ms/foundry-grant-agent-365-permissions"
 
-# Circuit breaker defaults
-DEFAULT_CB_FAILURE_THRESHOLD = 5
-DEFAULT_CB_RECOVERY_TIMEOUT = 30.0  # seconds
+# Bound how long shutdown waits for the replay thread to stop.
+_REPLAY_SHUTDOWN_TIMEOUT_SECONDS = 5.0
 
 logger = logging.getLogger(__name__)
-
-
-class _CircuitBreaker:
-    """Lightweight circuit breaker for the A365 exporter HTTP path.
-
-    States:
-        CLOSED   – normal operation; requests flow through.
-        OPEN     – failures exceeded threshold; requests are rejected immediately.
-        HALF_OPEN – recovery window elapsed; one probe request is allowed.
-
-    Thread-safe via an internal lock.
-    """
-
-    CLOSED = "closed"
-    OPEN = "open"
-    HALF_OPEN = "half_open"
-
-    def __init__(
-        self,
-        failure_threshold: int = DEFAULT_CB_FAILURE_THRESHOLD,
-        recovery_timeout: float = DEFAULT_CB_RECOVERY_TIMEOUT,
-    ):
-        self._failure_threshold = failure_threshold
-        self._recovery_timeout = recovery_timeout
-        self._lock = threading.Lock()
-        self._state = self.CLOSED
-        self._consecutive_failures = 0
-        self._last_failure_time: float | None = None
-        self._total_rejected = 0
-        self._probe_in_flight = False
-
-    # -- query --
-
-    @property
-    def state(self) -> str:
-        with self._lock:
-            self._maybe_transition_to_half_open()
-            return self._state
-
-    @property
-    def total_rejected(self) -> int:
-        with self._lock:
-            return self._total_rejected
-
-    def allow_request(self) -> bool:
-        """Return True if a request should be attempted."""
-        with self._lock:
-            self._maybe_transition_to_half_open()
-            if self._state == self.CLOSED:
-                return True
-            if self._state == self.HALF_OPEN and not self._probe_in_flight:
-                self._probe_in_flight = True
-                return True  # allow exactly one probe
-            # OPEN or HALF_OPEN with probe already in flight
-            self._total_rejected += 1
-            return False
-
-    # -- feedback --
-
-    def record_success(self) -> None:
-        with self._lock:
-            if self._state != self.CLOSED:
-                logger.warning(
-                    "Circuit breaker CLOSED (recovered). %d requests were rejected while the circuit was open.",
-                    self._total_rejected,
-                )
-            self._state = self.CLOSED
-            self._consecutive_failures = 0
-            self._last_failure_time = None
-            self._total_rejected = 0
-            self._probe_in_flight = False
-
-    def record_failure(self) -> None:
-        with self._lock:
-            self._consecutive_failures += 1
-            self._last_failure_time = time.monotonic()
-            self._probe_in_flight = False
-            if self._state == self.HALF_OPEN:
-                # Probe failed — re-open
-                self._state = self.OPEN
-                logger.warning(
-                    "Circuit breaker re-OPENED after failed probe. Will retry after %.0fs.",
-                    self._recovery_timeout,
-                )
-            elif self._state == self.CLOSED and self._consecutive_failures >= self._failure_threshold:
-                self._state = self.OPEN
-                logger.warning(
-                    "Circuit breaker OPENED after %d consecutive failures. "
-                    "Requests will be rejected for %.0fs to avoid silent telemetry loss.",
-                    self._consecutive_failures,
-                    self._recovery_timeout,
-                )
-
-    # -- internal --
-
-    def _maybe_transition_to_half_open(self) -> None:
-        """Must be called with self._lock held."""
-        if (
-            self._state == self.OPEN
-            and self._last_failure_time is not None
-            and (time.monotonic() - self._last_failure_time) >= self._recovery_timeout
-        ):
-            self._state = self.HALF_OPEN
-            self._probe_in_flight = False
-            logger.warning("Circuit breaker entering HALF_OPEN state; allowing one probe request.")
 
 
 @final
@@ -187,6 +95,8 @@ class _Agent365Exporter(SpanExporter):
         cluster_category: str = "prod",
         use_s2s_endpoint: bool = False,
         max_payload_bytes: int = DEFAULT_MAX_PAYLOAD_BYTES,
+        storage_directory: Optional[Path] = None,
+        enable_durable_delivery: bool = True,
     ):
         if token_resolver is None and contextual_token_resolver is None:
             raise ValueError("token_resolver or contextual_token_resolver must be provided.")
@@ -201,8 +111,50 @@ class _Agent365Exporter(SpanExporter):
         self._use_s2s_endpoint = use_s2s_endpoint
         self._max_payload_bytes = max_payload_bytes
         self._domain_override = get_validated_domain_override()
-        self._circuit_breaker = _CircuitBreaker()
         self.record_sdkstats = is_sdkstats_enabled()
+
+        # Durable delivery: a per-identity gate throttles retries, a persistent
+        # queue holds undelivered payloads, and a replay coordinator drains the
+        # queue on a background daemon thread. Storage and the coordinator are
+        # created lazily on first export so merely constructing an exporter does
+        # not touch the filesystem or spawn a thread.
+        self._gate = TransmissionGate()
+        self._enable_durable_delivery = enable_durable_delivery
+        self._storage_directory = storage_directory
+        self._storage: Optional[PersistentStorage] = None
+        self._replay: Optional[ReplayCoordinator] = None
+        self._replay_started = False
+
+    # ------------- Durable delivery lifecycle -------------
+
+    def _ensure_durable_initialized(self) -> None:
+        """Create the durable queue and replay coordinator once, on demand."""
+        if not self._enable_durable_delivery:
+            return
+        with self._lock:
+            if self._closed or self._storage is not None:
+                return
+            try:
+                storage = PersistentStorage(directory=self._storage_directory)
+            except Exception as e:
+                logger.error(
+                    "Durable delivery disabled: failed to initialize persistent storage: %s", e
+                )
+                self._enable_durable_delivery = False
+                return
+            self._storage = storage
+            self._replay = ReplayCoordinator(storage, self._gate, self._replay_record)
+
+    def _ensure_replay_started(self) -> None:
+        """Start the replay thread once so it drains any queued payloads."""
+        replay = self._replay
+        if replay is None:
+            return
+        with self._lock:
+            if self._replay_started or self._closed:
+                return
+            self._replay_started = True
+        replay.start()
 
     # ------------- SpanExporter API -----------------
 
@@ -222,9 +174,33 @@ class _Agent365Exporter(SpanExporter):
         assert self._token_resolver is not None
         return self._token_resolver(agent_id, tenant_id)
 
+    def _resolve_token_for_replay(self, record: DurableRecord) -> Optional[str]:
+        """Resolve an auth token for a queued record using its stored identity."""
+        if self._contextual_token_resolver is not None:
+            identity = AgentIdentity(record.agent_id, record.agentic_user_id)
+            context = TokenResolverContext(identity, record.tenant_id)
+            return self._contextual_token_resolver(context)
+        assert self._token_resolver is not None
+        return self._token_resolver(record.agent_id, record.tenant_id)
+
+    def _identity_key(
+        self, tenant_id: str, agent_id: str, activities: Sequence[ReadableSpan]
+    ) -> IdentityKey:
+        """Build the durable-delivery identity for a partitioned span group."""
+        agentic_user_id: Optional[str] = None
+        if activities:
+            first_attrs = activities[0].attributes or {}
+            raw_auid = first_attrs.get(GEN_AI_AGENT_AUID_KEY)
+            if raw_auid is not None:
+                agentic_user_id = str(raw_auid)
+        return IdentityKey(tenant_id, agent_id, agentic_user_id, self._use_s2s_endpoint)
+
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
         if self._closed:
             return SpanExportResult.FAILURE
+
+        self._ensure_durable_initialized()
+        self._ensure_replay_started()
 
         try:
             groups = filter_and_partition_by_identity(spans)
@@ -240,8 +216,12 @@ class _Agent365Exporter(SpanExporter):
                 total_spans,
             )
 
-            any_failure = False
+            all_delivered_or_stored = True
+            persisted_any = False
+
             for (tenant_id, agent_id), activities in groups.items():
+                identity = self._identity_key(tenant_id, agent_id, activities)
+
                 # Map and truncate spans first, then chunk by estimated byte size
                 mapped_spans = self._map_and_truncate_spans(activities)
                 resource_attrs = self._get_resource_attributes(activities)
@@ -271,19 +251,11 @@ class _Agent365Exporter(SpanExporter):
                     agent_id,
                 )
 
-                headers: dict[str, str | bytes] = {"content-type": "application/json"}
+                # Resolve auth once per identity group.
+                token: Optional[str] = None
+                token_resolution_failed = False
                 try:
                     token = self._resolve_token(agent_id, tenant_id, activities)
-                    if token:
-                        if not url.lower().startswith("https://"):
-                            logger.warning(
-                                "Bearer token is being sent over a non-HTTPS connection. "
-                                "This may expose credentials in transit."
-                            )
-                        headers["authorization"] = f"Bearer {token}"
-                        logger.debug("Token resolved successfully for agent %s", agent_id)
-                    else:
-                        logger.debug("No token returned for agent %s", agent_id)
                 except Exception as e:
                     logger.error(
                         "Token resolution failed for agent %s, tenant %s: %s",
@@ -291,57 +263,71 @@ class _Agent365Exporter(SpanExporter):
                         tenant_id,
                         e,
                     )
-                    any_failure = True
-                    continue
+                    token_resolution_failed = True
 
-                # Send each chunk (all-or-nothing: fail group on first chunk failure)
-                group_failed = False
                 for i, chunk in enumerate(chunks):
-                    payload = self._build_envelope(chunk, resource_attrs)
-                    body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
-                    body_bytes = len(body.encode("utf-8"))
-                    logger.debug(
-                        "Sending chunk %d of %d (%d spans, %d bytes)",
-                        i + 1,
-                        len(chunks),
-                        len(chunk),
-                        body_bytes,
-                    )
-                    # Defensive check: the estimator covers per-span content but not
-                    # envelope overhead (resource attributes, scope wrappers). Warn if
-                    # the assembled body exceeds the configured limit so operators can
-                    # observe estimator drift before the server starts rejecting requests.
-                    if body_bytes > self._max_payload_bytes:
-                        logger.warning(
-                            "Chunk %d of %d body size (%d bytes) exceeds max_payload_bytes (%d); "
-                            "estimator may be under-counting envelope overhead. "
-                            "Tenant: %s, agent: %s, spans: %d.",
-                            i + 1,
-                            len(chunks),
-                            body_bytes,
-                            self._max_payload_bytes,
-                            tenant_id,
-                            agent_id,
-                            len(chunk),
-                        )
+                    body = self._serialize_chunk(chunk, resource_attrs, i, len(chunks), tenant_id, agent_id)
 
-                    ok = self._post_with_retries(url, body, headers)
-                    if not ok:
+                    # Token resolver raised: persist so a later replay can retry
+                    # once credentials recover. A successful store counts as success.
+                    if token_resolution_failed:
+                        if self._persist(identity, url, body):
+                            persisted_any = True
+                        else:
+                            all_delivered_or_stored = False
+                        continue
+
+                    # Empty token is a permanent condition: never send, never store.
+                    if not token:
                         logger.error(
-                            "Chunk %d of %d failed for tenant %s, agent %s",
+                            "No token resolved for agent %s, tenant %s; dropping chunk %d of %d.",
+                            agent_id,
+                            tenant_id,
                             i + 1,
                             len(chunks),
-                            tenant_id,
-                            agent_id,
                         )
-                        any_failure = True
-                        group_failed = True
-                        break
+                        all_delivered_or_stored = False
+                        continue
 
-                if group_failed:
-                    continue
+                    if not url.lower().startswith("https://"):
+                        logger.warning(
+                            "The authorization token is being sent over a non-HTTPS connection. "
+                            "This may expose credentials in transit."
+                        )
+                    headers: dict[str, str | bytes] = {
+                        "content-type": "application/json",
+                        "authorization": f"Bearer {token}",
+                    }
 
-            return SpanExportResult.FAILURE if any_failure else SpanExportResult.SUCCESS
+                    # The gate rejects sends for an identity in a retry cooldown;
+                    # persist directly rather than hammering the endpoint.
+                    if not self._gate.try_acquire(identity):
+                        if self._persist(identity, url, body):
+                            persisted_any = True
+                        else:
+                            all_delivered_or_stored = False
+                        continue
+
+                    result = self._post_once(url, body, headers)
+                    if result.disposition is DeliveryDisposition.DELIVERED:
+                        self._gate.record_success(identity)
+                    elif result.disposition is DeliveryDisposition.RETRYABLE:
+                        self._gate.record_retryable_failure(identity, result.retry_after)
+                        if self._persist(identity, url, body):
+                            persisted_any = True
+                        else:
+                            all_delivered_or_stored = False
+                    else:
+                        # Permanent: the endpoint answered definitively. The
+                        # identity itself is healthy, so reset the gate; only this
+                        # payload is undeliverable and is dropped.
+                        self._gate.record_success(identity)
+                        all_delivered_or_stored = False
+
+            if persisted_any and self._replay is not None:
+                self._replay.wake()
+
+            return SpanExportResult.SUCCESS if all_delivered_or_stored else SpanExportResult.FAILURE
 
         except Exception as e:
             logger.error("Export failed with exception: %s", e)
@@ -352,10 +338,26 @@ class _Agent365Exporter(SpanExporter):
             if self._closed:
                 return
             self._closed = True
+            replay = self._replay
+            storage = self._storage
+
+        # Stop the replay thread and close resources outside the lock so a
+        # concurrent export cannot deadlock against the joining replay thread.
+        # The _closed guard above makes this run exactly once.
+        if replay is not None:
             try:
-                self._session.close()
-            except Exception:
-                pass
+                replay.shutdown(_REPLAY_SHUTDOWN_TIMEOUT_SECONDS)
+            except Exception as e:
+                logger.error("Error shutting down replay coordinator: %s", e)
+        if storage is not None:
+            try:
+                storage.close()
+            except Exception as e:
+                logger.error("Error closing durable storage: %s", e)
+        try:
+            self._session.close()
+        except Exception:
+            pass
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
         return True
@@ -395,17 +397,110 @@ class _Agent365Exporter(SpanExporter):
         except Exception:  # pylint: disable=broad-except
             return {}
 
-    def _post_with_retries(  # pylint: disable=too-many-statements
-        self, url: str, body: str, headers: dict[str, str | bytes]
-    ) -> bool:
-        if not self._circuit_breaker.allow_request():
+    def _serialize_chunk(
+        self,
+        chunk: Sequence[tuple[dict[str, Any], str, str | None]],
+        resource_attrs: dict[str, Any],
+        index: int,
+        total: int,
+        tenant_id: str,
+        agent_id: str,
+    ) -> str:
+        """Build the JSON request body for one chunk and warn on size drift."""
+        payload = self._build_envelope(chunk, resource_attrs)
+        body = json.dumps(payload, separators=(",", ":"), ensure_ascii=False)
+        body_bytes = len(body.encode("utf-8"))
+        logger.debug(
+            "Prepared chunk %d of %d (%d spans, %d bytes)",
+            index + 1,
+            total,
+            len(chunk),
+            body_bytes,
+        )
+        # Defensive check: the estimator covers per-span content but not envelope
+        # overhead (resource attributes, scope wrappers). Warn if the assembled
+        # body exceeds the configured limit so operators can observe estimator
+        # drift before the server starts rejecting requests.
+        if body_bytes > self._max_payload_bytes:
             logger.warning(
-                "Circuit breaker is OPEN \u2014 skipping POST to %s. %d total requests rejected so far.",
-                url,
-                self._circuit_breaker.total_rejected,
+                "Chunk %d of %d body size (%d bytes) exceeds max_payload_bytes (%d); "
+                "estimator may be under-counting envelope overhead. "
+                "Tenant: %s, agent: %s, spans: %d.",
+                index + 1,
+                total,
+                body_bytes,
+                self._max_payload_bytes,
+                tenant_id,
+                agent_id,
+                len(chunk),
+            )
+        return body
+
+    def _persist(self, identity: IdentityKey, url: str, body: str) -> bool:
+        """Persist one payload to the durable queue. Returns False on failure."""
+        storage = self._storage
+        if storage is None:
+            logger.warning(
+                "Durable storage unavailable; telemetry for tenant %s, agent %s could not be "
+                "persisted and will be dropped.",
+                identity.tenant_id,
+                identity.agent_id,
             )
             return False
+        stored = storage.store(DurableRecord.new(identity, url, body))
+        if not stored:
+            logger.error(
+                "Durable storage rejected telemetry for tenant %s, agent %s.",
+                identity.tenant_id,
+                identity.agent_id,
+            )
+        return stored
 
+    def _replay_record(self, record: DurableRecord) -> DeliveryResult:
+        """Replay a queued record, rebuilding auth from its stored identity.
+
+        A token-resolution failure (exception or empty token) is surfaced as
+        :class:`ReplayIdentityError` so the coordinator releases the record for a
+        future attempt instead of dropping it.
+        """
+        try:
+            token = self._resolve_token_for_replay(record)
+        except Exception as e:
+            raise ReplayIdentityError(
+                f"Token resolution failed during replay for agent {record.agent_id}, "
+                f"tenant {record.tenant_id}: {e}"
+            ) from e
+        if not token:
+            raise ReplayIdentityError(
+                f"No token resolved during replay for agent {record.agent_id}, "
+                f"tenant {record.tenant_id}."
+            )
+        if not record.url.lower().startswith("https://"):
+            logger.warning(
+                "The authorization token is being sent over a non-HTTPS connection during "
+                "replay. This may expose credentials in transit."
+            )
+        headers: dict[str, str | bytes] = {
+            "content-type": "application/json",
+            "authorization": f"Bearer {token}",
+        }
+        return self._post_once(record.url, record.payload, headers)
+
+    def _post_once(  # pylint: disable=too-many-statements,too-many-branches
+        self, url: str, body: str, headers: dict[str, str | bytes]
+    ) -> DeliveryResult:
+        """Perform a single classified HTTP send. No retries, no sleeping.
+
+        Returns a :class:`DeliveryResult`:
+
+        * ``DELIVERED`` for 2xx responses.
+        * ``RETRYABLE`` for 401/408/429, all 5xx, and transport-level errors
+          (``requests.RequestException``, which includes connect/read timeouts).
+        * ``PERMANENT`` for 403 and all other 4xx responses.
+
+        Any ``Retry-After`` header is parsed and returned on the result but is
+        never slept on; the transmission gate applies the delay asynchronously.
+        """
         # Local imports to avoid pulling sdkstats into the exporter module's
         # import graph for consumers that don't use this package.
         from urllib.parse import urlparse
@@ -422,114 +517,101 @@ class _Agent365Exporter(SpanExporter):
 
         host = urlparse(url).hostname or url
         record_a365_sdkstats = self.record_sdkstats
+        start_time = time.time()
+        try:
+            resp = self._session.post(
+                url,
+                data=body.encode("utf-8"),
+                headers=headers,
+                timeout=DEFAULT_HTTP_TIMEOUT_SECONDS,
+            )
 
-        for attempt in range(DEFAULT_MAX_RETRIES + 1):
-            start_time = time.time()
-            try:
-                resp = self._session.post(
-                    url,
-                    data=body.encode("utf-8"),
-                    headers=headers,
-                    timeout=DEFAULT_HTTP_TIMEOUT_SECONDS,
+            correlation_id = resp.headers.get("x-ms-correlation-id") or resp.headers.get("request-id") or "N/A"
+            status_code = resp.status_code
+
+            if 200 <= status_code < 300:
+                if record_a365_sdkstats:
+                    record_success(ENDPOINT_A365, host)
+                logger.debug(
+                    "HTTP %d success. Correlation ID: %s. Response: %s",
+                    status_code,
+                    correlation_id,
+                    self._truncate_text(resp.text, 200),
                 )
+                return DeliveryResult(DeliveryDisposition.DELIVERED)
 
-                correlation_id = resp.headers.get("x-ms-correlation-id") or resp.headers.get("request-id") or "N/A"
+            response_text = self._truncate_text(resp.text, 500)
+            retry_after = parse_retry_after(resp.headers)
 
-                if 200 <= resp.status_code < 300:
-                    if record_a365_sdkstats:
-                        record_success(ENDPOINT_A365, host)
-                    logger.debug(
-                        "HTTP %d success on attempt %d. Correlation ID: %s. Response: %s",
-                        resp.status_code,
-                        attempt + 1,
-                        correlation_id,
-                        self._truncate_text(resp.text, 200),
-                    )
-                    self._circuit_breaker.record_success()
-                    return True
-
-                response_text = self._truncate_text(resp.text, 500)
-
-                if resp.status_code in (408, 429) or 500 <= resp.status_code < 600:
-                    retry_after = parse_retry_after(resp.headers)
-                    if attempt < DEFAULT_MAX_RETRIES:
-                        if record_a365_sdkstats:
-                            record_retry(ENDPOINT_A365, host, resp.status_code)
-                        if retry_after is not None:
-                            time.sleep(min(retry_after, 60.0))
-                        else:
-                            time.sleep(0.5 * (2**attempt))
-                        continue
-                    if record_a365_sdkstats:
-                        if resp.status_code in THROTTLE_STATUS_CODES:
-                            record_throttle(ENDPOINT_A365, host, resp.status_code)
-                        else:
-                            record_failure(ENDPOINT_A365, host, resp.status_code)
-                    logger.error(
-                        "HTTP %d final failure after %d attempts. Correlation ID: %s. Response: %s",
-                        resp.status_code,
-                        DEFAULT_MAX_RETRIES + 1,
-                        correlation_id,
-                        response_text,
-                    )
-                    self._circuit_breaker.record_failure()
-                else:
-                    if record_a365_sdkstats:
-                        if resp.status_code in THROTTLE_STATUS_CODES:
-                            record_throttle(ENDPOINT_A365, host, resp.status_code)
-                        else:
-                            record_failure(ENDPOINT_A365, host, resp.status_code)
-                    www_auth = resp.headers.get("www-authenticate", "")
-                    if resp.status_code == 403 and "insufficient_scope" in www_auth:
-                        sp = self._extract_token_identity(headers)
-                        if sp:
-                            sp_parts = [
-                                f"{label}: {sp[key]}"
-                                for key, label in (("app_id", "app ID"), ("object_id", "object ID"))
-                                if sp.get(key)
-                            ]
-                            sp_str = f" service principal ({', '.join(sp_parts)})"
-                        else:
-                            sp_str = " your application's service principal"
-                        logger.error(
-                            "HTTP 403 authorization error: the token is missing the required "
-                            "'Agent365.Observability.OtelWrite' app role. "
-                            "Grant the 'Agent365.Observability.OtelWrite' role to%s "
-                            "and ensure admin consent has been granted. "
-                            "| Setup instructions: %s "
-                            "| For Foundry: %s "
-                            "| Correlation ID: %s.",
-                            sp_str,
-                            _403_DOCS_URL,
-                            _403_FOUNDRY_URL,
-                            correlation_id,
-                        )
+            # Retryable: transient auth (401), request timeout (408), throttling
+            # (429), and all 5xx server errors.
+            if status_code in (401, 408, 429) or 500 <= status_code < 600:
+                if record_a365_sdkstats:
+                    if status_code in THROTTLE_STATUS_CODES:
+                        record_throttle(ENDPOINT_A365, host, status_code)
                     else:
-                        logger.error(
-                            "HTTP %d non-retryable error. Correlation ID: %s. Response: %s. "
-                            "WWW-Authenticate: %s. Response headers: %s",
-                            resp.status_code,
-                            correlation_id,
-                            response_text,
-                            www_auth or "N/A",
-                            dict(resp.headers),
-                        )
-                return False
+                        record_retry(ENDPOINT_A365, host, status_code)
+                logger.warning(
+                    "HTTP %d retryable error; payload will be queued for durable retry. "
+                    "Correlation ID: %s. Response: %s. Retry-After: %s.",
+                    status_code,
+                    correlation_id,
+                    response_text,
+                    retry_after if retry_after is not None else "N/A",
+                )
+                return DeliveryResult(DeliveryDisposition.RETRYABLE, retry_after)
 
-            except requests.RequestException as e:
-                if record_a365_sdkstats:
-                    record_exception(ENDPOINT_A365, host, type(e).__name__)
-                if attempt < DEFAULT_MAX_RETRIES:
-                    time.sleep(0.5 * (2**attempt))
-                    continue
-                logger.error("Request failed after %d attempts: %s", DEFAULT_MAX_RETRIES + 1, e)
-                self._circuit_breaker.record_failure()
-                return False
-            finally:
-                # Record duration for every status
-                if record_a365_sdkstats:
-                    record_duration(ENDPOINT_A365, host, time.time() - start_time)
-        return False  # pragma: no cover
+            # Permanent: 403 and all other 4xx responses.
+            if record_a365_sdkstats:
+                if status_code in THROTTLE_STATUS_CODES:
+                    record_throttle(ENDPOINT_A365, host, status_code)
+                else:
+                    record_failure(ENDPOINT_A365, host, status_code)
+            www_auth = resp.headers.get("www-authenticate", "")
+            if status_code == 403 and "insufficient_scope" in www_auth:
+                sp = self._extract_token_identity(headers)
+                if sp:
+                    sp_parts = [
+                        f"{label}: {sp[key]}"
+                        for key, label in (("app_id", "app ID"), ("object_id", "object ID"))
+                        if sp.get(key)
+                    ]
+                    sp_str = f" service principal ({', '.join(sp_parts)})"
+                else:
+                    sp_str = " your application's service principal"
+                logger.error(
+                    "HTTP 403 authorization error: the token is missing the required "
+                    "'Agent365.Observability.OtelWrite' app role. "
+                    "Grant the 'Agent365.Observability.OtelWrite' role to%s "
+                    "and ensure admin consent has been granted. "
+                    "| Setup instructions: %s "
+                    "| For Foundry: %s "
+                    "| Correlation ID: %s.",
+                    sp_str,
+                    _403_DOCS_URL,
+                    _403_FOUNDRY_URL,
+                    correlation_id,
+                )
+            else:
+                logger.error(
+                    "HTTP %d non-retryable error. Correlation ID: %s. Response: %s. "
+                    "WWW-Authenticate: %s. Response headers: %s",
+                    status_code,
+                    correlation_id,
+                    response_text,
+                    www_auth or "N/A",
+                    dict(resp.headers),
+                )
+            return DeliveryResult(DeliveryDisposition.PERMANENT)
+
+        except requests.RequestException as e:
+            if record_a365_sdkstats:
+                record_exception(ENDPOINT_A365, host, type(e).__name__)
+            logger.error("Request to %s failed: %s", url, e)
+            return DeliveryResult(DeliveryDisposition.RETRYABLE)
+        finally:
+            if record_a365_sdkstats:
+                record_duration(ENDPOINT_A365, host, time.time() - start_time)
 
     # ------------- Payload mapping ------------------
 
