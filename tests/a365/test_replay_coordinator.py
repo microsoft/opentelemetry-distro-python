@@ -413,3 +413,47 @@ def test_periodic_wake_processes_backlog_without_external_wake() -> None:
         assert wait_until(lambda: storage.deleted == [RECORD.record_id])
     finally:
         coordinator.shutdown(1.0)
+
+
+# ---------------------------------------------------------------------------
+# Regression test: unexpected exception from run_once must not kill the thread
+# ---------------------------------------------------------------------------
+
+
+def test_run_loop_survives_unexpected_exception_from_run_once() -> None:
+    """An unexpected exception raised inside _run_loop (outside run_once's own
+    broad-except) must be caught and logged so the replay thread stays alive.
+
+    The test monkey-patches the coordinator instance's run_once to throw a
+    RuntimeError on the first call, then verifies the thread still delivers a
+    record on the next periodic wake.
+    """
+    calls: list[int] = []
+    storage = FakeStorage([[], [RECORD]])
+    gate = MagicMock(spec=TransmissionGate)
+    gate.try_acquire.return_value = True
+
+    original_run_once = ReplayCoordinator.run_once
+
+    def patched_run_once(self: ReplayCoordinator) -> bool:
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("injected fault in run_once")
+        return original_run_once(self)
+
+    coordinator = ReplayCoordinator(
+        storage,
+        gate,
+        send=lambda record: DeliveryResult(DeliveryDisposition.DELIVERED),
+        poll_interval_seconds=0.05,
+    )
+    coordinator.run_once = patched_run_once.__get__(coordinator, ReplayCoordinator)  # type: ignore[method-assign]
+
+    coordinator.start()
+    try:
+        # The thread must survive the injected fault and process the second pass.
+        assert wait_until(lambda: storage.deleted == [RECORD.record_id], timeout=3.0), (
+            "replay thread did not recover after unexpected exception from run_once"
+        )
+    finally:
+        coordinator.shutdown(1.0)

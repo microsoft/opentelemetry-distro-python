@@ -197,8 +197,18 @@ class ReplayCoordinator:
                 break
             # Drain consecutive full passes so a startup backlog larger than one
             # pass is not left at >10 records until the next wake.
-            while not self._stop_event.is_set() and self.run_once():
-                pass
+            try:
+                while not self._stop_event.is_set() and self.run_once():
+                    pass
+            except Exception:  # pylint: disable=broad-except
+                # An unexpected exception from run_once (e.g. a programming bug,
+                # unexpected storage error not caught inside run_once) must not
+                # permanently kill the thread.  Log it and fall back to the
+                # periodic cadence so later passes have a chance to succeed.
+                _logger.exception(
+                    "ReplayCoordinator: unexpected exception from run_once; "
+                    "replay thread will retry on the next periodic wake"
+                )
 
     @staticmethod
     def _identity_for(record: DurableRecord) -> IdentityKey:

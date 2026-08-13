@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import math
 import random
 import time
 from collections.abc import Callable
@@ -14,6 +15,15 @@ from threading import RLock
 
 _RETRY_AFTER_FLOOR_SECONDS = 10.0
 _RETRY_AFTER_CAP_SECONDS = 3600.0
+
+# Maximum useful exponent for the exponential backoff calculation.  Beyond this
+# value, floor * 2^n already equals or exceeds the cap, so further growth adds
+# nothing and would eventually cause OverflowError on Python floats (C doubles).
+# Derived directly from the floor/cap constants:
+#   floor * 2^n >= cap  =>  n >= log2(cap / floor)
+# We take the ceiling so that at exactly this exponent the window is already at
+# or above the cap and gets clamped there.
+_MAX_BACKOFF_EXPONENT: int = math.ceil(math.log2(_RETRY_AFTER_CAP_SECONDS / _RETRY_AFTER_FLOOR_SECONDS))
 
 
 class DeliveryDisposition(Enum):
@@ -90,7 +100,10 @@ class TransmissionGate:
         with self._lock:
             state = self._states.setdefault(key, _GateState())
             delay = self._resolve_retry_delay(state.failure_count, retry_after)
-            state.failure_count += 1
+            # Saturate failure_count at _MAX_BACKOFF_EXPONENT: beyond that the
+            # backoff is already capped at _RETRY_AFTER_CAP_SECONDS and further
+            # growth would only risk overflow in future calls.
+            state.failure_count = min(state.failure_count + 1, _MAX_BACKOFF_EXPONENT)
             state.blocked_until = self._clock() + delay
             state.probe_acquired = False
 
@@ -107,7 +120,11 @@ class TransmissionGate:
         return self._full_jitter_backoff(failure_count)
 
     def _full_jitter_backoff(self, failure_count: int) -> float:
-        window = _RETRY_AFTER_FLOOR_SECONDS * (2.0**failure_count)
+        # Clamp the exponent to prevent OverflowError: at _MAX_BACKOFF_EXPONENT
+        # the window already reaches or exceeds the cap, so higher values are
+        # equivalent but safe.
+        exponent = min(failure_count, _MAX_BACKOFF_EXPONENT)
+        window = _RETRY_AFTER_FLOOR_SECONDS * (2.0**exponent)
         window = min(_RETRY_AFTER_CAP_SECONDS, window)
         if window <= _RETRY_AFTER_FLOOR_SECONDS:
             return _RETRY_AFTER_FLOOR_SECONDS

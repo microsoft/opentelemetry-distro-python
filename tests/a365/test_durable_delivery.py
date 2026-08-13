@@ -180,3 +180,86 @@ def test_record_success_for_unknown_identity_is_noop() -> None:
     gate.record_success(key)
 
     assert gate.try_acquire(key)
+
+
+# ---------------------------------------------------------------------------
+# Regression tests: backoff overflow at high failure counts (exponent ≥ 1024)
+# ---------------------------------------------------------------------------
+
+
+def _drive_failure_count(gate: TransmissionGate, key: IdentityKey, n: int) -> None:
+    """Record *n* consecutive retryable failures without a retry_after hint."""
+    for _ in range(n):
+        gate.record_retryable_failure(key, retry_after=None)
+
+
+def test_record_retryable_failure_never_raises_beyond_exponent_1024() -> None:
+    """Calling record_retryable_failure 1025+ times must never raise OverflowError.
+
+    Previously ``2.0 ** failure_count`` would overflow once failure_count
+    reached ~1024, producing an OverflowError (Python floats map to C doubles).
+    The fix must clamp the exponent so the calculation stays finite.
+    """
+    clock = FakeClock()
+    gate = TransmissionGate(clock=clock, random_fn=lambda: 1.0)
+    key = IdentityKey("t1", "a1", None, False)
+
+    # Drive failure_count well past the problematic threshold and verify no
+    # exception is raised and no busy-loop / infinite delay results.
+    _drive_failure_count(gate, key, 1025)
+
+
+def test_backoff_stays_capped_at_3600_seconds_beyond_exponent_1024() -> None:
+    """Delay must never exceed 3600 s regardless of failure count."""
+    clock = FakeClock()
+    gate = TransmissionGate(clock=clock, random_fn=lambda: 1.0)
+    key = IdentityKey("t1", "a1", None, False)
+
+    _drive_failure_count(gate, key, 1025)
+
+    # Check that the gate opens exactly at 3600 s (worst-case random fraction = 1.0).
+    clock.advance(3599.9)
+    assert not gate.try_acquire(key)
+    clock.advance(0.1)
+    assert gate.try_acquire(key)
+
+
+def test_half_open_behavior_preserved_after_high_failure_count() -> None:
+    """Only one probe is allowed in the half-open window after >1024 failures."""
+    clock = FakeClock()
+    gate = TransmissionGate(clock=clock, random_fn=lambda: 1.0)
+    key = IdentityKey("t1", "a1", None, False)
+
+    _drive_failure_count(gate, key, 2000)
+
+    # Advance past the cap window.
+    clock.advance(3600.0)
+
+    # Exactly one probe must be allowed (half-open), then the gate must hold.
+    assert gate.try_acquire(key), "first probe should be granted"
+    assert not gate.try_acquire(key), "second probe must be refused while first is in flight"
+
+
+def test_failure_count_does_not_grow_unbounded() -> None:
+    """failure_count must be saturated at a finite value; it must not grow to
+    an arbitrary integer that would cause overflow on subsequent calls."""
+    from microsoft.opentelemetry.a365.core.exporters.durable_delivery import _GateState  # noqa: PLC0415
+
+    clock = FakeClock()
+    gate = TransmissionGate(clock=clock, random_fn=lambda: 0.5)
+    key = IdentityKey("t1", "a1", None, False)
+
+    _drive_failure_count(gate, key, 5000)
+
+    state: _GateState = gate._states[key]  # type: ignore[attr-defined]
+    # The clamped value must be at most the threshold that makes backoff hit cap.
+    # Derived from: floor * 2^n >= cap  =>  n = ceil(log2(cap / floor)) = 9
+    import math  # noqa: PLC0415
+    from microsoft.opentelemetry.a365.core.exporters.durable_delivery import (  # noqa: PLC0415
+        _RETRY_AFTER_CAP_SECONDS,
+        _RETRY_AFTER_FLOOR_SECONDS,
+    )
+    max_useful_exponent = math.ceil(math.log2(_RETRY_AFTER_CAP_SECONDS / _RETRY_AFTER_FLOOR_SECONDS))
+    assert state.failure_count <= max_useful_exponent, (
+        f"failure_count={state.failure_count} exceeds max useful exponent {max_useful_exponent}"
+    )
