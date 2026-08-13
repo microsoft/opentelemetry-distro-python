@@ -201,9 +201,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
 
         if is_nested_agent:
             ancestor_run = self.run_map.get(str(ancestor_id))
-            ancestor_name = (
-                self._resolve_agent_name(ancestor_run, use_config=False) if ancestor_run else None
-            )
+            ancestor_name = self._resolve_agent_name(ancestor_run, use_config=False) if ancestor_run else None
             this_name = self._resolve_agent_name(run, use_config=False)
             if this_name and ancestor_name and this_name.lower() == ancestor_name.lower():
                 return
@@ -388,6 +386,18 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         node = cls._run_metadata(run).get("langgraph_node")
         return str(node) if node else None
 
+    @classmethod
+    def _is_subgraph_boundary(cls, run: Run) -> bool:
+        """Return ``True`` when this run is the invocation of a nested compiled
+        graph (a subgraph / compiled agent used as a node inside an outer graph)."""
+        node = cls._langgraph_node_name(run)
+        if not node:
+            return False
+        name = str(run.name) if run.name else ""
+        if not name or name == "LangGraph":
+            return False
+        return name != node
+
     def _should_ignore_langgraph_node(self, run: Run) -> bool:  # pylint: disable=too-many-return-statements
         """Decide whether a genuine LangGraph node should be suppressed."""
         meta = self._run_metadata(run)
@@ -408,7 +418,11 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         # 4. The compiled-graph root (no parent) is always emitted.
         if run.parent_run_id is None:
             return False
-        # 5. A nested node is a genuine sub-agent only when it advertises an
+        # 5. A nested subgraph boundary (a compiled agent invoked as a node
+        #    inside an outer graph) is a genuine agent and must be emitted.
+        if self._is_subgraph_boundary(run):
+            return False
+        # 6. A nested node is a genuine sub-agent only when it advertises an
         #    explicit identity; otherwise it is an internal orchestration node
         #    (create_agent's ``model`` / ``tools``) and is suppressed.
         if meta.get("agent_name") or meta.get("agent_type"):
@@ -460,9 +474,10 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         if name := meta.get("agent_type"):
             return str(name)
         # 2. LangGraph structural node name (framework-injected per node).
-        if node := meta.get("langgraph_node"):
-            if str(node) not in ("", "LangGraph", self._LANGGRAPH_START_NODE):
-                return str(node)
+        if not self._is_subgraph_boundary(run):
+            if node := meta.get("langgraph_node"):
+                if str(node) not in ("", "LangGraph", self._LANGGRAPH_START_NODE):
+                    return str(node)
         if name := meta.get("lc_agent_name"):
             return str(name)
         # 3. Process-level config default (top-level agent only).

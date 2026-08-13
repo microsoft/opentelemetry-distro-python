@@ -6,7 +6,7 @@
 import os
 from functools import cached_property
 from logging import getLogger, Formatter
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from opentelemetry.metrics import set_meter_provider
 from opentelemetry.sdk.metrics import MeterProvider
@@ -23,6 +23,14 @@ from opentelemetry.util._importlib_metadata import (
     distributions,
     entry_points,
 )
+
+_get_configuration_manager: Optional[Callable[[], Any]]
+try:
+    from azure.monitor.opentelemetry.exporter._configuration._state import (  # pylint: disable=import-error,no-name-in-module
+        get_configuration_manager as _get_configuration_manager,
+    )
+except ImportError:
+    _get_configuration_manager = None
 
 from microsoft.opentelemetry._constants import (
     DISABLE_LOGGING_ARG,
@@ -93,6 +101,17 @@ from microsoft.opentelemetry._utils import (
 )
 
 _logger = getLogger(__name__)
+
+
+def _initialize_configuration_manager() -> None:
+    """Contribute the Microsoft distro identity to the shared OneSettings profile."""
+    if _get_configuration_manager is None:
+        return
+
+    config_manager = _get_configuration_manager()
+    if config_manager:
+        # Profile fields are first-wins, so initialize before exporters add their fields.
+        config_manager.initialize(component="mot", version=VERSION)
 
 
 def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=too-many-statements
@@ -206,6 +225,8 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
         the Agent Framework SDK instrumentation. Defaults to False.
     :rtype: None
     """
+
+    _initialize_configuration_manager()
 
     enable_azure_monitor: bool = bool(kwargs.pop(ENABLE_AZURE_MONITOR_ARG, False))
     enable_console: bool = bool(kwargs.pop(ENABLE_CONSOLE_ARG, False))

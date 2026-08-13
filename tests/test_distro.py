@@ -32,6 +32,7 @@ from microsoft.opentelemetry._distro import (
     _setup_metrics,
     _setup_logging,
 )
+from microsoft.opentelemetry._version import VERSION
 
 TEST_RESOURCE = Resource({"service.name": "test-service"})
 TEST_CONNECTION_STRING = "InstrumentationKey=test-key;IngestionEndpoint=https://test.in.ai.azure.com/"
@@ -39,6 +40,37 @@ TEST_CONNECTION_STRING = "InstrumentationKey=test-key;IngestionEndpoint=https://
 
 class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
     """Tests for use_microsoft_opentelemetry() orchestration."""
+
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    @patch("microsoft.opentelemetry._distro._get_configuration_manager")
+    def test_initializes_config_manager_before_exporters(self, get_config_manager_mock, append_mock):
+        call_order = []
+        config_manager_mock = get_config_manager_mock.return_value
+        config_manager_mock.initialize.side_effect = lambda *args, **kwargs: call_order.append("initialize")
+
+        def append_azure_monitor_components(*args, **kwargs):
+            call_order.append("exporter")
+            return None, None, None
+
+        append_mock.side_effect = append_azure_monitor_components
+
+        use_microsoft_opentelemetry(
+            enable_azure_monitor=True,
+            azure_monitor_connection_string=TEST_CONNECTION_STRING,
+        )
+
+        config_manager_mock.initialize.assert_called_once_with(component="mot", version=VERSION)
+        self.assertEqual(call_order, ["initialize", "exporter"])
+
+    @patch("microsoft.opentelemetry._distro._get_configuration_manager", return_value=None)
+    def test_configuration_manager_can_be_disabled(self, get_config_manager_mock):
+        use_microsoft_opentelemetry()
+
+        get_config_manager_mock.assert_called_once_with()
+
+    @patch("microsoft.opentelemetry._distro._get_configuration_manager", None)
+    def test_configuration_manager_can_be_unavailable(self):
+        use_microsoft_opentelemetry()
 
     @patch("microsoft.opentelemetry._distro._setup_logging")
     @patch("microsoft.opentelemetry._distro._setup_metrics")

@@ -381,7 +381,7 @@ class _Agent365Exporter(SpanExporter):
                 auth = auth.decode("utf-8", errors="replace")
             if not auth.startswith("Bearer "):
                 return {}
-            parts = auth[len("Bearer "):].split(".")
+            parts = auth[len("Bearer ") :].split(".")
             if len(parts) != 3:
                 return {}
             payload_b64 = parts[1] + "=" * (4 - len(parts[1]) % 4)

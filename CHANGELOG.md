@@ -1,5 +1,13 @@
 # Release History
 
+# 1.3.8 (Unreleased)
+
+### Other Changes
+- Contribute Microsoft distro profile information (`component="mot"` and distro version) to the OneSettings control plane during `use_microsoft_opentelemetry()`.
+### Features Added
+- Add support for agent identity propagation for compiled agents in nested graph
+  ([#245](https://github.com/microsoft/opentelemetry-distro-python/pull/245))
+
 # 1.3.7 (2026-08-05)
 ### Features Added
 - Mark `gen_ai.tool.description` and `gen_ai.tool.definitions` as sensitive attributes per [GenAI Spec](https://github.com/open-telemetry/semantic-conventions-genai/pull/431)
@@ -361,4 +369,3 @@
   ([#10](https://github.com/microsoft/opentelemetry-distro-python/pull/10))
 - Microsoft mandatory file
   ([#2](https://github.com/microsoft/opentelemetry-distro-python/pull/2))
-
