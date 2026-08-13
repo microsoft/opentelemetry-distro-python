@@ -54,6 +54,21 @@ SECOND_RECORD = DurableRecord(
 )
 
 
+def _make_record(record_id: int) -> DurableRecord:
+    """Build a distinct durable record for backlog tests."""
+    return DurableRecord(
+        schema_version=1,
+        tenant_id=IDENTITY.tenant_id,
+        agent_id=IDENTITY.agent_id,
+        agentic_user_id=IDENTITY.agentic_user_id,
+        use_s2s_endpoint=IDENTITY.use_s2s_endpoint,
+        url="https://example.test",
+        payload=f'{{"value":{record_id}}}',
+        created_at=float(record_id),
+        record_id=record_id,
+    )
+
+
 class FakeStorage:
     """Minimal storage double used to observe replay behavior."""
 
@@ -305,3 +320,96 @@ def test_mid_batch_stop_releases_remaining_records() -> None:
     assert RECORD.record_id in storage.released
     assert SECOND_RECORD.record_id in storage.released
     assert storage.deleted == []
+
+
+def test_run_once_requests_continuation_after_full_pass() -> None:
+    """A fully-drained maximal batch signals that more records may remain."""
+    full_batch = [_make_record(i) for i in range(1, 11)]  # exactly 10
+    storage = FakeStorage([full_batch])
+    gate = MagicMock(spec=TransmissionGate)
+    gate.try_acquire.return_value = True
+    coordinator = ReplayCoordinator(
+        storage,
+        gate,
+        send=lambda record: DeliveryResult(DeliveryDisposition.DELIVERED),
+    )
+
+    assert coordinator.run_once() is True
+    assert len(storage.deleted) == 10
+
+
+def test_run_once_does_not_request_continuation_for_partial_pass() -> None:
+    """A batch smaller than the pass cap does not request an immediate re-run."""
+    storage = FakeStorage([[RECORD, SECOND_RECORD]])
+    gate = MagicMock(spec=TransmissionGate)
+    gate.try_acquire.return_value = True
+    coordinator = ReplayCoordinator(
+        storage,
+        gate,
+        send=lambda record: DeliveryResult(DeliveryDisposition.DELIVERED),
+    )
+
+    assert coordinator.run_once() is False
+
+
+def test_run_once_no_continuation_when_full_pass_gate_blocked() -> None:
+    """A full batch that is entirely gate-blocked must NOT request continuation,
+    otherwise the loop would busy-spin re-claiming the same records."""
+    full_batch = [_make_record(i) for i in range(1, 11)]
+    storage = FakeStorage([full_batch])
+    gate = MagicMock(spec=TransmissionGate)
+    gate.try_acquire.return_value = False  # every record is gate-blocked
+    coordinator = ReplayCoordinator(
+        storage,
+        gate,
+        send=lambda record: DeliveryResult(DeliveryDisposition.DELIVERED),
+    )
+
+    assert coordinator.run_once() is False
+    assert len(storage.released) == 10
+    assert storage.deleted == []
+
+
+def test_start_drains_backlog_larger_than_one_pass() -> None:
+    """A startup backlog larger than one pass is fully drained after a wake,
+    not left at >10 records until the next external wake."""
+    first = [_make_record(i) for i in range(1, 11)]  # 10 records
+    second = [_make_record(i) for i in range(11, 16)]  # 5 records
+    storage = FakeStorage([first, second])
+    gate = MagicMock(spec=TransmissionGate)
+    gate.try_acquire.return_value = True
+    coordinator = ReplayCoordinator(
+        storage,
+        gate,
+        send=lambda record: DeliveryResult(DeliveryDisposition.DELIVERED),
+    )
+
+    coordinator.start()
+    try:
+        assert wait_until(lambda: len(storage.deleted) == 15)
+    finally:
+        coordinator.shutdown(1.0)
+
+
+def test_periodic_wake_processes_backlog_without_external_wake() -> None:
+    """A fixed periodic wake re-runs a pass even without an explicit wake(),
+    so records left behind are eventually drained on the background cadence."""
+    # First pass claims nothing; a record only becomes available on the second
+    # pass, which must be triggered by the periodic timeout (no wake() call).
+    storage = FakeStorage([[], [RECORD]])
+    gate = MagicMock(spec=TransmissionGate)
+    gate.try_acquire.return_value = True
+    coordinator = ReplayCoordinator(
+        storage,
+        gate,
+        send=lambda record: DeliveryResult(DeliveryDisposition.DELIVERED),
+        poll_interval_seconds=0.05,
+    )
+
+    coordinator.start()
+    try:
+        # No coordinator.wake() here: only the periodic timeout can drive the
+        # second pass that deletes the record.
+        assert wait_until(lambda: storage.deleted == [RECORD.record_id])
+    finally:
+        coordinator.shutdown(1.0)

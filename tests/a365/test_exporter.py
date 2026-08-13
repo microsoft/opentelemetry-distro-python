@@ -435,6 +435,103 @@ class TestAgent365ExporterDurableDelivery(unittest.TestCase):
         exporter._replay.wake.assert_called()
         exporter.shutdown()
 
+    @patch.dict(os.environ, {}, clear=True)
+    def test_post_once_exception_releases_probe_and_persists(self):
+        """If _post_once raises unexpectedly, the acquired gate probe must be
+        released (so the identity is not permanently blocked) and the payload
+        must be persisted for later replay."""
+        exporter = make_exporter()
+        exporter._gate = MagicMock()
+        exporter._gate.try_acquire.return_value = True
+        exporter._post_once = MagicMock(side_effect=RuntimeError("boom"))
+        exporter._storage = MagicMock()
+        exporter._storage.store.return_value = True
+
+        # A stored payload after an unexpected send error counts as success.
+        self.assertIs(exporter.export([_make_span()]), SpanExportResult.SUCCESS)
+        exporter._storage.store.assert_called_once()
+        exporter._gate.release_probe.assert_called_once()
+        # The probe we acquired must not be recorded as a success/failure.
+        exporter._gate.record_success.assert_not_called()
+        exporter._gate.record_retryable_failure.assert_not_called()
+        exporter.shutdown()
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_post_once_exception_is_failure_when_storage_unavailable(self):
+        """An unexpected _post_once error with no durable storage still releases
+        the probe and surfaces failure (payload dropped)."""
+        exporter = make_exporter()
+        exporter._gate = MagicMock()
+        exporter._gate.try_acquire.return_value = True
+        exporter._post_once = MagicMock(side_effect=RuntimeError("boom"))
+        exporter._storage = MagicMock()
+        exporter._storage.store.return_value = False
+
+        self.assertIs(exporter.export([_make_span()]), SpanExportResult.FAILURE)
+        exporter._gate.release_probe.assert_called_once()
+        exporter.shutdown()
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_probe_not_leaked_across_exports_when_post_once_raises(self):
+        """A real gate must remain acquirable after an unexpected send error,
+        proving the half-open probe is not leaked."""
+        exporter = make_exporter()
+        exporter._storage = MagicMock()
+        exporter._storage.store.return_value = True
+        exporter._post_once = MagicMock(side_effect=RuntimeError("boom"))
+
+        # First export: the send raises; the probe must be released.
+        exporter.export([_make_span()])
+
+        # Second export with a working send must be able to acquire the probe
+        # (the real gate would refuse if the probe were still held).
+        exporter._post_once = MagicMock(return_value=_delivered())
+        self.assertIs(exporter.export([_make_span()]), SpanExportResult.SUCCESS)
+        exporter._post_once.assert_called_once()
+        exporter.shutdown()
+
+
+class TestAgent365ExporterStorageDirectory(unittest.TestCase):
+    """End-to-end behavior of the storage_directory option and no-leak checks."""
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_storage_directory_is_honored_end_to_end(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            storage_dir = Path(tmp) / "queue"
+            exporter = _Agent365Exporter(
+                token_resolver=lambda a, t: "token",
+                storage_directory=storage_dir,
+                enable_durable_delivery=True,
+            )
+            exporter._ensure_durable_initialized()
+            # The durable queue database lives under the requested directory.
+            self.assertEqual(exporter._storage.database_path.parent, storage_dir)
+            self.assertTrue((storage_dir / "queue.db").exists())
+            exporter.shutdown()
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_no_disk_writes_when_durable_delivery_disabled(self):
+        import tempfile
+        from pathlib import Path
+
+        with tempfile.TemporaryDirectory() as tmp:
+            storage_dir = Path(tmp) / "queue"
+            exporter = _Agent365Exporter(
+                token_resolver=lambda a, t: "token",
+                storage_directory=storage_dir,
+                enable_durable_delivery=False,
+            )
+            exporter._post_once = MagicMock(return_value=_retryable(30))
+            # A retryable failure with storage disabled must surface FAILURE and
+            # must not create any on-disk queue.
+            self.assertIs(exporter.export([_make_span()]), SpanExportResult.FAILURE)
+            self.assertIsNone(exporter._storage)
+            self.assertFalse(storage_dir.exists())
+            exporter.shutdown()
+
 
 # ---------------------------------------------------------------------------
 # Network statsbeat — recorded inside the classified single-send _post_once.

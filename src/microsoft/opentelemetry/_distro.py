@@ -4,7 +4,6 @@
 # license information.
 # --------------------------------------------------------------------------
 import os
-from pathlib import Path
 from functools import cached_property
 from logging import getLogger, Formatter
 from typing import Any, Callable, Dict, List, Optional
@@ -534,7 +533,13 @@ def _append_a365_components(
     from microsoft.opentelemetry.a365.core.exporters.span_processor import A365SpanProcessor
     from microsoft.opentelemetry.a365.core.exporters.utils import (
         _create_default_token_resolver,
+        coerce_storage_directory,
     )
+
+    # Validate/normalize the storage directory up front so an explicitly empty
+    # value raises ValueError instead of being swallowed by the broad handler
+    # below (which would silently fall back to the platform default path).
+    storage_directory_path = coerce_storage_directory(storage_directory)
 
     try:
         # Baggage-to-span attribute propagation (gen_ai.agent.id,
@@ -586,7 +591,7 @@ def _append_a365_components(
             cluster_category=resolved_cluster_category,
             use_s2s_endpoint=resolved_use_s2s,
             enable_durable_delivery=not disable_offline_storage,
-            storage_directory=Path(storage_directory) if storage_directory else None,
+            storage_directory=storage_directory_path,
         )
 
         # Enriching batch processor wrapping the exporter.

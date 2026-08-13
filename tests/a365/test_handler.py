@@ -122,6 +122,18 @@ class TestA365ExporterOptionsOfflineStorage(unittest.TestCase):
         opts = Agent365ExporterOptions(storage_directory="C:\\telemetry")
         self.assertEqual(opts.storage_directory, "C:\\telemetry")
 
+    def test_empty_storage_directory_raises_value_error(self):
+        from microsoft.opentelemetry.a365.core.exporters.agent365_exporter_options import Agent365ExporterOptions
+
+        with self.assertRaises(ValueError):
+            Agent365ExporterOptions(storage_directory="")
+
+    def test_whitespace_storage_directory_raises_value_error(self):
+        from microsoft.opentelemetry.a365.core.exporters.agent365_exporter_options import Agent365ExporterOptions
+
+        with self.assertRaises(ValueError):
+            Agent365ExporterOptions(storage_directory="   ")
+
 
 class TestCreateA365ComponentsOfflineStorage(unittest.TestCase):
     """Tests that create_a365_components forwards offline-storage options."""
@@ -169,6 +181,13 @@ class TestCreateA365ComponentsOfflineStorage(unittest.TestCase):
             create_a365_components()
         _, kwargs = exporter_mock.call_args
         self.assertIsNone(kwargs["storage_directory"])
+
+    @patch.dict(os.environ, {"ENABLE_A365_OBSERVABILITY_EXPORTER": "true"})
+    def test_empty_storage_directory_rejected_end_to_end(self):
+        """An explicitly empty storage directory must raise ValueError rather
+        than silently defaulting to the platform path."""
+        with self.assertRaises(ValueError):
+            create_a365_components(storage_directory="")
 
 
 if __name__ == "__main__":

@@ -62,8 +62,14 @@ class Agent365ExporterOptions:
             disable_offline_storage: When True, disables durable delivery (no disk writes or
                 replay). Defaults to False (storage enabled).
             storage_directory: Custom directory for durable offline storage. When None, a
-                platform default path is used. Defaults to None.
+                platform default path is used. An explicitly empty or whitespace-only string
+                is rejected with ``ValueError``. Defaults to None.
+
+        Raises:
+            ValueError: If ``storage_directory`` is an empty or whitespace-only string.
         """
+        if storage_directory is not None and not str(storage_directory).strip():
+            raise ValueError("storage_directory must be a non-empty path or None")
         self.cluster_category = cluster_category
         self.token_resolver = token_resolver
         self.contextual_token_resolver = contextual_token_resolver

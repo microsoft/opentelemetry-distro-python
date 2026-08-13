@@ -172,7 +172,7 @@ def test_rejects_directory_owned_by_another_uid(tmp_path):
 
     foreign_uid = os.getuid() + 1
 
-    real_stat = os.stat(tmp_path)
+    real_stat = os.lstat(tmp_path)
     mock_result = types.SimpleNamespace(
         st_uid=foreign_uid,
         st_mode=real_stat.st_mode,
@@ -183,9 +183,68 @@ def test_rejects_directory_owned_by_another_uid(tmp_path):
     target_dir = tmp_path / "queue_foreign"
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    with patch.object(_mod.os, "stat", return_value=mock_result):
+    # Ownership is validated with a non-symlink-following lstat.
+    with patch.object(_mod.os, "lstat", return_value=mock_result):
         with pytest.raises(PermissionError, match="unsafe ownership"):
             PersistentStorage(target_dir)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink rejection")
+def test_rejects_symlinked_directory(tmp_path):
+    """A symlinked queue directory must be rejected, not silently followed."""
+    real_dir = tmp_path / "real"
+    real_dir.mkdir()
+    link_dir = tmp_path / "link"
+    os.symlink(real_dir, link_dir, target_is_directory=True)
+
+    with pytest.raises(PermissionError, match="symlink"):
+        PersistentStorage(link_dir)
+
+
+def test_default_directory_prefers_local_state_even_if_missing(tmp_path):
+    """On POSIX without XDG_STATE_HOME, prefer ~/.local/state (to be created)
+    rather than falling back to the temp dir merely because it does not exist."""
+    import microsoft.opentelemetry.a365.core.exporters.persistent_storage as _mod
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    local_state = fake_home / ".local" / "state"
+    assert not local_state.exists()
+
+    env = {k: v for k, v in os.environ.items() if k != "XDG_STATE_HOME"}
+    with patch.object(_mod.sys, "platform", "linux"), patch.dict(
+        os.environ, env, clear=True
+    ), patch.object(_mod.Path, "home", return_value=fake_home):
+        resolved = _mod._resolve_default_directory()
+
+    # The resolved base must be under ~/.local/state, not the temp directory.
+    assert str(resolved).startswith(str(local_state))
+
+
+def test_default_directory_falls_back_to_tmp_when_home_unusable(tmp_path):
+    """When the home directory cannot be resolved, fall back to the temp dir."""
+    import microsoft.opentelemetry.a365.core.exporters.persistent_storage as _mod
+
+    env = {k: v for k, v in os.environ.items() if k != "XDG_STATE_HOME"}
+    with patch.object(_mod.sys, "platform", "linux"), patch.dict(
+        os.environ, env, clear=True
+    ), patch.object(_mod.Path, "home", side_effect=RuntimeError("no home")):
+        resolved = _mod._resolve_default_directory()
+
+    assert str(resolved).startswith(str(_mod.tempfile.gettempdir()))
+
+
+def test_default_directory_honors_xdg_state_home(tmp_path):
+    """XDG_STATE_HOME, when set, takes precedence over ~/.local/state."""
+    import microsoft.opentelemetry.a365.core.exporters.persistent_storage as _mod
+
+    xdg = tmp_path / "xdg"
+    with patch.object(_mod.sys, "platform", "linux"), patch.dict(
+        os.environ, {"XDG_STATE_HOME": str(xdg)}, clear=False
+    ):
+        resolved = _mod._resolve_default_directory()
+
+    assert str(resolved).startswith(str(xdg))
 
 
 # ---------------------------------------------------------------------------

@@ -195,7 +195,9 @@ class _Agent365Exporter(SpanExporter):
                 agentic_user_id = str(raw_auid)
         return IdentityKey(tenant_id, agent_id, agentic_user_id, self._use_s2s_endpoint)
 
-    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:
+    def export(  # pylint: disable=too-many-statements
+        self, spans: Sequence[ReadableSpan]
+    ) -> SpanExportResult:
         if self._closed:
             return SpanExportResult.FAILURE
 
@@ -308,7 +310,26 @@ class _Agent365Exporter(SpanExporter):
                             all_delivered_or_stored = False
                         continue
 
-                    result = self._post_once(url, body, headers)
+                    try:
+                        result = self._post_once(url, body, headers)
+                    except Exception as post_exc:  # pylint: disable=broad-except
+                        # _post_once classifies transport errors internally, so
+                        # reaching here means an unexpected failure. Release the
+                        # half-open probe we just acquired so the identity is not
+                        # permanently gated, then persist the payload for replay.
+                        logger.error(
+                            "Unexpected error sending telemetry for tenant %s, agent %s: %s",
+                            tenant_id,
+                            agent_id,
+                            post_exc,
+                        )
+                        self._gate.release_probe(identity)
+                        if self._persist(identity, url, body):
+                            persisted_any = True
+                        else:
+                            all_delivered_or_stored = False
+                        continue
+
                     if result.disposition is DeliveryDisposition.DELIVERED:
                         self._gate.record_success(identity)
                     elif result.disposition is DeliveryDisposition.RETRYABLE:

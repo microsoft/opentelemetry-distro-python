@@ -621,6 +621,24 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return val in ("true", "1", "yes", "on")
 
 
+def coerce_storage_directory(value: Optional[str | Path]) -> Optional[Path]:
+    """Normalize a ``storage_directory`` option to a ``Path`` or ``None``.
+
+    ``None`` selects the platform default path. An explicitly empty or
+    whitespace-only string is rejected with :class:`ValueError` so it is never
+    silently treated as "use the default".
+    """
+    if value is None:
+        return None
+    if isinstance(value, Path):
+        return value
+    if isinstance(value, str):
+        if not value.strip():
+            raise ValueError("storage_directory must be a non-empty path or None")
+        return Path(value)
+    raise ValueError("storage_directory must be a string path, Path, or None")
+
+
 def create_a365_components(
     token_resolver: Callable[[str, str], Optional[str]] | None = None,
     contextual_token_resolver: Callable[[TokenResolverContext], Optional[str]] | None = None,
@@ -681,7 +699,7 @@ def create_a365_components(
             use_s2s_endpoint=options.use_s2s_endpoint,
             max_payload_bytes=options.max_payload_bytes,
             enable_durable_delivery=not options.disable_offline_storage,
-            storage_directory=Path(options.storage_directory) if options.storage_directory else None,
+            storage_directory=coerce_storage_directory(options.storage_directory),
         )
     else:
         logger.warning(

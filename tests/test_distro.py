@@ -938,6 +938,23 @@ class TestA365OfflineStorageKwargs(unittest.TestCase):
         _, exporter_kwargs = exporter_mock.call_args
         self.assertIsNone(exporter_kwargs["storage_directory"])
 
+    @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
+    def test_empty_storage_directory_raises_value_error(self, default_resolver_mock):
+        """An explicitly empty storage_directory must raise ValueError rather
+        than silently defaulting to the platform path."""
+        default_resolver_mock.return_value = lambda aid, tid: "token"
+        with patch(
+            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"
+        ):
+            otel_kwargs = {"span_processors": []}
+            with self.assertRaises(ValueError):
+                _append_a365_components(
+                    True,
+                    otel_kwargs,
+                    enable_observability_exporter=True,
+                    storage_directory="",
+                )
+
 
 class TestA365Components(unittest.TestCase):
     """Tests for A365 enable_a365 flag and _append_a365_components."""

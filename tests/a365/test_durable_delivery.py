@@ -88,3 +88,95 @@ def test_explicit_retry_after_is_clamped_to_cap() -> None:
     assert not gate.try_acquire(key)
     clock.advance(0.1)
     assert gate.try_acquire(key)
+
+
+def test_release_probe_allows_another_probe_to_be_acquired() -> None:
+    """Releasing an in-flight probe should let a fresh probe be acquired."""
+    clock = FakeClock()
+    gate = TransmissionGate(clock=clock, random_fn=lambda: 0.5)
+    key = IdentityKey("t1", "a1", None, False)
+
+    gate.record_retryable_failure(key, retry_after=10)
+    clock.advance(10)
+
+    assert gate.try_acquire(key)
+    # Only one probe may be in flight, so a second acquire is refused.
+    assert not gate.try_acquire(key)
+
+    gate.release_probe(key)
+
+    # After releasing the probe (without changing the retry window) another
+    # probe may be acquired.
+    assert gate.try_acquire(key)
+
+
+def test_release_probe_is_noop_for_unknown_identity() -> None:
+    """Releasing a probe for an unseen identity must not create state or raise."""
+    gate = TransmissionGate(clock=FakeClock(), random_fn=lambda: 0.5)
+    key = IdentityKey("t1", "a1", None, False)
+
+    gate.release_probe(key)
+
+    # The identity has never failed, so a probe should still be acquirable.
+    assert gate.try_acquire(key)
+
+
+def test_release_probe_preserves_retry_window() -> None:
+    """release_probe must not shorten the active backoff window."""
+    clock = FakeClock()
+    gate = TransmissionGate(clock=clock, random_fn=lambda: 0.5)
+    key = IdentityKey("t1", "a1", None, False)
+
+    gate.record_retryable_failure(key, retry_after=30)
+    gate.release_probe(key)
+
+    # Still blocked because the window has not elapsed.
+    assert not gate.try_acquire(key)
+    clock.advance(30)
+    assert gate.try_acquire(key)
+
+
+def test_record_success_resets_backoff_immediately() -> None:
+    """A success should clear the block so the identity can send at once."""
+    clock = FakeClock()
+    gate = TransmissionGate(clock=clock, random_fn=lambda: 0.5)
+    key = IdentityKey("t1", "a1", None, False)
+
+    gate.record_retryable_failure(key, retry_after=3600)
+    assert not gate.try_acquire(key)
+
+    gate.record_success(key)
+
+    # State is fully reset, so a send may proceed without waiting the window.
+    assert gate.try_acquire(key)
+
+
+def test_record_success_resets_failure_count() -> None:
+    """After success, the next failure uses the base backoff, not escalated."""
+    clock = FakeClock()
+    gate = TransmissionGate(clock=clock, random_fn=lambda: 1.0)
+    key = IdentityKey("t1", "a1", None, False)
+
+    # Escalate the failure count several times.
+    for _ in range(4):
+        gate.record_retryable_failure(key, retry_after=None)
+
+    gate.record_success(key)
+
+    # A fresh failure after success blocks only for the base floor window,
+    # proving failure_count was reset to zero.
+    gate.record_retryable_failure(key, retry_after=None)
+    clock.advance(9.999)
+    assert not gate.try_acquire(key)
+    clock.advance(0.001)
+    assert gate.try_acquire(key)
+
+
+def test_record_success_for_unknown_identity_is_noop() -> None:
+    """Recording success for an unseen identity must not raise or block."""
+    gate = TransmissionGate(clock=FakeClock(), random_fn=lambda: 0.5)
+    key = IdentityKey("t1", "a1", None, False)
+
+    gate.record_success(key)
+
+    assert gate.try_acquire(key)

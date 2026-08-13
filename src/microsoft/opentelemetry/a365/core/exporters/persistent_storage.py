@@ -10,6 +10,7 @@ import hashlib
 import logging
 import os
 import sqlite3
+import stat
 import sys
 import tempfile
 import threading
@@ -85,8 +86,13 @@ def _resolve_default_directory() -> Path:
         if xdg:
             base = Path(xdg)
         else:
-            local_state = Path.home() / ".local" / "state"
-            base = local_state if local_state.exists() else Path(tempfile.gettempdir())
+            # Prefer ~/.local/state (created on demand) rather than falling back
+            # to a shared temp dir merely because the path does not exist yet.
+            # Only fall back when the home directory cannot be resolved at all.
+            try:
+                base = Path.home() / ".local" / "state"
+            except (RuntimeError, OSError):
+                base = Path(tempfile.gettempdir())
     return base / "a365-durable-queue" / digest
 
 
@@ -94,8 +100,15 @@ def _ensure_private_directory(directory: Path) -> None:
     """Create the directory with mode 0700, or validate ownership if it exists."""
     if directory.exists():
         if os.name != "nt":
-            st = os.stat(directory)
-            if st.st_uid != os.getuid():
+            # Use a non-symlink-following lstat so a symlinked queue directory
+            # cannot redirect telemetry writes outside a private, caller-owned
+            # location or defeat the ownership check via its target.
+            st = os.lstat(directory)
+            if stat.S_ISLNK(st.st_mode):
+                raise PermissionError(
+                    f"Durable queue directory must not be a symlink: {directory}"
+                )
+            if st.st_uid != os.getuid():  # pylint: disable=no-member
                 raise PermissionError(
                     f"Durable queue directory has unsafe ownership: {directory}"
                 )

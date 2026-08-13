@@ -25,6 +25,12 @@ _logger = logging.getLogger(__name__)
 _MAX_RECORDS_PER_PASS = 10
 _LEASE_SECONDS = 30.0
 
+# Background cadence: even without an explicit wake(), the replay loop re-runs a
+# pass on this interval so a startup backlog larger than one pass (or records
+# left behind by a bounded pass) is eventually drained. Matches the durable
+# design's "wakes on new persisted work and periodically" contract.
+_REPLAY_POLL_INTERVAL_SECONDS = 30.0
+
 
 class ReplayIdentityError(Exception):
     """Raised by the send callback when an identity or token cannot be resolved.
@@ -48,10 +54,12 @@ class ReplayCoordinator:
         storage: PersistentStorage,
         gate: TransmissionGate,
         send: Callable[[DurableRecord], DeliveryResult],
+        poll_interval_seconds: float = _REPLAY_POLL_INTERVAL_SECONDS,
     ) -> None:
         self._storage = storage
         self._gate = gate
         self._send = send
+        self._poll_interval_seconds = poll_interval_seconds
         self._stop_event = threading.Event()
         self._wake_event = threading.Event()
         self._lock = threading.RLock()
@@ -95,16 +103,27 @@ class ReplayCoordinator:
         thread.join(timeout_seconds)
         return not thread.is_alive()
 
-    def run_once(self) -> None:
-        """Claim and process a single bounded replay batch."""
+    def run_once(self) -> bool:
+        """Claim and process a single bounded replay batch.
+
+        Returns ``True`` only when a maximal batch (``_MAX_RECORDS_PER_PASS``)
+        was claimed *and* every record in it reached a terminal state
+        (delivered or permanently dropped). In that case more records may
+        remain and the loop should run again immediately. It returns ``False``
+        for an empty/partial batch, when the pass was stopped early (retryable
+        failure, shutdown, or unexpected error), or when any record was left
+        behind (gate-blocked or released), so the loop falls back to the
+        periodic cadence and does not busy-spin.
+        """
         records = self._storage.claim(_MAX_RECORDS_PER_PASS, _LEASE_SECONDS)
         if not records:
-            return
+            return False
 
+        deleted_count = 0
         for index, record in enumerate(records):
             if self._stop_event.is_set():
                 self._release_remaining(records, index)
-                return
+                return False
 
             identity = self._identity_for(record)
             if not self._gate.try_acquire(identity):
@@ -135,11 +154,12 @@ class ReplayCoordinator:
                 self._release_record(record)
                 self._gate.release_probe(identity)
                 self._release_remaining(records, index + 1)
-                return
+                return False
 
             if result.disposition is DeliveryDisposition.DELIVERED:
                 self._delete_record(record)
                 self._gate.record_success(identity)
+                deleted_count += 1
                 continue
 
             if result.disposition is DeliveryDisposition.PERMANENT:
@@ -150,20 +170,35 @@ class ReplayCoordinator:
                 # healthy; only this particular record was rejected.
                 self._delete_record(record)
                 self._gate.record_success(identity)
+                deleted_count += 1
                 continue
 
             self._gate.record_retryable_failure(identity, result.retry_after)
             self._release_record(record)
             self._release_remaining(records, index + 1)
-            return
+            return False
+
+        # Only request an immediate re-run when we fully drained a maximal
+        # batch; otherwise re-claiming would return records that are still
+        # gated/leased and spin the loop.
+        return (
+            deleted_count == len(records)
+            and len(records) >= _MAX_RECORDS_PER_PASS
+        )
 
     def _run_loop(self) -> None:
         while not self._stop_event.is_set():
-            self._wake_event.wait()
+            # A set wake event returns immediately; otherwise wake on the fixed
+            # background cadence so leftover records are not stranded until an
+            # external wake() arrives.
+            self._wake_event.wait(self._poll_interval_seconds)
             self._wake_event.clear()
             if self._stop_event.is_set():
                 break
-            self.run_once()
+            # Drain consecutive full passes so a startup backlog larger than one
+            # pass is not left at >10 records until the next wake.
+            while not self._stop_event.is_set() and self.run_once():
+                pass
 
     @staticmethod
     def _identity_for(record: DurableRecord) -> IdentityKey:
