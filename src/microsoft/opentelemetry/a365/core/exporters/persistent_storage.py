@@ -117,7 +117,7 @@ def _ensure_private_directory(directory: Path) -> None:
     # Create parents first (no mode enforcement needed for intermediate dirs),
     # then create the final directory with explicit mode so the kernel sets it
     # before any child entry can appear. chmod follows to override a restrictive umask.
-    directory.mkdir(parents=True, exist_ok=True)
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
     if os.name != "nt":
         os.chmod(directory, 0o700)
 
@@ -151,6 +151,24 @@ class PersistentStorage:
         self._conn.execute(_DDL)
         self._conn.execute("COMMIT")
 
+        if os.name != "nt":
+            # WAL journal initialization creates the -wal/-shm sidecars, which can
+            # hold the same OTLP payloads as the DB. Lock the DB and any existing
+            # sidecars to owner-only now; the 0700 directory keeps future sidecars
+            # private on creation.
+            self._restrict_file_permissions()
+
+    def _restrict_file_permissions(self) -> None:
+        """Restrict the DB and any existing WAL/SHM sidecars to owner-only (0600).
+
+        Callers gate this on POSIX; on Windows the durable queue relies on the
+        private (0700) directory for confidentiality.
+        """
+        for suffix in ("", "-wal", "-shm"):
+            sidecar = Path(f"{self.database_path}{suffix}")
+            if sidecar.exists():
+                os.chmod(sidecar, 0o600)
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -169,11 +187,17 @@ class PersistentStorage:
                     (expire_before,),
                 )
 
-                # Capacity check
+                # Capacity check based on live (in-use) pages. SQLite does not
+                # shrink the file on delete; freed pages move to the freelist and
+                # would otherwise be counted as "used", permanently wedging the
+                # queue after a fill -> delete -> refill cycle. Subtracting the
+                # freelist gives the reclaimable, live footprint.
                 row = self._conn.execute(
-                    "SELECT page_count * page_size FROM pragma_page_count(), pragma_page_size()"
+                    "SELECT (page_count - freelist_count) * page_size "
+                    "FROM pragma_page_count(), pragma_freelist_count(), pragma_page_size()"
                 ).fetchone()
-                current_bytes = row[0] if row and row[0] else 0
+                current_bytes = row[0] if row and row[0] is not None else 0
+                current_bytes = max(current_bytes, 0)
                 if current_bytes + len(record.payload.encode()) > self._capacity_bytes:
                     self._conn.execute("ROLLBACK")
                     _logger.error(

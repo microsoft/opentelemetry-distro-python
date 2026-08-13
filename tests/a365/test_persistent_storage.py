@@ -147,6 +147,41 @@ def test_store_rejects_when_capacity_exceeded(tmp_path):
     storage.close()
 
 
+def test_store_reclaims_capacity_after_fill_delete_refill(tmp_path):
+    """Capacity accounting must use live pages, not the file high-water mark.
+
+    Regression: with ``page_count * page_size`` accounting, filling the queue to
+    its cap and then claiming/deleting every record left the freed (freelist)
+    pages counted as "used", because SQLite does not shrink the file on delete.
+    The queue was therefore permanently wedged and rejected all new records.
+    Live-page accounting — ``(page_count - freelist_count) * page_size`` — must
+    reclaim the freed space so new records can be stored again.
+    """
+    storage = PersistentStorage(tmp_path, capacity_bytes=64 * 1024, retention_seconds=3600)
+    payload = "x" * 4000
+
+    # Fill until the capacity cap rejects a store.
+    stored = 0
+    while stored < 500 and storage.store(
+        DurableRecord.new(KEY, "https://example.test", payload)
+    ):
+        stored += 1
+    # A store was actually rejected (we reached the cap, not the loop guard).
+    assert 0 < stored < 500
+
+    # Claim and delete every stored record.
+    while True:
+        claimed = storage.claim(limit=100, lease_seconds=300)
+        if not claimed:
+            break
+        for rec in claimed:
+            assert storage.delete(rec.record_id)
+
+    # The freed space must be reclaimed so new records can be stored again.
+    assert storage.store(DurableRecord.new(KEY, "https://example.test", payload)) is True
+    storage.close()
+
+
 # ---------------------------------------------------------------------------
 # POSIX permissions
 # ---------------------------------------------------------------------------
@@ -158,6 +193,52 @@ def test_storage_permissions_are_private(tmp_path):
     assert stat.S_IMODE((tmp_path / "queue").stat().st_mode) == 0o700
     assert stat.S_IMODE(storage.database_path.stat().st_mode) == 0o600
     storage.close()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
+def test_wal_and_shm_sidecars_are_private(tmp_path):
+    """The DB and its WAL/SHM sidecars must be mode 0600 after journal init.
+
+    WAL mode creates ``queue.db-wal`` and ``queue.db-shm`` sidecars that would
+    otherwise inherit the process umask; they can contain the same OTLP payloads
+    as the DB and must be locked to the owner.
+    """
+    storage = PersistentStorage(tmp_path / "queue")
+    try:
+        for name in ("queue.db", "queue.db-wal", "queue.db-shm"):
+            sidecar = tmp_path / "queue" / name
+            assert sidecar.exists(), name
+            assert stat.S_IMODE(sidecar.stat().st_mode) == 0o600, name
+    finally:
+        storage.close()
+
+
+def test_restrict_file_permissions_locks_db_and_sidecars(tmp_path, monkeypatch):
+    """The helper chmods the DB and any existing WAL/SHM sidecars to 0600.
+
+    Runs on Windows (mocks only ``os.chmod``, not ``os.name``, so ``pathlib`` is
+    unaffected) to make the sidecar hardening verifiable off-POSIX; the real
+    end-to-end modes are checked by the POSIX-only test above.
+    """
+    import microsoft.opentelemetry.a365.core.exporters.persistent_storage as _mod
+
+    storage = PersistentStorage(tmp_path / "queue")
+    try:
+        # Journal init created queue.db plus its -wal/-shm sidecars.
+        for name in ("queue.db", "queue.db-wal", "queue.db-shm"):
+            assert (tmp_path / "queue" / name).exists(), name
+
+        recorded: dict[str, int] = {}
+        monkeypatch.setattr(
+            _mod.os, "chmod", lambda p, m: recorded.__setitem__(os.path.basename(str(p)), m)
+        )
+        storage._restrict_file_permissions()
+
+        assert recorded.get("queue.db") == 0o600
+        assert recorded.get("queue.db-wal") == 0o600
+        assert recorded.get("queue.db-shm") == 0o600
+    finally:
+        storage.close()
 
 
 # ---------------------------------------------------------------------------
