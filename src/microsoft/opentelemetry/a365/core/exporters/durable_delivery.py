@@ -79,7 +79,8 @@ class TransmissionGate:
         with self._lock:
             state = self._states.get(key)
             if state is None:
-                self._states[key] = _GateState(probe_acquired=True)
+                return True
+            if state.blocked_until == 0.0:
                 return True
 
             if self._clock() < state.blocked_until:
@@ -115,8 +116,8 @@ class TransmissionGate:
                 state.probe_acquired = False
 
     def _resolve_retry_delay(self, failure_count: int, retry_after: float | None) -> float:
-        if retry_after is not None:
-            return self._clamp_retry_after(retry_after)
+        if retry_after is not None and retry_after > 0.0:
+            return self._cap_retry_after(retry_after)
         return self._full_jitter_backoff(failure_count)
 
     def _full_jitter_backoff(self, failure_count: int) -> float:
@@ -140,9 +141,7 @@ class TransmissionGate:
             return 1.0
         return fraction
 
-    def _clamp_retry_after(self, retry_after: float) -> float:
-        if retry_after < _RETRY_AFTER_FLOOR_SECONDS:
-            return _RETRY_AFTER_FLOOR_SECONDS
+    def _cap_retry_after(self, retry_after: float) -> float:
         if retry_after > _RETRY_AFTER_CAP_SECONDS:
             return _RETRY_AFTER_CAP_SECONDS
         return retry_after

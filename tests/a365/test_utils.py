@@ -3,6 +3,7 @@
 
 import os
 import unittest
+from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
 from opentelemetry.trace import SpanKind, StatusCode
@@ -215,8 +216,15 @@ class TestParseRetryAfter(unittest.TestCase):
     def test_absent(self):
         self.assertIsNone(parse_retry_after({}))
 
-    def test_http_date_ignored(self):
-        self.assertIsNone(parse_retry_after({"Retry-After": "Wed, 21 Oct 2025 07:28:00 GMT"}))
+    def test_http_date_is_converted_to_relative_seconds(self):
+        now = datetime(2026, 8, 14, 18, 0, tzinfo=timezone.utc)
+        headers = {"Retry-After": "Fri, 14 Aug 2026 18:00:42 GMT"}
+        self.assertEqual(parse_retry_after(headers, now=lambda: now), 42.0)
+
+    def test_past_http_date_returns_non_positive_delta(self):
+        now = datetime(2026, 8, 14, 18, 1, tzinfo=timezone.utc)
+        headers = {"Retry-After": "Fri, 14 Aug 2026 18:00:42 GMT"}
+        self.assertEqual(parse_retry_after(headers, now=lambda: now), -18.0)
 
 
 class TestIsAgent365ExporterEnabled(unittest.TestCase):

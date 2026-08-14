@@ -19,6 +19,8 @@ import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Optional, TypeVar
 from urllib.parse import urlparse
@@ -267,10 +269,13 @@ def build_export_url(endpoint: str, agent_id: str, tenant_id: str, use_s2s_endpo
     return f"https://{endpoint}{endpoint_path}?api-version=1"
 
 
-def parse_retry_after(headers: Mapping[str, str]) -> float | None:
+def parse_retry_after(
+    headers: Mapping[str, str],
+    now: Callable[[], datetime] | None = None,
+) -> float | None:
     """Parse the ``Retry-After`` header value.
 
-    Only numeric (seconds) values are supported. HTTP-date values are ignored.
+    Supports delta-seconds and HTTP-date values.
     """
     retry_after = headers.get("Retry-After")
     if retry_after is None:
@@ -278,7 +283,18 @@ def parse_retry_after(headers: Mapping[str, str]) -> float | None:
     try:
         return float(retry_after)
     except (ValueError, TypeError):
-        return None
+        try:
+            retry_at = parsedate_to_datetime(retry_after)
+        except (TypeError, ValueError, IndexError, OverflowError):
+            return None
+
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+
+        current_time = now() if now is not None else datetime.now(timezone.utc)
+        if current_time.tzinfo is None:
+            current_time = current_time.replace(tzinfo=timezone.utc)
+        return (retry_at - current_time).total_seconds()
 
 
 def is_agent365_exporter_enabled() -> bool:

@@ -55,8 +55,10 @@ class TestTransmissionGate(unittest.TestCase):
     def _gate(self, clock=None):
         return TransmissionGate(clock=clock or FakeClock(), random_fn=lambda: 0.0)
 
-    def test_allows_first_send(self):
-        self.assertTrue(self._gate().try_acquire(KEY))
+    def test_closed_gate_allows_concurrent_sends(self):
+        gate = self._gate()
+        self.assertTrue(gate.try_acquire(KEY))
+        self.assertTrue(gate.try_acquire(KEY))
 
     def test_blocks_after_retryable_failure(self):
         clock = FakeClock()

@@ -47,6 +47,16 @@ def test_gate_isolates_identities() -> None:
     assert gate.try_acquire(second)
 
 
+def test_healthy_acquire_does_not_create_gate_state() -> None:
+    """Healthy sends should remain allocation-free until a failure occurs."""
+    gate = TransmissionGate(clock=FakeClock(), random_fn=lambda: 0.5)
+    key = IdentityKey("t1", "a1", None, False)
+
+    assert gate.try_acquire(key)
+    assert gate.try_acquire(key)
+    assert key not in gate._states  # type: ignore[attr-defined]
+
+
 def test_gate_allows_only_one_half_open_probe() -> None:
     """Only one probe may be in flight when a gate opens."""
     clock = FakeClock()
@@ -60,18 +70,37 @@ def test_gate_allows_only_one_half_open_probe() -> None:
     assert not gate.try_acquire(key)
 
 
-def test_explicit_retry_after_is_clamped_to_floor() -> None:
-    """Retry-After values lower than 10 seconds should be raised to the floor."""
+def test_positive_retry_after_is_honored_without_flooring() -> None:
+    """Positive Retry-After values should keep their exact delay."""
     clock = FakeClock()
     gate = TransmissionGate(clock=clock, random_fn=lambda: 0.5)
     key = IdentityKey("t1", "a1", None, False)
 
-    gate.record_retryable_failure(key, retry_after=1)
+    gate.record_retryable_failure(key, retry_after=1.5)
 
     assert not gate.try_acquire(key)
-    clock.advance(9.9)
+    clock.advance(1.49)
     assert not gate.try_acquire(key)
-    clock.advance(0.1)
+    clock.advance(0.01)
+    assert gate.try_acquire(key)
+
+
+def test_non_positive_retry_after_falls_back_to_jittered_backoff() -> None:
+    """Retry-After values at or below zero should use exponential-jitter backoff."""
+    clock = FakeClock()
+    gate = TransmissionGate(clock=clock, random_fn=lambda: 0.5)
+    key = IdentityKey("t1", "a1", None, False)
+
+    gate.record_retryable_failure(key, retry_after=None)
+    clock.advance(10)
+    assert gate.try_acquire(key)
+
+    gate.record_retryable_failure(key, retry_after=0)
+
+    assert not gate.try_acquire(key)
+    clock.advance(14.99)
+    assert not gate.try_acquire(key)
+    clock.advance(0.01)
     assert gate.try_acquire(key)
 
 
