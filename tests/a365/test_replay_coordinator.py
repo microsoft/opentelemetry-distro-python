@@ -64,9 +64,11 @@ class FakeStorage:
         batches: list[list[DurableRecord]],
         *,
         delete_result: bool = True,
+        delete_results: dict[int, bool] | None = None,
     ) -> None:
         self._batches = [list(batch) for batch in batches]
         self._delete_result = delete_result
+        self._delete_results = delete_results or {}
         self._lock = threading.Lock()
         self.block_event: threading.Event | None = None
         self.claim_calls = 0
@@ -89,7 +91,7 @@ class FakeStorage:
     def delete(self, record_id: int) -> bool:
         with self._lock:
             self.deleted.append(record_id)
-        return self._delete_result
+        return self._delete_results.get(record_id, self._delete_result)
 
     def release(self, record_id: int) -> bool:
         with self._lock:
@@ -173,6 +175,23 @@ def test_delete_failure_after_success_logs_duplicate_risk(caplog) -> None:
     gate.record_success.assert_called_once_with(IDENTITY)
 
 
+def test_full_batch_delete_failure_after_delivered_records_returns_false() -> None:
+    full_batch = [_make_record(i) for i in range(1, 11)]
+    failed_record_id = full_batch[-1].record_id
+    assert failed_record_id is not None
+    storage = FakeStorage([full_batch], delete_results={failed_record_id: False})
+    gate = MagicMock(spec=TransmissionGate)
+    gate.try_acquire.return_value = True
+    coordinator = ReplayCoordinator(
+        storage,
+        gate,
+        send=lambda record: DeliveryResult(DeliveryDisposition.DELIVERED),
+    )
+
+    assert coordinator.run_once() is False
+    assert len(storage.deleted) == 10
+
+
 def test_delete_failure_after_permanent_logs_poison_record_risk(caplog) -> None:
     storage = FakeStorage([[RECORD]], delete_result=False)
     gate = MagicMock(spec=TransmissionGate)
@@ -187,6 +206,23 @@ def test_delete_failure_after_permanent_logs_poison_record_risk(caplog) -> None:
 
     assert "poison record may recur" in caplog.text.lower()
     gate.record_success.assert_called_once_with(IDENTITY)
+
+
+def test_full_batch_delete_failure_after_permanent_records_returns_false() -> None:
+    full_batch = [_make_record(i) for i in range(1, 11)]
+    failed_record_id = full_batch[0].record_id
+    assert failed_record_id is not None
+    storage = FakeStorage([full_batch], delete_results={failed_record_id: False})
+    gate = MagicMock(spec=TransmissionGate)
+    gate.try_acquire.return_value = True
+    coordinator = ReplayCoordinator(
+        storage,
+        gate,
+        send=lambda record: DeliveryResult(DeliveryDisposition.PERMANENT),
+    )
+
+    assert coordinator.run_once() is False
+    assert len(storage.deleted) == 10
 
 
 def test_endpoint_error_retains_record_and_stops_pass(caplog) -> None:
