@@ -798,11 +798,29 @@ class TestA365BatchProcessorKwargs(unittest.TestCase):
         # Always-forwarded enriching kwarg is preserved.
         self.assertIn("suppress_invoke_agent_input", proc_kwargs)
 
-    def test_zero_value_is_forwarded(self):
-        """Falsy-but-not-None integer values must still be forwarded (not dropped)."""
-        proc_kwargs = self._build(max_queue_size=0, max_export_batch_size=0)
-        self.assertEqual(proc_kwargs["max_queue_size"], 0)
-        self.assertEqual(proc_kwargs["max_export_batch_size"], 0)
+    def test_none_values_are_not_forwarded(self):
+        """Explicit None values preserve BatchSpanProcessor defaults."""
+        proc_kwargs = self._build(
+            max_queue_size=None,
+            scheduled_delay_ms=None,
+            exporter_timeout_ms=None,
+            max_export_batch_size=None,
+        )
+        self.assertNotIn("max_queue_size", proc_kwargs)
+        self.assertNotIn("schedule_delay_millis", proc_kwargs)
+        self.assertNotIn("export_timeout_millis", proc_kwargs)
+        self.assertNotIn("max_export_batch_size", proc_kwargs)
+
+    def test_invalid_batch_kwargs_raise_value_error(self):
+        for kwargs in (
+            {"max_queue_size": 0},
+            {"scheduled_delay_ms": 0},
+            {"max_export_batch_size": 0},
+            {"max_queue_size": 10, "max_export_batch_size": 11},
+        ):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaises(ValueError):
+                    self._build(**kwargs)
 
 
 class TestA365OfflineStorageKwargs(unittest.TestCase):

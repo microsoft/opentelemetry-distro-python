@@ -181,6 +181,31 @@ class TestAgent365ExporterExport(unittest.TestCase):
         exporter.shutdown()
 
     @patch.dict(os.environ, {}, clear=True)
+    def test_permanent_first_chunk_stops_identity_but_later_identity_continues(self):
+        exporter = make_exporter()
+        exporter._post_once = MagicMock(side_effect=[_permanent(), _delivered(), _delivered()])
+        first_identity_spans = [
+            _make_span(tenant_id="t1", agent_id="a1", trace_id=1, span_id=1),
+            _make_span(tenant_id="t1", agent_id="a1", trace_id=2, span_id=2),
+        ]
+        later_identity_span = _make_span(tenant_id="t2", agent_id="a2", trace_id=3, span_id=3)
+
+        def split_first_identity(mapped_spans, *_args):
+            if len(mapped_spans) == 2:
+                return [[mapped_spans[0]], [mapped_spans[1]]]
+            return [mapped_spans]
+
+        with patch.object(exporter_module, "chunk_by_size", side_effect=split_first_identity):
+            result = exporter.export([*first_identity_spans, later_identity_span])
+
+        self.assertEqual(result, SpanExportResult.FAILURE)
+        self.assertEqual(exporter._post_once.call_count, 2)
+        second_url = exporter._post_once.call_args_list[1].args[0]
+        self.assertIn("/tenants/t2/", second_url)
+        self.assertIn("/agents/a2/", second_url)
+        exporter.shutdown()
+
+    @patch.dict(os.environ, {}, clear=True)
     def test_token_resolver_called_with_agent_tenant(self):
         resolver = MagicMock(return_value="token123")
         exporter = make_exporter(token_resolver=resolver)

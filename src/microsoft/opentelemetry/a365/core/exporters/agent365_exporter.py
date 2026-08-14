@@ -356,6 +356,7 @@ class _Agent365Exporter(SpanExporter):
                         # payload is undeliverable and is dropped.
                         self._gate.record_success(identity)
                         all_delivered_or_stored = False
+                        break
 
             if persisted_any and self._replay is not None:
                 self._replay.wake()
