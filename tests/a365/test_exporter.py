@@ -409,6 +409,60 @@ class TestAgent365ExporterActiveReplayShutdown(unittest.TestCase):
             storage_close.assert_called_once()
             session_close.assert_called_once()
 
+    @patch.dict(os.environ, {}, clear=True)
+    def test_shutdown_sets_completion_event_when_owner_cleanup_raises_baseexception(self):
+        class CleanupInterrupted(BaseException):
+            pass
+
+        exporter = make_exporter()
+        replay = MagicMock()
+        storage = MagicMock()
+        exporter._replay = replay
+        exporter._storage = storage
+
+        owner_started = threading.Event()
+        owner_errors = []
+
+        def raising_shutdown(_timeout):
+            owner_started.set()
+            raise CleanupInterrupted("owner cleanup interrupted")
+
+        replay.shutdown.side_effect = raising_shutdown
+
+        def call_owner_shutdown():
+            try:
+                exporter.shutdown()
+            except BaseException as exc:  # pragma: no cover - asserted below
+                owner_errors.append(exc)
+
+        owner_thread = threading.Thread(target=call_owner_shutdown)
+        owner_thread.start()
+        self.assertTrue(owner_started.wait(5.0), "shutdown owner never reached replay cleanup")
+
+        follower_done = threading.Event()
+        follower_errors = []
+
+        def call_follower_shutdown():
+            try:
+                exporter.shutdown()
+            except BaseException as exc:  # pragma: no cover - asserted below
+                follower_errors.append(exc)
+            finally:
+                follower_done.set()
+
+        follower_thread = threading.Thread(target=call_follower_shutdown)
+        follower_thread.start()
+
+        owner_thread.join(5.0)
+        follower_thread.join(5.0)
+
+        self.assertFalse(owner_thread.is_alive())
+        self.assertFalse(follower_thread.is_alive(), "future shutdown caller blocked forever")
+        self.assertEqual(len(owner_errors), 1)
+        self.assertIsInstance(owner_errors[0], CleanupInterrupted)
+        self.assertEqual(follower_errors, [])
+        storage.close.assert_not_called()
+
 
 class TestAgent365ExporterS2S(unittest.TestCase):
     @patch.dict(os.environ, {}, clear=True)

@@ -380,9 +380,12 @@ class _Agent365Exporter(SpanExporter):
         event instead of returning early, so every ``shutdown()`` call only
         returns once cleanup has actually finished.
         """
+        owner = False
+        replay: Optional[ReplayCoordinator] = None
+        storage: Optional[PersistentStorage] = None
         with self._lock:
             if self._closed:
-                owner = False
+                pass
             else:
                 self._closed = True
                 owner = True
@@ -397,30 +400,32 @@ class _Agent365Exporter(SpanExporter):
         # export() cannot deadlock against the joining replay thread and so
         # the (possibly long) replay join is never done while holding a lock
         # other callers need merely to observe self._closed.
-        if replay is not None:
-            try:
-                if not replay.shutdown(None):
-                    # Only reachable if shutdown() were somehow invoked from
-                    # the replay thread itself; a thread can never join
-                    # itself. Log it -- this indicates a reentrant call, not
-                    # a timeout -- and fall through to close resources since
-                    # there is no safe way to wait further here.
-                    logger.warning(
-                        "A365 replay coordinator could not be joined from its own thread "
-                        "during shutdown(); proceeding to close durable storage."
-                    )
-            except Exception as e:
-                logger.error("Error shutting down replay coordinator: %s", e)
-        if storage is not None:
-            try:
-                storage.close()
-            except Exception as e:
-                logger.error("Error closing durable storage: %s", e)
         try:
-            self._session.close()
-        except Exception:
-            pass
-        self._shutdown_complete.set()
+            if replay is not None:
+                try:
+                    if not replay.shutdown(None):
+                        # Only reachable if shutdown() were somehow invoked from
+                        # the replay thread itself; a thread can never join
+                        # itself. Log it -- this indicates a reentrant call, not
+                        # a timeout -- and fall through to close resources since
+                        # there is no safe way to wait further here.
+                        logger.warning(
+                            "A365 replay coordinator could not be joined from its own thread "
+                            "during shutdown(); proceeding to close durable storage."
+                        )
+                except Exception as e:
+                    logger.error("Error shutting down replay coordinator: %s", e)
+            if storage is not None:
+                try:
+                    storage.close()
+                except Exception as e:
+                    logger.error("Error closing durable storage: %s", e)
+            try:
+                self._session.close()
+            except Exception:
+                pass
+        finally:
+            self._shutdown_complete.set()
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
         return True
