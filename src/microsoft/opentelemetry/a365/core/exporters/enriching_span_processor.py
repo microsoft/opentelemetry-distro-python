@@ -226,6 +226,12 @@ class _EnrichingBatchSpanProcessor(SpanProcessor):
         # protects the reinit itself, not the state being reinitialized.
         self._fork_reinit_lock = threading.Lock()
 
+        # Declared here for static analysis; _init_state_after_fork resets
+        # these values both now and whenever a child process is initialized.
+        self._accepting = False
+        self._shutdown_requested = False
+        self._shutdown_complete = False
+        self._wake_requested = False
         self._init_state_after_fork()
 
         self._pid = os.getpid()
@@ -387,7 +393,7 @@ class _EnrichingBatchSpanProcessor(SpanProcessor):
             message = "A365 span processor is shutting down; dropping span."
             level = logging.INFO
         else:
-            message = "A365 span queue is full (max_queue_size=%d); dropping span." % self._max_queue_size
+            message = f"A365 span queue is full (max_queue_size={self._max_queue_size}); dropping span."
             level = logging.WARNING
         if suppressed:
             message += (
