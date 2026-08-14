@@ -11,6 +11,8 @@ process-restart scenario the durable queue exists for.
 
 from __future__ import annotations
 
+import threading
+import time
 from unittest.mock import MagicMock
 
 from opentelemetry.sdk.trace.export import SpanExportResult
@@ -22,7 +24,9 @@ from microsoft.opentelemetry.a365.core.exporters.agent365_exporter import (
 from microsoft.opentelemetry.a365.core.exporters.durable_delivery import (
     DeliveryDisposition,
     DeliveryResult,
+    IdentityKey,
 )
+from microsoft.opentelemetry.a365.core.exporters.persistent_storage import DurableRecord
 
 
 def _make_span(
@@ -200,4 +204,61 @@ def test_restart_replays_record_persisted_after_token_failure(tmp_path):
 
     assert _queue_size(exporter_b._storage) == 0
     exporter_b._post_once.assert_called_once()
+    exporter_b.shutdown()
+
+
+def test_shutdown_blocks_until_active_replay_send_completes_then_removes_record(tmp_path):
+    """Regression for exporter/replay shutdown ownership: exporter.shutdown()
+    must not close storage/session while a replay send is in flight. If it
+    did, the delete() that follows the DELIVERED result below would silently
+    fail against a closed connection, leaving the record duplicated/orphaned
+    for the next restart instead of cleanly removed.
+    """
+    storage_dir = tmp_path / "queue"
+
+    exporter_a = _Agent365Exporter(
+        token_resolver=lambda a, t: "token",
+        storage_directory=storage_dir,
+        enable_durable_delivery=True,
+    )
+    exporter_a._ensure_durable_initialized()
+    identity = IdentityKey(tenant_id="t1", agent_id="a1", agentic_user_id=None, use_s2s_endpoint=False)
+    assert exporter_a._storage.store(DurableRecord.new(identity, '{"resourceSpans":[]}'))
+    assert _queue_size(exporter_a._storage) == 1
+
+    release_send = threading.Event()
+    entered_send = threading.Event()
+
+    def blocking_send(record):
+        del record
+        entered_send.set()
+        release_send.wait()
+        return DeliveryResult(DeliveryDisposition.DELIVERED)
+
+    # Patch the coordinator's own _send (read fresh per run_once() call, not
+    # yet captured by the not-yet-started thread) before starting it, so the
+    # very first pass -- with a fresh, never-throttled gate -- blocks here.
+    exporter_a._replay._send = blocking_send
+    exporter_a._replay.start()
+    assert entered_send.wait(5.0), "replay never reached the blocking send"
+
+    shutdown_thread = threading.Thread(target=exporter_a.shutdown)
+    shutdown_thread.start()
+    try:
+        time.sleep(0.2)
+        assert shutdown_thread.is_alive(), "shutdown() must wait for the active replay send"
+    finally:
+        release_send.set()
+        shutdown_thread.join(5.0)
+    assert not shutdown_thread.is_alive()
+
+    # Restart against the same directory: the record must be delivered and
+    # removed, not stuck leased or resurrected by a corrupted queue.
+    exporter_b = _Agent365Exporter(
+        token_resolver=lambda a, t: "fresh-token",
+        storage_directory=storage_dir,
+        enable_durable_delivery=True,
+    )
+    exporter_b._ensure_durable_initialized()
+    assert _queue_size(exporter_b._storage) == 0
     exporter_b.shutdown()

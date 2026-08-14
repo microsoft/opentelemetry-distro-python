@@ -72,9 +72,6 @@ DEFAULT_ENDPOINT_URL = "https://agent365.svc.cloud.microsoft"
 _403_DOCS_URL = "https://aka.ms/a365-403"
 _403_FOUNDRY_URL = "https://aka.ms/foundry-grant-agent-365-permissions"
 
-# Bound how long shutdown waits for the replay thread to stop.
-_REPLAY_SHUTDOWN_TIMEOUT_SECONDS = 5.0
-
 logger = logging.getLogger(__name__)
 
 
@@ -107,6 +104,10 @@ class _Agent365Exporter(SpanExporter):
         self._session = requests.Session()
         self._closed = False
         self._lock = threading.Lock()
+        # Set once the single shutdown owner finishes closing storage/session.
+        # Concurrent shutdown() callers wait on this instead of returning
+        # early, so every caller sees resources closed before it returns.
+        self._shutdown_complete = threading.Event()
         self._token_resolver = token_resolver
         self._contextual_token_resolver = contextual_token_resolver
         self._cluster_category = cluster_category
@@ -368,19 +369,46 @@ class _Agent365Exporter(SpanExporter):
             return SpanExportResult.FAILURE
 
     def shutdown(self) -> None:
+        """Stop durable delivery and close storage/session exactly once.
+
+        The first caller becomes the single cleanup owner: it signals the
+        replay coordinator to stop and -- critically -- waits (unbounded)
+        until the replay thread has actually exited before closing storage
+        or the HTTP session, so an in-flight replay send can never observe a
+        closed resource. Concurrent callers (including a caller that arrives
+        after ownership was already claimed) wait on the same completion
+        event instead of returning early, so every ``shutdown()`` call only
+        returns once cleanup has actually finished.
+        """
         with self._lock:
             if self._closed:
-                return
-            self._closed = True
-            replay = self._replay
-            storage = self._storage
+                owner = False
+            else:
+                self._closed = True
+                owner = True
+                replay = self._replay
+                storage = self._storage
 
-        # Stop the replay thread and close resources outside the lock so a
-        # concurrent export cannot deadlock against the joining replay thread.
-        # The _closed guard above makes this run exactly once.
+        if not owner:
+            self._shutdown_complete.wait()
+            return
+
+        # Everything below runs outside self._lock, both so a concurrent
+        # export() cannot deadlock against the joining replay thread and so
+        # the (possibly long) replay join is never done while holding a lock
+        # other callers need merely to observe self._closed.
         if replay is not None:
             try:
-                replay.shutdown(_REPLAY_SHUTDOWN_TIMEOUT_SECONDS)
+                if not replay.shutdown(None):
+                    # Only reachable if shutdown() were somehow invoked from
+                    # the replay thread itself; a thread can never join
+                    # itself. Log it -- this indicates a reentrant call, not
+                    # a timeout -- and fall through to close resources since
+                    # there is no safe way to wait further here.
+                    logger.warning(
+                        "A365 replay coordinator could not be joined from its own thread "
+                        "during shutdown(); proceeding to close durable storage."
+                    )
             except Exception as e:
                 logger.error("Error shutting down replay coordinator: %s", e)
         if storage is not None:
@@ -392,6 +420,7 @@ class _Agent365Exporter(SpanExporter):
             self._session.close()
         except Exception:
             pass
+        self._shutdown_complete.set()
 
     def force_flush(self, timeout_millis: int = 30000) -> bool:
         return True

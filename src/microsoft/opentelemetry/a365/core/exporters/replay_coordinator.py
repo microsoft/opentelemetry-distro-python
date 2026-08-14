@@ -101,14 +101,32 @@ class ReplayCoordinator:
         """Wake the replay thread to run another pass."""
         self._wake_event.set()
 
-    def shutdown(self, timeout_seconds: float) -> bool:
-        """Stop the replay thread and wait up to *timeout_seconds* for it."""
+    def shutdown(self, timeout_seconds: float | None = None) -> bool:
+        """Signal the replay thread to stop and wait for it to exit.
+
+        ``timeout_seconds=None`` (the default) waits indefinitely: the caller
+        decides how long "long enough" is, so this primitive never silently
+        gives up and reports success while the thread is still running a
+        pass. A finite value performs a bounded wait instead and returns
+        whether the thread had exited by the deadline; the stop request
+        itself is always recorded regardless of the timeout, so a later
+        bounded or unbounded call will still observe (and can wait out) the
+        same in-progress shutdown.
+
+        Safe to call concurrently from multiple threads. A thread can never
+        join itself, so a call made from the replay thread itself (e.g. via
+        an unexpected reentrant callback) returns ``False`` immediately
+        without blocking or raising -- the stop request is still recorded,
+        but the caller cannot safely wait here for its own thread to exit.
+        """
         with self._lock:
             thread = self._thread
             self._stop_event.set()
             self._wake_event.set()
         if thread is None:
             return True
+        if thread is threading.current_thread():
+            return False
         thread.join(timeout_seconds)
         return not thread.is_alive()
 

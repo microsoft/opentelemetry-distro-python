@@ -2,7 +2,11 @@
 # Licensed under the MIT License.
 
 import os
+import tempfile
+import threading
+import time
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import microsoft.opentelemetry.a365.core.exporters.agent365_exporter as exporter_module
@@ -15,6 +19,7 @@ from microsoft.opentelemetry.a365.core.exporters.agent365_exporter import (
 from microsoft.opentelemetry.a365.core.exporters.durable_delivery import (
     DeliveryDisposition,
     DeliveryResult,
+    IdentityKey,
 )
 from microsoft.opentelemetry.a365.core.exporters.persistent_storage import DurableRecord
 
@@ -294,6 +299,115 @@ class TestAgent365ExporterShutdown(unittest.TestCase):
         replay.shutdown.assert_called_once()
         storage.close.assert_called_once()
         session.close.assert_called_once()
+
+
+class TestAgent365ExporterActiveReplayShutdown(unittest.TestCase):
+    """Active replay work must never observe closed storage/session, and
+    concurrent exporter.shutdown() callers must close resources exactly once.
+
+    These use a real ReplayCoordinator/PersistentStorage (not mocks) so the
+    thread ordering, not just call counts, is what is actually verified.
+    """
+
+    def _make_durable_exporter_with_pending_record(self, storage_dir):
+        exporter = _Agent365Exporter(
+            token_resolver=lambda a, t: "token",
+            storage_directory=storage_dir,
+            enable_durable_delivery=True,
+        )
+        exporter._ensure_durable_initialized()
+        identity = IdentityKey(
+            tenant_id="t1", agent_id="a1", agentic_user_id=None, use_s2s_endpoint=False
+        )
+        stored = exporter._storage.store(DurableRecord.new(identity, '{"resourceSpans":[]}'))
+        self.assertTrue(stored)
+        return exporter
+
+    @staticmethod
+    def _block_replay_send(exporter):
+        """Make the *coordinator's* send callable block on an event.
+
+        Patching ``coordinator._send`` (read fresh on every ``run_once()``
+        call) rather than ``exporter._replay_record`` (already captured by
+        value when the coordinator was constructed) so the blocking stub is
+        guaranteed to be what the replay thread actually invokes.
+        """
+        entered = threading.Event()
+        release = threading.Event()
+
+        def blocking_send(record):
+            del record
+            entered.set()
+            release.wait()
+            return _delivered()
+
+        exporter._replay._send = blocking_send
+        return entered, release
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_shutdown_waits_for_active_replay_send_before_closing_storage_and_session(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exporter = self._make_durable_exporter_with_pending_record(Path(tmp))
+            entered, release = self._block_replay_send(exporter)
+
+            storage_close = MagicMock(wraps=exporter._storage.close)
+            exporter._storage.close = storage_close
+            session_close = MagicMock(wraps=exporter._session.close)
+            exporter._session.close = session_close
+
+            exporter._replay.start()
+            self.assertTrue(entered.wait(5.0), "replay never reached the blocking send")
+
+            shutdown_thread = threading.Thread(target=exporter.shutdown)
+            shutdown_thread.start()
+            try:
+                # Outlast the old fixed five-second bounded join: a correct
+                # implementation must keep waiting for the active replay send
+                # indefinitely instead of giving up and closing anyway.
+                time.sleep(5.5)
+                self.assertTrue(shutdown_thread.is_alive())
+                storage_close.assert_not_called()
+                session_close.assert_not_called()
+            finally:
+                release.set()
+                shutdown_thread.join(5.0)
+
+            self.assertFalse(shutdown_thread.is_alive())
+            storage_close.assert_called_once()
+            session_close.assert_called_once()
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_concurrent_shutdown_callers_close_storage_and_session_exactly_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exporter = self._make_durable_exporter_with_pending_record(Path(tmp))
+            entered, release = self._block_replay_send(exporter)
+
+            storage_close = MagicMock(wraps=exporter._storage.close)
+            exporter._storage.close = storage_close
+            session_close = MagicMock(wraps=exporter._session.close)
+            exporter._session.close = session_close
+
+            exporter._replay.start()
+            self.assertTrue(entered.wait(5.0), "replay never reached the blocking send")
+
+            shutdown_threads = [threading.Thread(target=exporter.shutdown) for _ in range(2)]
+            for thread in shutdown_threads:
+                thread.start()
+            try:
+                time.sleep(0.3)
+                for thread in shutdown_threads:
+                    self.assertTrue(thread.is_alive())
+                storage_close.assert_not_called()
+                session_close.assert_not_called()
+            finally:
+                release.set()
+                for thread in shutdown_threads:
+                    thread.join(5.0)
+
+            for thread in shutdown_threads:
+                self.assertFalse(thread.is_alive())
+            storage_close.assert_called_once()
+            session_close.assert_called_once()
 
 
 class TestAgent365ExporterS2S(unittest.TestCase):

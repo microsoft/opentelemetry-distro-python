@@ -345,6 +345,45 @@ def test_shutdown_is_bounded_and_idempotent() -> None:
         coordinator.shutdown(1.0)
 
 
+def test_shutdown_default_timeout_waits_unbounded_for_active_work() -> None:
+    """shutdown() with no argument (the new default) must block until the
+    thread actually exits, not return early while replay work is active."""
+    storage = FakeStorage([[RECORD]])
+    storage.block_event = threading.Event()
+    gate = MagicMock(spec=TransmissionGate)
+    gate.try_acquire.return_value = True
+    coordinator = ReplayCoordinator(
+        storage,
+        gate,
+        send=lambda record: DeliveryResult(DeliveryDisposition.DELIVERED),
+    )
+
+    coordinator.start()
+    try:
+        assert wait_until(lambda: storage.claim_calls >= 1)
+
+        result: dict[str, bool] = {}
+
+        def call_default_shutdown() -> None:
+            result["stopped"] = coordinator.shutdown()
+
+        shutdown_thread = threading.Thread(target=call_default_shutdown)
+        shutdown_thread.start()
+
+        # The replay thread is still blocked inside claim(); the unbounded
+        # shutdown() call must still be waiting, not have returned already.
+        time.sleep(0.2)
+        assert shutdown_thread.is_alive()
+
+        storage.block_event.set()
+        shutdown_thread.join(2.0)
+        assert not shutdown_thread.is_alive()
+        assert result["stopped"] is True
+    finally:
+        storage.block_event.set()
+        coordinator.shutdown(1.0)
+
+
 def test_gate_blocked_releases_record_without_send() -> None:
     """When the gate blocks an identity, the record is released without calling send."""
     storage = FakeStorage([[RECORD]])
