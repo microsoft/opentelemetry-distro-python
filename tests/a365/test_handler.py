@@ -142,9 +142,7 @@ class TestCreateA365ComponentsOfflineStorage(unittest.TestCase):
     def test_disable_offline_storage_forwarded_to_exporter(self):
         from pathlib import Path
 
-        with patch(
-            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"
-        ) as exporter_mock:
+        with patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
             exporter_mock.return_value = MagicMock()
             create_a365_components(disable_offline_storage=True)
         _, kwargs = exporter_mock.call_args
@@ -154,9 +152,7 @@ class TestCreateA365ComponentsOfflineStorage(unittest.TestCase):
     def test_storage_directory_forwarded_to_exporter_as_path(self):
         from pathlib import Path
 
-        with patch(
-            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"
-        ) as exporter_mock:
+        with patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
             exporter_mock.return_value = MagicMock()
             create_a365_components(storage_directory="C:\\telemetry")
         _, kwargs = exporter_mock.call_args
@@ -164,9 +160,7 @@ class TestCreateA365ComponentsOfflineStorage(unittest.TestCase):
 
     @patch.dict(os.environ, {"ENABLE_A365_OBSERVABILITY_EXPORTER": "true"})
     def test_durable_delivery_enabled_by_default(self):
-        with patch(
-            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"
-        ) as exporter_mock:
+        with patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
             exporter_mock.return_value = MagicMock()
             create_a365_components()
         _, kwargs = exporter_mock.call_args
@@ -174,9 +168,7 @@ class TestCreateA365ComponentsOfflineStorage(unittest.TestCase):
 
     @patch.dict(os.environ, {"ENABLE_A365_OBSERVABILITY_EXPORTER": "true"})
     def test_storage_directory_none_by_default(self):
-        with patch(
-            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"
-        ) as exporter_mock:
+        with patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
             exporter_mock.return_value = MagicMock()
             create_a365_components()
         _, kwargs = exporter_mock.call_args

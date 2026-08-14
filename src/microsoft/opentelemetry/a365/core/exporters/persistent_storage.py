@@ -23,7 +23,7 @@ from microsoft.opentelemetry.a365.core.exporters.durable_delivery import Identit
 _logger = logging.getLogger(__name__)
 
 _DEFAULT_CAPACITY_BYTES = 50 * 1024 * 1024  # 50 MB
-_DEFAULT_RETENTION_SECONDS = 2 * 24 * 3600   # 2 days
+_DEFAULT_RETENTION_SECONDS = 2 * 24 * 3600  # 2 days
 
 _SCHEMA_VERSION = 2
 
@@ -75,9 +75,7 @@ class DurableRecord:
 
 
 def _resolve_default_directory() -> Path:
-    digest = hashlib.sha256(
-        (getpass.getuser() + sys.executable + str(Path.cwd())).encode()
-    ).hexdigest()[:16]
+    digest = hashlib.sha256((getpass.getuser() + sys.executable + str(Path.cwd())).encode()).hexdigest()[:16]
     if sys.platform == "win32":
         base = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir()))
     else:
@@ -104,13 +102,9 @@ def _ensure_private_directory(directory: Path) -> None:
             # location or defeat the ownership check via its target.
             st = os.lstat(directory)
             if stat.S_ISLNK(st.st_mode):
-                raise PermissionError(
-                    f"Durable queue directory must not be a symlink: {directory}"
-                )
+                raise PermissionError(f"Durable queue directory must not be a symlink: {directory}")
             if st.st_uid != os.getuid():  # pylint: disable=no-member
-                raise PermissionError(
-                    f"Durable queue directory has unsafe ownership: {directory}"
-                )
+                raise PermissionError(f"Durable queue directory has unsafe ownership: {directory}")
             os.chmod(directory, 0o700)
         return
     # Create parents first (no mode enforcement needed for intermediate dirs),
@@ -139,9 +133,7 @@ class PersistentStorage:
 
         self.database_path = self._directory / "queue.db"
         # isolation_level=None → autocommit; all transactions are explicit.
-        self._conn = sqlite3.connect(
-            str(self.database_path), check_same_thread=False, isolation_level=None
-        )
+        self._conn = sqlite3.connect(str(self.database_path), check_same_thread=False, isolation_level=None)
         if os.name != "nt":
             os.chmod(self.database_path, 0o600)
 
@@ -360,9 +352,7 @@ class PersistentStorage:
         with self._lock:
             try:
                 self._conn.execute("BEGIN IMMEDIATE")
-                cur = self._conn.execute(
-                    "DELETE FROM durable_records WHERE id = ?", (record_id,)
-                )
+                cur = self._conn.execute("DELETE FROM durable_records WHERE id = ?", (record_id,))
                 found = cur.rowcount > 0
                 self._conn.execute("COMMIT")
                 return found

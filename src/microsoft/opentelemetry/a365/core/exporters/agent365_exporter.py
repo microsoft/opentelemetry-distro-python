@@ -140,9 +140,7 @@ class _Agent365Exporter(SpanExporter):
             try:
                 storage = PersistentStorage(directory=self._storage_directory)
             except Exception as e:
-                logger.error(
-                    "Durable delivery disabled: failed to initialize persistent storage: %s", e
-                )
+                logger.error("Durable delivery disabled: failed to initialize persistent storage: %s", e)
                 self._enable_durable_delivery = False
                 return
             self._storage = storage
@@ -186,9 +184,7 @@ class _Agent365Exporter(SpanExporter):
         assert self._token_resolver is not None
         return self._token_resolver(record.agent_id, record.tenant_id)
 
-    def _identity_key(
-        self, tenant_id: str, agent_id: str, activities: Sequence[ReadableSpan]
-    ) -> IdentityKey:
+    def _identity_key(self, tenant_id: str, agent_id: str, activities: Sequence[ReadableSpan]) -> IdentityKey:
         """Build the durable-delivery identity for a partitioned span group."""
         agentic_user_id: Optional[str] = None
         if activities:
@@ -205,13 +201,9 @@ class _Agent365Exporter(SpanExporter):
     @staticmethod
     def _ensure_https_replay_url(url: str) -> None:
         if urlparse(url).scheme.lower() != "https":
-            raise ReplayEndpointError(
-                f"Replay endpoint must use HTTPS before resolving a bearer token: {url}"
-            )
+            raise ReplayEndpointError(f"Replay endpoint must use HTTPS before resolving a bearer token: {url}")
 
-    def export(  # pylint: disable=too-many-statements
-        self, spans: Sequence[ReadableSpan]
-    ) -> SpanExportResult:
+    def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:  # pylint: disable=too-many-statements
         if self._closed:
             return SpanExportResult.FAILURE
 
@@ -541,13 +533,11 @@ class _Agent365Exporter(SpanExporter):
             token = self._resolve_token_for_replay(record)
         except Exception as e:
             raise ReplayIdentityError(
-                f"Token resolution failed during replay for agent {record.agent_id}, "
-                f"tenant {record.tenant_id}: {e}"
+                f"Token resolution failed during replay for agent {record.agent_id}, " f"tenant {record.tenant_id}: {e}"
             ) from e
         if not token:
             raise ReplayIdentityError(
-                f"No token resolved during replay for agent {record.agent_id}, "
-                f"tenant {record.tenant_id}."
+                f"No token resolved during replay for agent {record.agent_id}, " f"tenant {record.tenant_id}."
             )
         headers: dict[str, str | bytes] = {
             "content-type": "application/json",
@@ -572,7 +562,6 @@ class _Agent365Exporter(SpanExporter):
         """
         # Local imports to avoid pulling sdkstats into the exporter module's
         # import graph for consumers that don't use this package.
-        from urllib.parse import urlparse
         from microsoft.opentelemetry._sdkstats._constants import ENDPOINT_A365
         from microsoft.opentelemetry._sdkstats._utils import (
             THROTTLE_STATUS_CODES,

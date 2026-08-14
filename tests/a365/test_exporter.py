@@ -316,9 +316,7 @@ class TestAgent365ExporterActiveReplayShutdown(unittest.TestCase):
             enable_durable_delivery=True,
         )
         exporter._ensure_durable_initialized()
-        identity = IdentityKey(
-            tenant_id="t1", agent_id="a1", agentic_user_id=None, use_s2s_endpoint=False
-        )
+        identity = IdentityKey(tenant_id="t1", agent_id="a1", agentic_user_id=None, use_s2s_endpoint=False)
         stored = exporter._storage.store(DurableRecord.new(identity, '{"resourceSpans":[]}'))
         self.assertTrue(stored)
         return exporter
@@ -719,8 +717,7 @@ class TestAgent365ExporterDurableDelivery(unittest.TestCase):
         sent_url = exporter._post_once.call_args[0][0]
         self.assertEqual(
             sent_url,
-            "https://current.example.test/observability/tenants/t1/otlp/agents/a1/traces"
-            "?api-version=1",
+            "https://current.example.test/observability/tenants/t1/otlp/agents/a1/traces" "?api-version=1",
         )
         exporter.shutdown()
 

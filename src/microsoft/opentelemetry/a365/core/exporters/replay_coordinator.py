@@ -162,9 +162,7 @@ class ReplayCoordinator:
             except ReplayIdentityError as exc:
                 # Per-identity token/credential failure: release this record and
                 # its gate probe, but continue processing the rest of the batch.
-                _logger.debug(
-                    "Replay identity error for record %s: %s", record.record_id, exc
-                )
+                _logger.debug("Replay identity error for record %s: %s", record.record_id, exc)
                 self._release_record(record)
                 self._gate.release_probe(identity)
                 continue
@@ -220,10 +218,7 @@ class ReplayCoordinator:
         # Only request an immediate re-run when we fully drained a maximal
         # batch; otherwise re-claiming would return records that are still
         # gated/leased and spin the loop.
-        return (
-            deleted_count == len(records)
-            and len(records) >= _MAX_RECORDS_PER_PASS
-        )
+        return deleted_count == len(records) and len(records) >= _MAX_RECORDS_PER_PASS
 
     def _run_loop(self) -> None:
         while not self._stop_event.is_set():

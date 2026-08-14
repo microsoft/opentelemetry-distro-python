@@ -127,4 +127,3 @@ Tests cover:
 - permanent failures deleting stored records
 - idempotent shutdown and replay-thread termination
 - option propagation through both distro and helper construction paths
-

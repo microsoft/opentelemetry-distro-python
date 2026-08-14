@@ -447,4 +447,3 @@ Expected: no changes.
 git add src tests README.md A365_DOCUMENTATION.md CHANGELOG.md
 git commit -m "Validate A365 durable delivery" -m "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
 ```
-

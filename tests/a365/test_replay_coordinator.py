@@ -22,13 +22,13 @@ from microsoft.opentelemetry.a365.core.exporters.replay_coordinator import (
     ReplayIdentityError,
 )
 
-
 IDENTITY = IdentityKey(
     tenant_id="tenant-1",
     agent_id="agent-1",
     agentic_user_id=None,
     use_s2s_endpoint=False,
 )
+
 
 def _record_kwargs(record_id: int, payload: str, created_at: float) -> dict[str, object]:
     kwargs: dict[str, object] = {
@@ -571,8 +571,8 @@ def test_run_loop_survives_unexpected_exception_from_run_once() -> None:
     coordinator.start()
     try:
         # The thread must survive the injected fault and process the second pass.
-        assert wait_until(lambda: storage.deleted == [RECORD.record_id], timeout=3.0), (
-            "replay thread did not recover after unexpected exception from run_once"
-        )
+        assert wait_until(
+            lambda: storage.deleted == [RECORD.record_id], timeout=3.0
+        ), "replay thread did not recover after unexpected exception from run_once"
     finally:
         coordinator.shutdown(1.0)

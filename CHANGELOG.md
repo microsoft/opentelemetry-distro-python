@@ -15,6 +15,10 @@
   Set `a365_exporter_disable_offline_storage=True` to opt out.
   Stored payloads are unencrypted; restrict the storage path to the service account, especially
   when `enable_sensitive_data=True` (payloads may contain prompts or completions).
+  Replay reconstructs the current HTTPS export endpoint and bearer token at send time rather
+  than reusing a stale URL, permanently-rejected or malformed ("poison") records are discarded
+  instead of retried forever, and `shutdown()` is drain-safe: it waits for any in-flight replay
+  send to finish before closing the durable store and HTTP session (parity with `.NET` PR #137).
 
 # 1.3.7 (2026-08-05)
 ### Features Added

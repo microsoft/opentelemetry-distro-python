@@ -253,9 +253,7 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
     a365_scheduled_delay_ms = kwargs.pop(A365_SCHEDULED_DELAY_MS_ARG, None)
     a365_exporter_timeout_ms = kwargs.pop(A365_EXPORTER_TIMEOUT_MS_ARG, None)
     a365_max_export_batch_size = kwargs.pop(A365_MAX_EXPORT_BATCH_SIZE_ARG, None)
-    a365_exporter_disable_offline_storage: bool = bool(
-        kwargs.pop(A365_EXPORTER_DISABLE_OFFLINE_STORAGE_ARG, False)
-    )
+    a365_exporter_disable_offline_storage: bool = bool(kwargs.pop(A365_EXPORTER_DISABLE_OFFLINE_STORAGE_ARG, False))
     a365_exporter_storage_directory = kwargs.pop(A365_EXPORTER_STORAGE_DIRECTORY_ARG, None)
 
     enable_spectra: bool = bool(kwargs.pop(ENABLE_SPECTRA_ARG, False))
@@ -492,11 +490,7 @@ def _validate_a365_batch_options(
         raise ValueError("scheduled_delay_ms must be at least 1")
     if max_export_batch_size is not None and max_export_batch_size < 1:
         raise ValueError("max_export_batch_size must be at least 1")
-    if (
-        max_queue_size is not None
-        and max_export_batch_size is not None
-        and max_export_batch_size > max_queue_size
-    ):
+    if max_queue_size is not None and max_export_batch_size is not None and max_export_batch_size > max_queue_size:
         raise ValueError("max_export_batch_size must not exceed max_queue_size")
 
 

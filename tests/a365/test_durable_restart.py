@@ -168,8 +168,7 @@ def test_restart_replays_using_current_exporter_endpoint_settings(tmp_path):
 
     assert _queue_size(exporter_b._storage) == 0
     assert captured["url"] == (
-        "https://current.example.test/observability/tenants/t1/otlp/agents/a1/traces"
-        "?api-version=1"
+        "https://current.example.test/observability/tenants/t1/otlp/agents/a1/traces" "?api-version=1"
     )
     exporter_b.shutdown()
 

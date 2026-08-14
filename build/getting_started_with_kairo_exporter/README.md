@@ -109,21 +109,21 @@ Send a custom activity with the message and correct recipient object. Other fiel
   "timestamp": "2025-09-18T22:21:54.612Z",
   "channelId": "msteams",
   "serviceUrl": "http://localhost:56150/_connector",
-  "recipient": 
-  { 
-            "id": "a365testingagent@testcsaaa.onmicrosoft.com", 
-            "name": "A365 Testing Agent", 
+  "recipient":
+  {
+            "id": "a365testingagent@testcsaaa.onmicrosoft.com",
+            "name": "A365 Testing Agent",
             "agenticUserId": "ea1a172b-f443-4ee0-b8a1-27c7ab7ea9e5",
             "agenticAppId": "933f6053-d249-4479-8c0b-78ab25424002",
-            "tenantId": "5369a35c-46a5-4677-8ff9-2e65587654e7", 
-            "role": "agenticUser" 
-    }, 
-    "from": 
-    {  
-        "id": "29:1sH5NArUwkWAX-VmfHH3cfem2S89f2nB0N6aJ5zEjBoxT17fhSMdlYu_55ZyR8_OKFxS3BMnaGldHH3wdf_9K4Q",  
-        "name": "UserName",  
-        "aadObjectId": "03f4dd93-7e1e-41d6-bf7c-f211f9e96a13",  
-        "role": "user"  
+            "tenantId": "5369a35c-46a5-4677-8ff9-2e65587654e7",
+            "role": "agenticUser"
+    },
+    "from":
+    {
+        "id": "29:1sH5NArUwkWAX-VmfHH3cfem2S89f2nB0N6aJ5zEjBoxT17fhSMdlYu_55ZyR8_OKFxS3BMnaGldHH3wdf_9K4Q",
+        "name": "UserName",
+        "aadObjectId": "03f4dd93-7e1e-41d6-bf7c-f211f9e96a13",
+        "role": "user"
     },
   "conversation": {
     "id": "__PERSONAL_CHAT_ID__",

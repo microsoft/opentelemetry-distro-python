@@ -891,9 +891,7 @@ class TestA365OfflineStorageKwargs(unittest.TestCase):
     def test_disable_offline_storage_true_disables_durable_delivery(self, default_resolver_mock):
         """disable_offline_storage=True maps to enable_durable_delivery=False on _Agent365Exporter."""
         default_resolver_mock.return_value = lambda aid, tid: "token"
-        with patch(
-            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"
-        ) as exporter_mock:
+        with patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
             otel_kwargs = {"span_processors": []}
             _append_a365_components(
                 True,
@@ -908,9 +906,7 @@ class TestA365OfflineStorageKwargs(unittest.TestCase):
     def test_disable_offline_storage_false_enables_durable_delivery(self, default_resolver_mock):
         """disable_offline_storage=False (default) maps to enable_durable_delivery=True."""
         default_resolver_mock.return_value = lambda aid, tid: "token"
-        with patch(
-            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"
-        ) as exporter_mock:
+        with patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
             otel_kwargs = {"span_processors": []}
             _append_a365_components(
                 True,
@@ -927,9 +923,7 @@ class TestA365OfflineStorageKwargs(unittest.TestCase):
         from pathlib import Path
 
         default_resolver_mock.return_value = lambda aid, tid: "token"
-        with patch(
-            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"
-        ) as exporter_mock:
+        with patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
             otel_kwargs = {"span_processors": []}
             _append_a365_components(
                 True,
@@ -944,9 +938,7 @@ class TestA365OfflineStorageKwargs(unittest.TestCase):
     def test_storage_directory_none_by_default(self, default_resolver_mock):
         """storage_directory defaults to None when not provided."""
         default_resolver_mock.return_value = lambda aid, tid: "token"
-        with patch(
-            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"
-        ) as exporter_mock:
+        with patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
             otel_kwargs = {"span_processors": []}
             _append_a365_components(
                 True,
@@ -961,9 +953,7 @@ class TestA365OfflineStorageKwargs(unittest.TestCase):
         """An explicitly empty storage_directory must raise ValueError rather
         than silently defaulting to the platform path."""
         default_resolver_mock.return_value = lambda aid, tid: "token"
-        with patch(
-            "microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"
-        ):
+        with patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"):
             otel_kwargs = {"span_processors": []}
             with self.assertRaises(ValueError):
                 _append_a365_components(

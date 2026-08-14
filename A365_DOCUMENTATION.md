@@ -100,6 +100,12 @@ Key defaults and limits:
 
 The default path is a sub-directory of the platform's local app data folder, isolated per process to avoid collisions.
 
+**Replay behavior:**
+
+- Each queued record stores only its identity (tenant, agent, agentic user, S2S flag) and payload — not a fixed URL. On replay, the exporter reconstructs the export endpoint from the exporter's *current* configuration and re-resolves a fresh bearer token, so records queued before an endpoint or credential change are still delivered correctly, and any endpoint that would not resolve to HTTPS is rejected rather than replayed.
+- Records that are permanently rejected by the service (e.g. `400 Bad Request`) or that fail internal validation (unsupported schema version, blank tenant/agent id, or blank payload — "poison" records) are discarded from the durable queue instead of being retried forever.
+- `shutdown()` is drain-safe: it signals the background replay loop to stop and blocks until any in-flight replay send actually finishes before closing the durable store and HTTP session, so an in-progress send is never left holding a closed resource and no accepted span is dropped mid-flight. Concurrent `shutdown()` callers all wait for that same cleanup to complete.
+
 **To disable durable storage** (no disk writes, best-effort delivery only):
 
 ```python

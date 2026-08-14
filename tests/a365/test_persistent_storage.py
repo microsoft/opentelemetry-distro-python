@@ -89,8 +89,7 @@ def _create_legacy_v1_database(database_path):
     database_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(database_path))
     try:
-        conn.execute(
-            """
+        conn.execute("""
             CREATE TABLE durable_records (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 schema_version INTEGER NOT NULL,
@@ -104,8 +103,7 @@ def _create_legacy_v1_database(database_path):
                 lease_until REAL,
                 retry_count INTEGER NOT NULL DEFAULT 0
             )
-            """
-        )
+            """)
         conn.execute(
             """
             INSERT INTO durable_records (
@@ -254,10 +252,17 @@ def test_release_makes_record_claimable_again(tmp_path):
 
 def test_expired_records_are_cleaned_up(tmp_path):
     storage = PersistentStorage(tmp_path, capacity_bytes=1024 * 1024, retention_seconds=0)
-    record = _new_record('{"payload":2}')
-    assert storage.store(record)
+    # Insert the to-be-expired row directly with an unambiguously-past
+    # created_at (matching the insert_raw_record convention used by
+    # test_claim_prunes_expired_rows above) instead of two back-to-back
+    # DurableRecord.new()/store() calls. time.time() has ~15ms resolution on
+    # Windows, so two calls made microseconds apart can return the identical
+    # value; with retention_seconds=0 that made "created_at < expire_before"
+    # a tie (record.created_at == the claim's own now-clock read), leaving
+    # the "expired" record un-pruned and intermittently failing this test.
+    insert_raw_record(storage, created_at=0.0, payload='{"payload":2}')
 
-    # Store a second record to trigger the cleanup path
+    # Store a second, live record to trigger the cleanup path alongside it.
     record2 = _new_record('{"payload":3}')
     assert storage.store(record2)
 
@@ -362,9 +367,7 @@ def test_restrict_file_permissions_locks_db_and_sidecars(tmp_path, monkeypatch):
             assert (tmp_path / "queue" / name).exists(), name
 
         recorded: dict[str, int] = {}
-        monkeypatch.setattr(
-            _mod.os, "chmod", lambda p, m: recorded.__setitem__(os.path.basename(str(p)), m)
-        )
+        monkeypatch.setattr(_mod.os, "chmod", lambda p, m: recorded.__setitem__(os.path.basename(str(p)), m))
         storage._restrict_file_permissions()
 
         assert recorded.get("queue.db") == 0o600
@@ -426,9 +429,11 @@ def test_default_directory_prefers_local_state_even_if_missing(tmp_path):
     assert not local_state.exists()
 
     env = {k: v for k, v in os.environ.items() if k != "XDG_STATE_HOME"}
-    with patch.object(_mod.sys, "platform", "linux"), patch.dict(
-        os.environ, env, clear=True
-    ), patch.object(_mod.Path, "home", return_value=fake_home):
+    with (
+        patch.object(_mod.sys, "platform", "linux"),
+        patch.dict(os.environ, env, clear=True),
+        patch.object(_mod.Path, "home", return_value=fake_home),
+    ):
         resolved = _mod._resolve_default_directory()
 
     # The resolved base must be under ~/.local/state, not the temp directory.
@@ -440,9 +445,11 @@ def test_default_directory_falls_back_to_tmp_when_home_unusable(tmp_path):
     import microsoft.opentelemetry.a365.core.exporters.persistent_storage as _mod
 
     env = {k: v for k, v in os.environ.items() if k != "XDG_STATE_HOME"}
-    with patch.object(_mod.sys, "platform", "linux"), patch.dict(
-        os.environ, env, clear=True
-    ), patch.object(_mod.Path, "home", side_effect=RuntimeError("no home")):
+    with (
+        patch.object(_mod.sys, "platform", "linux"),
+        patch.dict(os.environ, env, clear=True),
+        patch.object(_mod.Path, "home", side_effect=RuntimeError("no home")),
+    ):
         resolved = _mod._resolve_default_directory()
 
     assert str(resolved).startswith(str(_mod.tempfile.gettempdir()))
@@ -453,9 +460,7 @@ def test_default_directory_honors_xdg_state_home(tmp_path):
     import microsoft.opentelemetry.a365.core.exporters.persistent_storage as _mod
 
     xdg = tmp_path / "xdg"
-    with patch.object(_mod.sys, "platform", "linux"), patch.dict(
-        os.environ, {"XDG_STATE_HOME": str(xdg)}, clear=False
-    ):
+    with patch.object(_mod.sys, "platform", "linux"), patch.dict(os.environ, {"XDG_STATE_HOME": str(xdg)}, clear=False):
         resolved = _mod._resolve_default_directory()
 
     assert str(resolved).startswith(str(xdg))

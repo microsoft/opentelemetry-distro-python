@@ -288,7 +288,8 @@ def test_failure_count_does_not_grow_unbounded() -> None:
         _RETRY_AFTER_CAP_SECONDS,
         _RETRY_AFTER_FLOOR_SECONDS,
     )
+
     max_useful_exponent = math.ceil(math.log2(_RETRY_AFTER_CAP_SECONDS / _RETRY_AFTER_FLOOR_SECONDS))
-    assert state.failure_count <= max_useful_exponent, (
-        f"failure_count={state.failure_count} exceeds max useful exponent {max_useful_exponent}"
-    )
+    assert (
+        state.failure_count <= max_useful_exponent
+    ), f"failure_count={state.failure_count} exceeds max useful exponent {max_useful_exponent}"
