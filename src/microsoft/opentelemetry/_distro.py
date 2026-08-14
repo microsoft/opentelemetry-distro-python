@@ -478,22 +478,6 @@ def _bridge_sdkstats_to_azure_monitor() -> None:
         set_sdkstats_instrumentation_bits(instrumentation_flags)
 
 
-def _validate_a365_batch_options(
-    max_queue_size: Any = None,
-    scheduled_delay_ms: Any = None,
-    max_export_batch_size: Any = None,
-) -> None:
-    """Validate A365 batch processor options without overriding None defaults."""
-    if max_queue_size is not None and max_queue_size < 1:
-        raise ValueError("max_queue_size must be at least 1")
-    if scheduled_delay_ms is not None and scheduled_delay_ms < 1:
-        raise ValueError("scheduled_delay_ms must be at least 1")
-    if max_export_batch_size is not None and max_export_batch_size < 1:
-        raise ValueError("max_export_batch_size must be at least 1")
-    if max_queue_size is not None and max_export_batch_size is not None and max_export_batch_size > max_queue_size:
-        raise ValueError("max_export_batch_size must not exceed max_queue_size")
-
-
 def _append_a365_components(
     enable_a365: bool,
     otel_kwargs: Dict[str, Any],
@@ -543,6 +527,7 @@ def _append_a365_components(
     from microsoft.opentelemetry.a365.core.exporters.agent365_exporter import _Agent365Exporter
     from microsoft.opentelemetry.a365.core.exporters.enriching_span_processor import (
         _EnrichingBatchSpanProcessor,
+        _resolve_batch_options,
     )
     from microsoft.opentelemetry.a365.core.exporters.span_processor import A365SpanProcessor
     from microsoft.opentelemetry.a365.core.exporters.utils import (
@@ -554,10 +539,11 @@ def _append_a365_components(
     # value raises ValueError instead of being swallowed by the broad handler
     # below (which would silently fall back to the platform default path).
     storage_directory_path = coerce_storage_directory(storage_directory)
-    _validate_a365_batch_options(
+    _resolve_batch_options(
         max_queue_size=max_queue_size,
-        scheduled_delay_ms=scheduled_delay_ms,
+        schedule_delay_millis=scheduled_delay_ms,
         max_export_batch_size=max_export_batch_size,
+        export_timeout_millis=exporter_timeout_ms,
     )
 
     try:

@@ -19,11 +19,15 @@ from microsoft.opentelemetry.a365.core.exporters.persistent_storage import (
     DurableRecord,
     PersistentStorage,
 )
+from microsoft.opentelemetry.a365.constants import A365_HTTP_TIMEOUT_SECONDS
 
 _logger = logging.getLogger(__name__)
 
 _MAX_RECORDS_PER_PASS = 10
-_LEASE_SECONDS = 30.0
+# A pass leases all records before sending them sequentially. Keep every lease
+# valid for the worst-case full pass so another process sharing the SQLite
+# queue cannot reclaim a record while this coordinator is still sending it.
+_LEASE_SECONDS = (_MAX_RECORDS_PER_PASS * A365_HTTP_TIMEOUT_SECONDS) + 5.0
 
 # Background cadence: even without an explicit wake(), the replay loop re-runs a
 # pass on this interval so a startup backlog larger than one pass (or records

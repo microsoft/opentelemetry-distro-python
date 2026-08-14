@@ -123,6 +123,46 @@ def _validate_batch_options(max_queue_size: int, schedule_delay_millis: float, m
         raise ValueError("max_export_batch_size must be less than or equal to max_queue_size.")
 
 
+def _resolve_batch_options(
+    max_queue_size: Optional[int] = None,
+    schedule_delay_millis: Optional[float] = None,
+    max_export_batch_size: Optional[int] = None,
+    export_timeout_millis: Optional[float] = None,
+) -> tuple[int, float, int, float]:
+    """Resolve effective batch options and validate their combined values."""
+    resolved_max_queue_size = (
+        max_queue_size
+        if max_queue_size is not None
+        else _int_env_default(OTEL_BSP_MAX_QUEUE_SIZE, _DEFAULT_MAX_QUEUE_SIZE)
+    )
+    resolved_schedule_delay_millis = (
+        schedule_delay_millis
+        if schedule_delay_millis is not None
+        else _int_env_default(OTEL_BSP_SCHEDULE_DELAY, _DEFAULT_SCHEDULE_DELAY_MILLIS)
+    )
+    resolved_max_export_batch_size = (
+        max_export_batch_size
+        if max_export_batch_size is not None
+        else _int_env_default(OTEL_BSP_MAX_EXPORT_BATCH_SIZE, _DEFAULT_MAX_EXPORT_BATCH_SIZE)
+    )
+    resolved_export_timeout_millis = (
+        export_timeout_millis
+        if export_timeout_millis is not None
+        else _int_env_default(OTEL_BSP_EXPORT_TIMEOUT, _DEFAULT_EXPORT_TIMEOUT_MILLIS)
+    )
+    _validate_batch_options(
+        resolved_max_queue_size,
+        resolved_schedule_delay_millis,
+        resolved_max_export_batch_size,
+    )
+    return (
+        resolved_max_queue_size,
+        resolved_schedule_delay_millis,
+        resolved_max_export_batch_size,
+        resolved_export_timeout_millis,
+    )
+
+
 class _EnrichingBatchSpanProcessor(SpanProcessor):
     """SpanProcessor that enriches spans, then atomically batches and exports them.
 
@@ -160,15 +200,17 @@ class _EnrichingBatchSpanProcessor(SpanProcessor):
         self._exporter = span_exporter
         self._suppress_invoke_agent_input = suppress_invoke_agent_input
 
-        if max_queue_size is None:
-            max_queue_size = _int_env_default(OTEL_BSP_MAX_QUEUE_SIZE, _DEFAULT_MAX_QUEUE_SIZE)
-        if schedule_delay_millis is None:
-            schedule_delay_millis = _int_env_default(OTEL_BSP_SCHEDULE_DELAY, _DEFAULT_SCHEDULE_DELAY_MILLIS)
-        if max_export_batch_size is None:
-            max_export_batch_size = _int_env_default(OTEL_BSP_MAX_EXPORT_BATCH_SIZE, _DEFAULT_MAX_EXPORT_BATCH_SIZE)
-        if export_timeout_millis is None:
-            export_timeout_millis = _int_env_default(OTEL_BSP_EXPORT_TIMEOUT, _DEFAULT_EXPORT_TIMEOUT_MILLIS)
-        _validate_batch_options(max_queue_size, schedule_delay_millis, max_export_batch_size)
+        (
+            max_queue_size,
+            schedule_delay_millis,
+            max_export_batch_size,
+            export_timeout_millis,
+        ) = _resolve_batch_options(
+            max_queue_size=max_queue_size,
+            schedule_delay_millis=schedule_delay_millis,
+            max_export_batch_size=max_export_batch_size,
+            export_timeout_millis=export_timeout_millis,
+        )
 
         self._max_queue_size = max_queue_size
         self._schedule_delay_seconds = schedule_delay_millis / 1000.0

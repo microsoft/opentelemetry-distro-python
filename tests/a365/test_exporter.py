@@ -139,6 +139,77 @@ class TestAgent365ExporterInit(unittest.TestCase):
         self.assertIsNotNone(exporter)
         exporter.shutdown()
 
+    @patch.dict(os.environ, {}, clear=True)
+    def test_pid_change_abandons_inherited_resources_and_reinitializes(self):
+        exporter = make_exporter(enable_durable_delivery=True)
+        old_session = MagicMock()
+        old_storage = MagicMock()
+        old_replay = MagicMock()
+        exporter._session = old_session
+        exporter._storage = old_storage
+        exporter._replay = old_replay
+        exporter._replay_started = True
+        exporter._pid = -1
+
+        exporter._check_fork_reinit()
+
+        self.assertIsNot(exporter._session, old_session)
+        self.assertIsNone(exporter._storage)
+        self.assertIsNone(exporter._replay)
+        self.assertFalse(exporter._replay_started)
+        self.assertIn(old_session, exporter._fork_abandoned_resources)
+        self.assertIn(old_storage, exporter._fork_abandoned_resources)
+        self.assertIn(old_replay, exporter._fork_abandoned_resources)
+        old_session.close.assert_not_called()
+        old_storage.close.assert_not_called()
+        old_replay.shutdown.assert_not_called()
+        exporter.shutdown()
+
+    @unittest.skipUnless(hasattr(os, "fork"), "requires POSIX fork")
+    @patch.dict(os.environ, {}, clear=True)
+    def test_forked_child_reopens_durable_resources_without_closing_parent(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exporter = _Agent365Exporter(
+                token_resolver=lambda a, t: "token",
+                storage_directory=Path(tmp),
+                enable_durable_delivery=True,
+            )
+            exporter._ensure_durable_initialized()
+            parent_storage = exporter._storage
+            self.assertIsNotNone(parent_storage)
+            read_fd, write_fd = os.pipe()
+            child_pid = os.fork()
+            if child_pid == 0:
+                os.close(read_fd)
+                try:
+                    exporter._check_fork_reinit()
+                    exporter._ensure_durable_initialized()
+                    child_storage = exporter._storage
+                    if child_storage is None or child_storage is parent_storage:
+                        raise AssertionError("child did not reopen durable storage")
+                    identity = IdentityKey("child-tenant", "child-agent", None, False)
+                    if not child_storage.store(DurableRecord.new(identity, '{"child":true}')):
+                        raise AssertionError("child could not persist after fork")
+                    exporter.shutdown()
+                    os.write(write_fd, b"ok")
+                except BaseException as exc:  # pragma: no cover - POSIX-only child diagnostics
+                    os.write(write_fd, repr(exc).encode("utf-8", errors="replace"))
+                finally:
+                    os.close(write_fd)
+                    os._exit(0)
+
+            os.close(write_fd)
+            try:
+                child_result = os.read(read_fd, 4096)
+                _, status = os.waitpid(child_pid, 0)
+                self.assertEqual(status, 0)
+                self.assertEqual(child_result, b"ok")
+                identity = IdentityKey("parent-tenant", "parent-agent", None, False)
+                self.assertTrue(parent_storage.store(DurableRecord.new(identity, '{"parent":true}')))
+            finally:
+                os.close(read_fd)
+                exporter.shutdown()
+
 
 class TestAgent365ExporterExport(unittest.TestCase):
     @patch.dict(os.environ, {}, clear=True)

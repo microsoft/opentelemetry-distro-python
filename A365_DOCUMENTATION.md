@@ -98,7 +98,10 @@ Key defaults and limits:
 | Maximum storage size | 50 MB |
 | Storage path | Platform default (see below) |
 
-The default path is a sub-directory of the platform's local app data folder, isolated per process to avoid collisions.
+The default path is a sub-directory of the platform's local app data folder,
+derived from the user, executable, and working directory. Processes for the
+same application can share the SQLite queue; leases coordinate replay across
+those processes.
 
 **Replay behavior:**
 

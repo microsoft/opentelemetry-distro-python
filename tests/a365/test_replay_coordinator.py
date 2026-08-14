@@ -9,6 +9,7 @@ import threading
 import time
 from unittest.mock import MagicMock
 
+from microsoft.opentelemetry.a365.constants import A365_HTTP_TIMEOUT_SECONDS
 from microsoft.opentelemetry.a365.core.exporters.durable_delivery import (
     DeliveryDisposition,
     DeliveryResult,
@@ -17,6 +18,8 @@ from microsoft.opentelemetry.a365.core.exporters.durable_delivery import (
 )
 from microsoft.opentelemetry.a365.core.exporters.persistent_storage import DurableRecord
 from microsoft.opentelemetry.a365.core.exporters.replay_coordinator import (
+    _LEASE_SECONDS,
+    _MAX_RECORDS_PER_PASS,
     ReplayCoordinator,
     ReplayEndpointError,
     ReplayIdentityError,
@@ -73,14 +76,15 @@ class FakeStorage:
         self.block_event: threading.Event | None = None
         self.claim_calls = 0
         self.claim_limits: list[int] = []
+        self.claim_lease_seconds: list[float] = []
         self.deleted: list[int] = []
         self.released: list[int] = []
 
     def claim(self, limit: int, lease_seconds: float) -> list[DurableRecord]:
-        del lease_seconds
         with self._lock:
             self.claim_calls += 1
             self.claim_limits.append(limit)
+            self.claim_lease_seconds.append(lease_seconds)
         if self.block_event is not None:
             self.block_event.wait()
         with self._lock:
@@ -123,6 +127,23 @@ def test_replay_deletes_delivered_record() -> None:
     assert storage.deleted == [RECORD.record_id]
     assert storage.released == []
     gate.record_success.assert_called_once_with(IDENTITY)
+
+
+def test_replay_lease_covers_worst_case_full_pass() -> None:
+    storage = FakeStorage([[RECORD]])
+    gate = MagicMock(spec=TransmissionGate)
+    gate.try_acquire.return_value = True
+    coordinator = ReplayCoordinator(
+        storage,
+        gate,
+        send=lambda record: DeliveryResult(DeliveryDisposition.DELIVERED),
+    )
+
+    coordinator.run_once()
+
+    assert storage.claim_limits == [_MAX_RECORDS_PER_PASS]
+    assert storage.claim_lease_seconds == [_LEASE_SECONDS]
+    assert _LEASE_SECONDS > _MAX_RECORDS_PER_PASS * A365_HTTP_TIMEOUT_SECONDS
 
 
 def test_replay_retains_retryable_record_and_updates_gate() -> None:

@@ -822,6 +822,34 @@ class TestA365BatchProcessorKwargs(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     self._build(**kwargs)
 
+    @patch.dict(os.environ, {}, clear=True)
+    def test_queue_smaller_than_default_batch_raises_value_error(self):
+        with self.assertRaises(ValueError):
+            self._build(max_queue_size=256)
+
+    @patch.dict(
+        os.environ,
+        {
+            "OTEL_BSP_MAX_QUEUE_SIZE": "256",
+            "OTEL_BSP_MAX_EXPORT_BATCH_SIZE": "512",
+        },
+        clear=True,
+    )
+    def test_conflicting_environment_batch_defaults_raise_value_error(self):
+        with self.assertRaises(ValueError):
+            self._build()
+
+    @patch.dict(
+        os.environ,
+        {
+            "OTEL_BSP_MAX_QUEUE_SIZE": "invalid",
+            "OTEL_BSP_MAX_EXPORT_BATCH_SIZE": "256",
+        },
+        clear=True,
+    )
+    def test_invalid_environment_queue_uses_valid_default(self):
+        self._build()
+
 
 class TestA365OfflineStorageKwargs(unittest.TestCase):
     """Tests for a365_exporter_disable_offline_storage and a365_exporter_storage_directory."""

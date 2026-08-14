@@ -15,8 +15,10 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import os
 import threading
 import time
+import weakref
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, Optional, final
@@ -127,11 +129,46 @@ class _Agent365Exporter(SpanExporter):
         self._storage: Optional[PersistentStorage] = None
         self._replay: Optional[ReplayCoordinator] = None
         self._replay_started = False
+        self._pid = os.getpid()
+        self._fork_reinit_lock = threading.Lock()
+        self._fork_abandoned_resources: list[object] = []
+        if hasattr(os, "register_at_fork"):
+            weak_reinit = weakref.WeakMethod(self._at_fork_reinit)
+
+            def reinit_after_fork() -> None:
+                callback = weak_reinit()
+                if callback is not None:
+                    callback()
+
+            os.register_at_fork(after_in_child=reinit_after_fork)
 
     # ------------- Durable delivery lifecycle -------------
 
+    def _at_fork_reinit(self) -> None:
+        """Reset process-local resources in a forked child."""
+        inherited = (self._session, self._storage, self._replay)
+        self._fork_abandoned_resources.extend(resource for resource in inherited if resource is not None)
+        self._session = requests.Session()
+        self._lock = threading.Lock()
+        self._fork_reinit_lock = threading.Lock()
+        self._shutdown_complete = threading.Event()
+        self._closed = False
+        self._gate = TransmissionGate()
+        self._storage = None
+        self._replay = None
+        self._replay_started = False
+        self._pid = os.getpid()
+
+    def _check_fork_reinit(self) -> None:
+        if self._pid == os.getpid():
+            return
+        with self._fork_reinit_lock:
+            if self._pid != os.getpid():
+                self._at_fork_reinit()
+
     def _ensure_durable_initialized(self) -> None:
         """Create the durable queue and replay coordinator once, on demand."""
+        self._check_fork_reinit()
         if not self._enable_durable_delivery:
             return
         with self._lock:
@@ -204,6 +241,7 @@ class _Agent365Exporter(SpanExporter):
             raise ReplayEndpointError(f"Replay endpoint must use HTTPS before resolving a bearer token: {url}")
 
     def export(self, spans: Sequence[ReadableSpan]) -> SpanExportResult:  # pylint: disable=too-many-statements
+        self._check_fork_reinit()
         if self._closed:
             return SpanExportResult.FAILURE
 
@@ -372,6 +410,7 @@ class _Agent365Exporter(SpanExporter):
         event instead of returning early, so every ``shutdown()`` call only
         returns once cleanup has actually finished.
         """
+        self._check_fork_reinit()
         owner = False
         replay: Optional[ReplayCoordinator] = None
         storage: Optional[PersistentStorage] = None
