@@ -150,6 +150,16 @@ class ReplayCoordinator:
                 self._release_record(record)
                 self._gate.release_probe(identity)
                 continue
+            except ReplayEndpointError as exc:
+                _logger.warning(
+                    "Replay endpoint error for record %s: %s",
+                    record.record_id,
+                    exc,
+                )
+                self._release_record(record)
+                self._gate.release_probe(identity)
+                self._release_remaining(records, index + 1)
+                return False
             except Exception as exc:  # pylint: disable=broad-except
                 # Unexpected failure: release the current record and all
                 # remaining leased records, then abort the pass so we do not
@@ -166,9 +176,10 @@ class ReplayCoordinator:
                 return False
 
             if result.disposition is DeliveryDisposition.DELIVERED:
-                self._delete_record(record)
+                deleted = self._delete_record(record, reason="delivered")
                 self._gate.record_success(identity)
-                deleted_count += 1
+                if deleted:
+                    deleted_count += 1
                 continue
 
             if result.disposition is DeliveryDisposition.PERMANENT:
@@ -177,9 +188,10 @@ class ReplayCoordinator:
                 # delete the record to avoid re-queuing it forever and call
                 # record_success so the gate resets: the identity itself is
                 # healthy; only this particular record was rejected.
-                self._delete_record(record)
+                deleted = self._delete_record(record, reason="permanent")
                 self._gate.record_success(identity)
-                deleted_count += 1
+                if deleted:
+                    deleted_count += 1
                 continue
 
             self._gate.record_retryable_failure(identity, result.retry_after)
@@ -228,9 +240,25 @@ class ReplayCoordinator:
             use_s2s_endpoint=record.use_s2s_endpoint,
         )
 
-    def _delete_record(self, record: DurableRecord) -> None:
-        if record.record_id is not None:
-            self._storage.delete(record.record_id)
+    def _delete_record(self, record: DurableRecord, reason: str) -> bool:
+        if record.record_id is None:
+            return False
+
+        deleted = self._storage.delete(record.record_id)
+        if deleted:
+            return True
+
+        if reason == "delivered":
+            _logger.warning(
+                "Replay delete failed for delivered record %s; duplicate delivery may occur.",
+                record.record_id,
+            )
+        else:
+            _logger.warning(
+                "Replay delete failed for permanent record %s; poison record may recur.",
+                record.record_id,
+            )
+        return False
 
     def _release_record(self, record: DurableRecord) -> None:
         if record.record_id is not None:

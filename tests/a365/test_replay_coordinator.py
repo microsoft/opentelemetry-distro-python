@@ -18,6 +18,7 @@ from microsoft.opentelemetry.a365.core.exporters.durable_delivery import (
 from microsoft.opentelemetry.a365.core.exporters.persistent_storage import DurableRecord
 from microsoft.opentelemetry.a365.core.exporters.replay_coordinator import (
     ReplayCoordinator,
+    ReplayEndpointError,
     ReplayIdentityError,
 )
 
@@ -58,8 +59,14 @@ def _make_record(record_id: int) -> DurableRecord:
 class FakeStorage:
     """Minimal storage double used to observe replay behavior."""
 
-    def __init__(self, batches: list[list[DurableRecord]]) -> None:
+    def __init__(
+        self,
+        batches: list[list[DurableRecord]],
+        *,
+        delete_result: bool = True,
+    ) -> None:
         self._batches = [list(batch) for batch in batches]
+        self._delete_result = delete_result
         self._lock = threading.Lock()
         self.block_event: threading.Event | None = None
         self.claim_calls = 0
@@ -82,7 +89,7 @@ class FakeStorage:
     def delete(self, record_id: int) -> bool:
         with self._lock:
             self.deleted.append(record_id)
-        return True
+        return self._delete_result
 
     def release(self, record_id: int) -> bool:
         with self._lock:
@@ -148,6 +155,57 @@ def test_replay_deletes_permanent_record() -> None:
     assert storage.deleted == [RECORD.record_id]
     assert storage.released == []
     gate.record_success.assert_called_once_with(IDENTITY)
+
+
+def test_delete_failure_after_success_logs_duplicate_risk(caplog) -> None:
+    storage = FakeStorage([[RECORD]], delete_result=False)
+    gate = MagicMock(spec=TransmissionGate)
+    gate.try_acquire.return_value = True
+    coordinator = ReplayCoordinator(
+        storage,
+        gate,
+        send=lambda record: DeliveryResult(DeliveryDisposition.DELIVERED),
+    )
+
+    coordinator.run_once()
+
+    assert "duplicate delivery" in caplog.text.lower()
+    gate.record_success.assert_called_once_with(IDENTITY)
+
+
+def test_delete_failure_after_permanent_logs_poison_record_risk(caplog) -> None:
+    storage = FakeStorage([[RECORD]], delete_result=False)
+    gate = MagicMock(spec=TransmissionGate)
+    gate.try_acquire.return_value = True
+    coordinator = ReplayCoordinator(
+        storage,
+        gate,
+        send=lambda record: DeliveryResult(DeliveryDisposition.PERMANENT),
+    )
+
+    coordinator.run_once()
+
+    assert "poison record may recur" in caplog.text.lower()
+    gate.record_success.assert_called_once_with(IDENTITY)
+
+
+def test_endpoint_error_retains_record_and_stops_pass(caplog) -> None:
+    storage = FakeStorage([[RECORD, SECOND_RECORD]])
+    gate = MagicMock(spec=TransmissionGate)
+    gate.try_acquire.return_value = True
+
+    def send(record: DurableRecord) -> DeliveryResult:
+        if record.record_id == RECORD.record_id:
+            raise ReplayEndpointError("invalid replay endpoint")
+        return DeliveryResult(DeliveryDisposition.DELIVERED)
+
+    coordinator = ReplayCoordinator(storage, gate, send=send)
+
+    assert coordinator.run_once() is False
+    assert storage.deleted == []
+    assert storage.released == [RECORD.record_id, SECOND_RECORD.record_id]
+    assert "unexpected error during replay" not in caplog.text.lower()
+    gate.release_probe.assert_called_once_with(IDENTITY)
 
 
 def test_replay_releases_record_when_identity_error_and_continues() -> None:
