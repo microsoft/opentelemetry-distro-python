@@ -25,17 +25,18 @@ _logger = logging.getLogger(__name__)
 _DEFAULT_CAPACITY_BYTES = 50 * 1024 * 1024  # 50 MB
 _DEFAULT_RETENTION_SECONDS = 2 * 24 * 3600   # 2 days
 
-_SCHEMA_VERSION = 1
+_SCHEMA_VERSION = 2
 
-_DDL = """
-CREATE TABLE IF NOT EXISTS durable_records (
+
+def _table_ddl(table_name: str) -> str:
+    return f"""
+CREATE TABLE IF NOT EXISTS {table_name} (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     schema_version INTEGER NOT NULL,
     tenant_id TEXT NOT NULL,
     agent_id TEXT NOT NULL,
     agentic_user_id TEXT,
     use_s2s_endpoint INTEGER NOT NULL,
-    url TEXT NOT NULL,
     payload TEXT NOT NULL,
     created_at REAL NOT NULL,
     lease_until REAL,
@@ -53,7 +54,6 @@ class DurableRecord:
     agent_id: str
     agentic_user_id: str | None
     use_s2s_endpoint: bool
-    url: str
     payload: str
     created_at: float
     lease_until: float | None = None
@@ -61,7 +61,7 @@ class DurableRecord:
     record_id: int | None = field(default=None)
 
     @staticmethod
-    def new(key: IdentityKey, url: str, payload: str) -> DurableRecord:
+    def new(key: IdentityKey, payload: str) -> DurableRecord:
         """Construct an unpersisted record from an IdentityKey."""
         return DurableRecord(
             schema_version=_SCHEMA_VERSION,
@@ -69,7 +69,6 @@ class DurableRecord:
             agent_id=key.agent_id,
             agentic_user_id=key.agentic_user_id,
             use_s2s_endpoint=key.use_s2s_endpoint,
-            url=url,
             payload=payload,
             created_at=time.time(),
         )
@@ -147,9 +146,7 @@ class PersistentStorage:
             os.chmod(self.database_path, 0o600)
 
         self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("BEGIN")
-        self._conn.execute(_DDL)
-        self._conn.execute("COMMIT")
+        self._initialize_schema()
 
         if os.name != "nt":
             # WAL journal initialization creates the -wal/-shm sidecars, which can
@@ -157,6 +154,52 @@ class PersistentStorage:
             # sidecars to owner-only now; the 0700 directory keeps future sidecars
             # private on creation.
             self._restrict_file_permissions()
+
+    def _initialize_schema(self) -> None:
+        """Create the current schema or migrate the legacy url-backed schema."""
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            columns = self._table_columns("durable_records")
+            if not columns:
+                self._conn.execute(_table_ddl("durable_records"))
+            elif "url" in columns:
+                self._migrate_legacy_schema()
+            self._conn.execute("COMMIT")
+        except sqlite3.Error:
+            self._conn.execute("ROLLBACK")
+            raise
+
+    def _table_columns(self, table_name: str) -> set[str]:
+        rows = self._conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        return {row[1] for row in rows}
+
+    def _migrate_legacy_schema(self) -> None:
+        """Rewrite the v1 url-backed table into the v2 identity-only schema."""
+        self._conn.execute("DROP TABLE IF EXISTS durable_records_v2")
+        self._conn.execute(_table_ddl("durable_records_v2"))
+        self._conn.execute(
+            """
+            INSERT INTO durable_records_v2 (
+                id, schema_version, tenant_id, agent_id, agentic_user_id,
+                use_s2s_endpoint, payload, created_at, lease_until, retry_count
+            )
+            SELECT
+                id,
+                ?,
+                tenant_id,
+                agent_id,
+                agentic_user_id,
+                use_s2s_endpoint,
+                payload,
+                created_at,
+                lease_until,
+                retry_count
+            FROM durable_records
+            """,
+            (_SCHEMA_VERSION,),
+        )
+        self._conn.execute("DROP TABLE durable_records")
+        self._conn.execute("ALTER TABLE durable_records_v2 RENAME TO durable_records")
 
     def _restrict_file_permissions(self) -> None:
         """Restrict the DB and any existing WAL/SHM sidecars to owner-only (0600).
@@ -210,15 +253,14 @@ class PersistentStorage:
                 self._conn.execute(
                     """INSERT INTO durable_records
                        (schema_version, tenant_id, agent_id, agentic_user_id,
-                        use_s2s_endpoint, url, payload, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                        use_s2s_endpoint, payload, created_at)
+                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
                     (
                         record.schema_version,
                         record.tenant_id,
                         record.agent_id,
                         record.agentic_user_id,
                         int(record.use_s2s_endpoint),
-                        record.url,
                         record.payload,
                         record.created_at,
                     ),
@@ -249,23 +291,45 @@ class PersistentStorage:
                     (expire_before,),
                 )
 
-                rows = self._conn.execute(
-                    """SELECT id, schema_version, tenant_id, agent_id, agentic_user_id,
-                              use_s2s_endpoint, url, payload, created_at, lease_until, retry_count
-                       FROM durable_records
-                       WHERE (lease_until IS NULL OR lease_until <= ?)
-                         AND created_at >= ?
-                       ORDER BY created_at
-                       LIMIT ?""",
-                    (now, expire_before, limit),
-                ).fetchall()
-
                 records: list[DurableRecord] = []
-                for row in rows:
+                claimed_ids: set[int] = set()
+                while len(records) < limit:
+                    select_sql = """
+                        SELECT id, schema_version, tenant_id, agent_id, agentic_user_id,
+                               use_s2s_endpoint, payload, created_at, lease_until, retry_count
+                        FROM durable_records
+                        WHERE (lease_until IS NULL OR lease_until <= ?)
+                          AND created_at >= ?
+                    """
+                    params: list[object] = [now, expire_before]
+                    if claimed_ids:
+                        placeholders = ", ".join("?" for _ in claimed_ids)
+                        select_sql += f" AND id NOT IN ({placeholders})"
+                        params.extend(claimed_ids)
+                    select_sql += " ORDER BY created_at LIMIT 1"
+
+                    row = self._conn.execute(select_sql, tuple(params)).fetchone()
+                    if row is None:
+                        break
+
+                    invalid_reason = self._claim_validation_error(row)
+                    if invalid_reason is not None:
+                        self._conn.execute(
+                            "DELETE FROM durable_records WHERE id = ?",
+                            (row[0],),
+                        )
+                        _logger.warning(
+                            "PersistentStorage.claim dropped durable record %s: %s",
+                            row[0],
+                            invalid_reason,
+                        )
+                        continue
+
                     self._conn.execute(
                         "UPDATE durable_records SET lease_until = ? WHERE id = ?",
                         (lease_until, row[0]),
                     )
+                    claimed_ids.add(int(row[0]))
                     records.append(
                         DurableRecord(
                             record_id=row[0],
@@ -274,11 +338,10 @@ class PersistentStorage:
                             agent_id=row[3],
                             agentic_user_id=row[4],
                             use_s2s_endpoint=bool(row[5]),
-                            url=row[6],
-                            payload=row[7],
-                            created_at=row[8],
+                            payload=row[6],
+                            created_at=row[7],
                             lease_until=lease_until,
-                            retry_count=row[10],
+                            retry_count=row[9],
                         )
                     )
 
@@ -310,6 +373,18 @@ class PersistentStorage:
                 except sqlite3.Error:
                     pass
                 return False
+
+    @staticmethod
+    def _claim_validation_error(row: tuple[object, ...]) -> str | None:
+        if row[1] != _SCHEMA_VERSION:
+            return f"unsupported schema_version={row[1]!r}"
+        if not isinstance(row[2], str) or not row[2].strip():
+            return "blank tenant_id"
+        if not isinstance(row[3], str) or not row[3].strip():
+            return "blank agent_id"
+        if not isinstance(row[6], str) or not row[6].strip():
+            return "blank payload"
+        return None
 
     def release(self, record_id: int) -> bool:
         """Release a lease so the record becomes claimable again."""

@@ -29,44 +29,30 @@ IDENTITY = IdentityKey(
     use_s2s_endpoint=False,
 )
 
-RECORD = DurableRecord(
-    schema_version=1,
-    tenant_id=IDENTITY.tenant_id,
-    agent_id=IDENTITY.agent_id,
-    agentic_user_id=IDENTITY.agentic_user_id,
-    use_s2s_endpoint=IDENTITY.use_s2s_endpoint,
-    url="https://example.test",
-    payload='{"value":1}',
-    created_at=1.0,
-    record_id=1,
-)
+def _record_kwargs(record_id: int, payload: str, created_at: float) -> dict[str, object]:
+    kwargs: dict[str, object] = {
+        "schema_version": 1 if "url" in DurableRecord.__dataclass_fields__ else 2,
+        "tenant_id": IDENTITY.tenant_id,
+        "agent_id": IDENTITY.agent_id,
+        "agentic_user_id": IDENTITY.agentic_user_id,
+        "use_s2s_endpoint": IDENTITY.use_s2s_endpoint,
+        "payload": payload,
+        "created_at": created_at,
+        "record_id": record_id,
+    }
+    if "url" in DurableRecord.__dataclass_fields__:
+        kwargs["url"] = "https://example.test"
+    return kwargs
 
-SECOND_RECORD = DurableRecord(
-    schema_version=1,
-    tenant_id=IDENTITY.tenant_id,
-    agent_id=IDENTITY.agent_id,
-    agentic_user_id=IDENTITY.agentic_user_id,
-    use_s2s_endpoint=IDENTITY.use_s2s_endpoint,
-    url="https://example.test",
-    payload='{"value":2}',
-    created_at=2.0,
-    record_id=2,
-)
+
+RECORD = DurableRecord(**_record_kwargs(1, '{"value":1}', 1.0))
+
+SECOND_RECORD = DurableRecord(**_record_kwargs(2, '{"value":2}', 2.0))
 
 
 def _make_record(record_id: int) -> DurableRecord:
     """Build a distinct durable record for backlog tests."""
-    return DurableRecord(
-        schema_version=1,
-        tenant_id=IDENTITY.tenant_id,
-        agent_id=IDENTITY.agent_id,
-        agentic_user_id=IDENTITY.agentic_user_id,
-        use_s2s_endpoint=IDENTITY.use_s2s_endpoint,
-        url="https://example.test",
-        payload=f'{{"value":{record_id}}}',
-        created_at=float(record_id),
-        record_id=record_id,
-    )
+    return DurableRecord(**_record_kwargs(record_id, f'{{"value":{record_id}}}', float(record_id)))
 
 
 class FakeStorage:

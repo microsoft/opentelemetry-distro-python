@@ -5,7 +5,9 @@
 
 from __future__ import annotations
 
+import inspect
 import os
+import sqlite3
 import stat
 import time
 from unittest.mock import patch
@@ -24,6 +26,109 @@ KEY = IdentityKey(
     agentic_user_id=None,
     use_s2s_endpoint=False,
 )
+LEGACY_URL = "https://example.test"
+
+
+def _new_record(payload: str, key: IdentityKey = KEY) -> DurableRecord:
+    params = list(inspect.signature(DurableRecord.new).parameters)
+    if params == ["key", "payload"]:
+        return DurableRecord.new(key, payload)
+    return DurableRecord.new(key, LEGACY_URL, payload)
+
+
+def _schema_version_for(columns: set[str]) -> int:
+    return 1 if "url" in columns else 2
+
+
+def _table_columns(storage: PersistentStorage) -> set[str]:
+    rows = storage._conn.execute("PRAGMA table_info(durable_records)").fetchall()
+    return {row[1] for row in rows}
+
+
+def insert_raw_record(
+    storage: PersistentStorage,
+    *,
+    created_at: float | None = None,
+    **overrides,
+) -> int:
+    columns = _table_columns(storage)
+    row = {
+        "schema_version": _schema_version_for(columns),
+        "tenant_id": KEY.tenant_id,
+        "agent_id": KEY.agent_id,
+        "agentic_user_id": KEY.agentic_user_id,
+        "use_s2s_endpoint": int(KEY.use_s2s_endpoint),
+        "payload": '{"raw":true}',
+        "created_at": time.time() - 1.0 if created_at is None else created_at,
+        "lease_until": None,
+        "retry_count": 0,
+    }
+    if "url" in columns:
+        row["url"] = LEGACY_URL
+    row.update(overrides)
+    names = list(row)
+    placeholders = ", ".join("?" for _ in names)
+    sql = f"INSERT INTO durable_records ({', '.join(names)}) VALUES ({placeholders})"
+    with storage._lock:
+        storage._conn.execute("BEGIN IMMEDIATE")
+        cur = storage._conn.execute(sql, tuple(row[name] for name in names))
+        storage._conn.execute("COMMIT")
+    return int(cur.lastrowid)
+
+
+def raw_record_exists(storage: PersistentStorage, record_id: int) -> bool:
+    with storage._lock:
+        row = storage._conn.execute(
+            "SELECT COUNT(*) FROM durable_records WHERE id = ?",
+            (record_id,),
+        ).fetchone()
+    return bool(row[0])
+
+
+def _create_legacy_v1_database(database_path):
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(str(database_path))
+    try:
+        conn.execute(
+            """
+            CREATE TABLE durable_records (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                schema_version INTEGER NOT NULL,
+                tenant_id TEXT NOT NULL,
+                agent_id TEXT NOT NULL,
+                agentic_user_id TEXT,
+                use_s2s_endpoint INTEGER NOT NULL,
+                url TEXT NOT NULL,
+                payload TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                lease_until REAL,
+                retry_count INTEGER NOT NULL DEFAULT 0
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO durable_records (
+                schema_version, tenant_id, agent_id, agentic_user_id,
+                use_s2s_endpoint, url, payload, created_at, lease_until, retry_count
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                1,
+                "legacy-tenant",
+                "legacy-agent",
+                "legacy-user",
+                1,
+                "https://legacy.example.test",
+                '{"legacy":true}',
+                time.time() - 5.0,
+                None,
+                3,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------------------
@@ -46,20 +151,7 @@ def test_connection_is_in_autocommit_mode(tmp_path):
 def test_claim_prunes_expired_rows(tmp_path):
     """Expired records stored before a claim call must be deleted by claim itself."""
     storage = PersistentStorage(tmp_path, capacity_bytes=1024 * 1024, retention_seconds=0)
-    record = DurableRecord.new(KEY, "https://example.test", '{"stale":true}')
-    # Insert directly with a very old created_at so it expires immediately
-    import sqlite3 as _sq
-
-    with storage._lock:
-        storage._conn.execute("BEGIN IMMEDIATE")
-        storage._conn.execute(
-            """INSERT INTO durable_records
-               (schema_version, tenant_id, agent_id, agentic_user_id,
-                use_s2s_endpoint, url, payload, created_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-            (1, "t1", "a1", None, 0, "https://example.test", '{"stale":true}', 0.0),
-        )
-        storage._conn.execute("COMMIT")
+    insert_raw_record(storage, created_at=0.0, payload='{"stale":true}')
 
     # claim must prune the expired row and return nothing
     claimed = storage.claim(limit=10, lease_seconds=30)
@@ -72,6 +164,49 @@ def test_claim_prunes_expired_rows(tmp_path):
     storage.close()
 
 
+def test_initialization_migrates_v1_schema_and_preserves_records(tmp_path):
+    queue_dir = tmp_path / "queue"
+    _create_legacy_v1_database(queue_dir / "queue.db")
+
+    storage = PersistentStorage(queue_dir, capacity_bytes=1024 * 1024, retention_seconds=3600)
+    columns = _table_columns(storage)
+
+    assert "url" not in columns
+    claimed = storage.claim(limit=10, lease_seconds=30)
+    assert len(claimed) == 1
+    assert claimed[0].schema_version == 2
+    assert claimed[0].tenant_id == "legacy-tenant"
+    assert claimed[0].agent_id == "legacy-agent"
+    assert claimed[0].agentic_user_id == "legacy-user"
+    assert claimed[0].use_s2s_endpoint is True
+    assert claimed[0].payload == '{"legacy":true}'
+    assert claimed[0].retry_count == 3
+    storage.close()
+
+
+@pytest.mark.parametrize(
+    ("column", "value"),
+    [
+        ("schema_version", 999),
+        ("tenant_id", ""),
+        ("agent_id", ""),
+        ("payload", ""),
+    ],
+)
+def test_claim_deletes_invalid_records_and_continues_to_valid_later_record(tmp_path, column, value):
+    storage = PersistentStorage(tmp_path, capacity_bytes=1024 * 1024, retention_seconds=3600)
+    invalid_id = insert_raw_record(storage, **{column: value})
+    valid = _new_record('{"resourceSpans":[]}')
+
+    assert storage.store(valid)
+
+    claimed = storage.claim(limit=1, lease_seconds=30)
+
+    assert [record.payload for record in claimed] == [valid.payload]
+    assert raw_record_exists(storage, invalid_id) is False
+    storage.close()
+
+
 # ---------------------------------------------------------------------------
 # Round-trip
 # ---------------------------------------------------------------------------
@@ -79,7 +214,7 @@ def test_claim_prunes_expired_rows(tmp_path):
 
 def test_store_claim_delete_round_trip(tmp_path):
     storage = PersistentStorage(tmp_path, capacity_bytes=1024 * 1024, retention_seconds=3600)
-    record = DurableRecord.new(KEY, "https://example.test", '{"resourceSpans":[]}')
+    record = _new_record('{"resourceSpans":[]}')
     assert storage.store(record)
     claimed = storage.claim(limit=10, lease_seconds=30)
     assert [item.payload for item in claimed] == [record.payload]
@@ -95,7 +230,7 @@ def test_store_claim_delete_round_trip(tmp_path):
 
 def test_release_makes_record_claimable_again(tmp_path):
     storage = PersistentStorage(tmp_path, capacity_bytes=1024 * 1024, retention_seconds=3600)
-    record = DurableRecord.new(KEY, "https://example.test", '{"payload":1}')
+    record = _new_record('{"payload":1}')
     assert storage.store(record)
 
     claimed = storage.claim(limit=10, lease_seconds=30)
@@ -119,11 +254,11 @@ def test_release_makes_record_claimable_again(tmp_path):
 
 def test_expired_records_are_cleaned_up(tmp_path):
     storage = PersistentStorage(tmp_path, capacity_bytes=1024 * 1024, retention_seconds=0)
-    record = DurableRecord.new(KEY, "https://example.test", '{"payload":2}')
+    record = _new_record('{"payload":2}')
     assert storage.store(record)
 
     # Store a second record to trigger the cleanup path
-    record2 = DurableRecord.new(KEY, "https://example.test", '{"payload":3}')
+    record2 = _new_record('{"payload":3}')
     assert storage.store(record2)
 
     # Expired records must not be returned by claim
@@ -140,7 +275,7 @@ def test_expired_records_are_cleaned_up(tmp_path):
 
 def test_store_rejects_when_capacity_exceeded(tmp_path):
     storage = PersistentStorage(tmp_path, capacity_bytes=1, retention_seconds=3600)
-    record = DurableRecord.new(KEY, "https://example.test", "x" * 100)
+    record = _new_record("x" * 100)
     # Must return False and not raise
     result = storage.store(record)
     assert result is False
@@ -162,9 +297,7 @@ def test_store_reclaims_capacity_after_fill_delete_refill(tmp_path):
 
     # Fill until the capacity cap rejects a store.
     stored = 0
-    while stored < 500 and storage.store(
-        DurableRecord.new(KEY, "https://example.test", payload)
-    ):
+    while stored < 500 and storage.store(_new_record(payload)):
         stored += 1
     # A store was actually rejected (we reached the cap, not the loop guard).
     assert 0 < stored < 500
@@ -178,7 +311,7 @@ def test_store_reclaims_capacity_after_fill_delete_refill(tmp_path):
             assert storage.delete(rec.record_id)
 
     # The freed space must be reclaimed so new records can be stored again.
-    assert storage.store(DurableRecord.new(KEY, "https://example.test", payload)) is True
+    assert storage.store(_new_record(payload)) is True
     storage.close()
 
 
@@ -336,7 +469,7 @@ def test_default_directory_honors_xdg_state_home(tmp_path):
 def test_claim_respects_limit(tmp_path):
     storage = PersistentStorage(tmp_path, capacity_bytes=1024 * 1024, retention_seconds=3600)
     for i in range(5):
-        storage.store(DurableRecord.new(KEY, "https://example.test", f'{{"i":{i}}}'))
+        storage.store(_new_record(f'{{"i":{i}}}'))
 
     claimed = storage.claim(limit=3, lease_seconds=30)
     assert len(claimed) == 3
@@ -355,12 +488,13 @@ def test_durable_record_new_fields():
         agentic_user_id="user42",
         use_s2s_endpoint=True,
     )
-    rec = DurableRecord.new(key, "https://ep.test", '{"data":1}')
+    assert list(inspect.signature(DurableRecord.new).parameters) == ["key", "payload"]
+    rec = DurableRecord.new(key, '{"data":1}')
     assert rec.tenant_id == "myTenant"
     assert rec.agent_id == "myAgent"
     assert rec.agentic_user_id == "user42"
     assert rec.use_s2s_endpoint is True
-    assert rec.url == "https://ep.test"
+    assert not hasattr(rec, "url")
     assert rec.payload == '{"data":1}'
     assert rec.record_id is None  # not yet persisted
 

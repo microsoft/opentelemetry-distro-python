@@ -20,6 +20,7 @@ import time
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any, Optional, final
+from urllib.parse import urlparse
 
 import requests
 from opentelemetry.sdk.trace import ReadableSpan
@@ -39,6 +40,7 @@ from microsoft.opentelemetry.a365.core.exporters.persistent_storage import (
 )
 from microsoft.opentelemetry.a365.core.exporters.replay_coordinator import (
     ReplayCoordinator,
+    ReplayEndpointError,
     ReplayIdentityError,
 )
 from microsoft.opentelemetry.a365.core.exporters.token_resolver_context import (
@@ -195,6 +197,17 @@ class _Agent365Exporter(SpanExporter):
                 agentic_user_id = str(raw_auid)
         return IdentityKey(tenant_id, agent_id, agentic_user_id, self._use_s2s_endpoint)
 
+    def _build_export_url(self, tenant_id: str, agent_id: str, use_s2s_endpoint: bool) -> str:
+        endpoint = self._domain_override or DEFAULT_ENDPOINT_URL
+        return build_export_url(endpoint, agent_id, tenant_id, use_s2s_endpoint)
+
+    @staticmethod
+    def _ensure_https_replay_url(url: str) -> None:
+        if urlparse(url).scheme.lower() != "https":
+            raise ReplayEndpointError(
+                f"Replay endpoint must use HTTPS before resolving a bearer token: {url}"
+            )
+
     def export(  # pylint: disable=too-many-statements
         self, spans: Sequence[ReadableSpan]
     ) -> SpanExportResult:
@@ -242,8 +255,7 @@ class _Agent365Exporter(SpanExporter):
                         agent_id,
                     )
 
-                endpoint = self._domain_override or DEFAULT_ENDPOINT_URL
-                url = build_export_url(endpoint, agent_id, tenant_id, self._use_s2s_endpoint)
+                url = self._build_export_url(tenant_id, agent_id, self._use_s2s_endpoint)
 
                 logger.debug(
                     "Exporting %d spans to endpoint: %s (tenant: %s, agent: %s)",
@@ -273,7 +285,7 @@ class _Agent365Exporter(SpanExporter):
                     # Token resolver raised: persist so a later replay can retry
                     # once credentials recover. A successful store counts as success.
                     if token_resolution_failed:
-                        if self._persist(identity, url, body):
+                        if self._persist(identity, body):
                             persisted_any = True
                         else:
                             all_delivered_or_stored = False
@@ -304,7 +316,7 @@ class _Agent365Exporter(SpanExporter):
                     # The gate rejects sends for an identity in a retry cooldown;
                     # persist directly rather than hammering the endpoint.
                     if not self._gate.try_acquire(identity):
-                        if self._persist(identity, url, body):
+                        if self._persist(identity, body):
                             persisted_any = True
                         else:
                             all_delivered_or_stored = False
@@ -324,7 +336,7 @@ class _Agent365Exporter(SpanExporter):
                             post_exc,
                         )
                         self._gate.release_probe(identity)
-                        if self._persist(identity, url, body):
+                        if self._persist(identity, body):
                             persisted_any = True
                         else:
                             all_delivered_or_stored = False
@@ -334,7 +346,7 @@ class _Agent365Exporter(SpanExporter):
                         self._gate.record_success(identity)
                     elif result.disposition is DeliveryDisposition.RETRYABLE:
                         self._gate.record_retryable_failure(identity, result.retry_after)
-                        if self._persist(identity, url, body):
+                        if self._persist(identity, body):
                             persisted_any = True
                         else:
                             all_delivered_or_stored = False
@@ -457,7 +469,7 @@ class _Agent365Exporter(SpanExporter):
             )
         return body
 
-    def _persist(self, identity: IdentityKey, url: str, body: str) -> bool:
+    def _persist(self, identity: IdentityKey, body: str) -> bool:
         """Persist one payload to the durable queue. Returns False on failure."""
         storage = self._storage
         if storage is None:
@@ -468,7 +480,7 @@ class _Agent365Exporter(SpanExporter):
                 identity.agent_id,
             )
             return False
-        stored = storage.store(DurableRecord.new(identity, url, body))
+        stored = storage.store(DurableRecord.new(identity, body))
         if not stored:
             logger.error(
                 "Durable storage rejected telemetry for tenant %s, agent %s.",
@@ -484,6 +496,12 @@ class _Agent365Exporter(SpanExporter):
         :class:`ReplayIdentityError` so the coordinator releases the record for a
         future attempt instead of dropping it.
         """
+        url = self._build_export_url(
+            record.tenant_id,
+            record.agent_id,
+            record.use_s2s_endpoint,
+        )
+        self._ensure_https_replay_url(url)
         try:
             token = self._resolve_token_for_replay(record)
         except Exception as e:
@@ -496,16 +514,11 @@ class _Agent365Exporter(SpanExporter):
                 f"No token resolved during replay for agent {record.agent_id}, "
                 f"tenant {record.tenant_id}."
             )
-        if not record.url.lower().startswith("https://"):
-            logger.warning(
-                "The authorization token is being sent over a non-HTTPS connection during "
-                "replay. This may expose credentials in transit."
-            )
         headers: dict[str, str | bytes] = {
             "content-type": "application/json",
-            "authorization": f"Bearer {token}",
+            "authorization": "Bearer " + token,
         }
-        return self._post_once(record.url, record.payload, headers)
+        return self._post_once(url, record.payload, headers)
 
     def _post_once(  # pylint: disable=too-many-statements,too-many-branches
         self, url: str, body: str, headers: dict[str, str | bytes]

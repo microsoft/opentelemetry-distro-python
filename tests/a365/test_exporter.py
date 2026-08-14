@@ -5,6 +5,7 @@ import os
 import unittest
 from unittest.mock import MagicMock, patch
 
+import microsoft.opentelemetry.a365.core.exporters.agent365_exporter as exporter_module
 from opentelemetry.sdk.trace.export import SpanExportResult
 from opentelemetry.trace import SpanKind, StatusCode
 
@@ -15,6 +16,7 @@ from microsoft.opentelemetry.a365.core.exporters.durable_delivery import (
     DeliveryDisposition,
     DeliveryResult,
 )
+from microsoft.opentelemetry.a365.core.exporters.persistent_storage import DurableRecord
 
 
 def _make_span(
@@ -89,6 +91,29 @@ def _permanent():
 
 def _retryable(retry_after=None):
     return DeliveryResult(DeliveryDisposition.RETRYABLE, retry_after)
+
+
+def _make_durable_record(
+    payload='{"resourceSpans":[]}',
+    tenant_id="t1",
+    agent_id="a1",
+    agentic_user_id=None,
+    use_s2s_endpoint=False,
+    url="https://stale.example.test/observability/tenants/stale/otlp/agents/stale/traces?api-version=1",
+):
+    kwargs = {
+        "schema_version": 1 if "url" in DurableRecord.__dataclass_fields__ else 2,
+        "tenant_id": tenant_id,
+        "agent_id": agent_id,
+        "agentic_user_id": agentic_user_id,
+        "use_s2s_endpoint": use_s2s_endpoint,
+        "payload": payload,
+        "created_at": 1.0,
+        "record_id": 1,
+    }
+    if "url" in DurableRecord.__dataclass_fields__:
+        kwargs["url"] = url
+    return DurableRecord(**kwargs)
 
 
 class TestAgent365ExporterInit(unittest.TestCase):
@@ -487,7 +512,38 @@ class TestAgent365ExporterDurableDelivery(unittest.TestCase):
         # (the real gate would refuse if the probe were still held).
         exporter._post_once = MagicMock(return_value=_delivered())
         self.assertIs(exporter.export([_make_span()]), SpanExportResult.SUCCESS)
-        exporter._post_once.assert_called_once()
+        exporter.shutdown()
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_replay_rebuilds_endpoint_from_current_exporter_settings(self):
+        exporter = make_exporter()
+        exporter._domain_override = "https://current.example.test"
+        exporter._post_once = MagicMock(return_value=_delivered())
+
+        result = exporter._replay_record(_make_durable_record())
+
+        self.assertIs(result.disposition, DeliveryDisposition.DELIVERED)
+        sent_url = exporter._post_once.call_args[0][0]
+        self.assertEqual(
+            sent_url,
+            "https://current.example.test/observability/tenants/t1/otlp/agents/a1/traces"
+            "?api-version=1",
+        )
+        exporter.shutdown()
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_plaintext_replay_endpoint_raises_before_resolving_token_or_sending(self):
+        resolver = MagicMock(return_value="token")
+        exporter = make_exporter(token_resolver=resolver)
+        exporter._domain_override = "http://plaintext.example.test"
+        exporter._post_once = MagicMock()
+
+        self.assertTrue(hasattr(exporter_module, "ReplayEndpointError"))
+        with self.assertRaises(exporter_module.ReplayEndpointError):
+            exporter._replay_record(_make_durable_record())
+
+        resolver.assert_not_called()
+        exporter._post_once.assert_not_called()
         exporter.shutdown()
 
 

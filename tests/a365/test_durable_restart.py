@@ -129,6 +129,47 @@ def test_restart_replays_persisted_record_with_fresh_token(tmp_path):
     exporter_b.shutdown()
 
 
+def test_restart_replays_using_current_exporter_endpoint_settings(tmp_path):
+    storage_dir = tmp_path / "queue"
+
+    exporter_a = _Agent365Exporter(
+        token_resolver=lambda a, t: "stale-token",
+        storage_directory=storage_dir,
+        enable_durable_delivery=True,
+    )
+    exporter_a._domain_override = "https://stale.example.test"
+    exporter_a._post_once = MagicMock(return_value=DeliveryResult(DeliveryDisposition.RETRYABLE, 30))
+
+    assert exporter_a.export([_make_span()]) is SpanExportResult.SUCCESS
+    assert _queue_size(exporter_a._storage) == 1
+    exporter_a.shutdown()
+
+    captured = {}
+    exporter_b = _Agent365Exporter(
+        token_resolver=lambda a, t: "fresh-token",
+        storage_directory=storage_dir,
+        enable_durable_delivery=True,
+    )
+    exporter_b._domain_override = "https://current.example.test"
+    exporter_b._ensure_durable_initialized()
+
+    def fake_post_once(url, body, headers):
+        del body, headers
+        captured["url"] = url
+        return DeliveryResult(DeliveryDisposition.DELIVERED)
+
+    exporter_b._post_once = fake_post_once
+
+    exporter_b._replay.run_once()
+
+    assert _queue_size(exporter_b._storage) == 0
+    assert captured["url"] == (
+        "https://current.example.test/observability/tenants/t1/otlp/agents/a1/traces"
+        "?api-version=1"
+    )
+    exporter_b.shutdown()
+
+
 def test_restart_replays_record_persisted_after_token_failure(tmp_path):
     storage_dir = tmp_path / "queue"
 

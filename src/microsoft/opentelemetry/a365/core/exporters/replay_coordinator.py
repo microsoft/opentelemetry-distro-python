@@ -46,6 +46,15 @@ class ReplayIdentityError(Exception):
     """
 
 
+class ReplayEndpointError(Exception):
+    """Raised when replay cannot safely use the current exporter endpoint.
+
+    Task 2 raises this from the replay send callback when the reconstructed
+    endpoint is invalid for bearer-token replay (for example, non-HTTPS). Task
+    3 will add coordinator-specific handling.
+    """
+
+
 class ReplayCoordinator:
     """Drive durable record replay on a single daemon thread."""
 
@@ -232,4 +241,4 @@ class ReplayCoordinator:
             self._release_record(record)
 
 
-__all__ = ["ReplayCoordinator", "ReplayIdentityError"]
+__all__ = ["ReplayCoordinator", "ReplayEndpointError", "ReplayIdentityError"]
