@@ -8,6 +8,7 @@ from __future__ import annotations
 import getpass
 import hashlib
 import logging
+import ntpath
 import os
 import sqlite3
 import stat
@@ -99,8 +100,8 @@ def _restrict_windows_directory_permissions(directory: Path) -> None:
     domain = os.environ.get("USERDOMAIN")
     username = os.environ.get("USERNAME")
     current_user = f"{domain}\\{username}" if domain and username else os.getlogin()
-    system_root = Path(os.environ.get("SYSTEMROOT", r"C:\Windows"))
-    icacls = str(system_root / "System32" / "icacls.exe")
+    system_root = os.environ.get("SYSTEMROOT", r"C:\Windows")
+    icacls = ntpath.join(system_root, "System32", "icacls.exe")
     commands = [
         [icacls, str(directory), "/reset", "/T"],
         [
