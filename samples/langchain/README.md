@@ -57,3 +57,14 @@ When `enable_sensitive_data=True` is supplied:
 ```bash
 python sample_langchain_instrumentation.py
 ```
+
+**Special Scenarios**
+
+## Responses API:  gen_ai.response.model  shows the wrong model name
+
+For responses API, foundry returns the served model name in the response headers rather than the response body. To make sure the expected model is emitted on the  gen_ai.response.model  attribute, follow the [`sample_foundry_responses_api.py`](./sample_foundry_responses_api.py) sample.
+
+
+## Nested graphs: using a non-compiled agent as a subgraph
+
+When adding a non-compiled agent as a subgraph node in a  StateGraph , you must supply the agent name via metadata at the time you add the node — otherwise the agent identity will not be resolved correctly. Please refer to the [`sample_nested_graph.py`](./sample_nested_graph.py) sample.
