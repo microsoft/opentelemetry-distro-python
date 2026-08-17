@@ -21,16 +21,11 @@ from microsoft.opentelemetry import use_microsoft_opentelemetry
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_openai import ChatOpenAI
-from langchain.agents import create_agent
 from langgraph.graph import StateGraph, START, END, MessagesState
 
 MODEL_NAME = "gpt-4o"
 API_KEY = os.environ["AZURE_OPENAI_API_KEY"]
 BASE_URL = os.environ["AZURE_OPENAI_ENDPOINT"].rstrip("/") + "/openai/v1/"
-
-
-def _make_llm() -> ChatOpenAI:
-    return ChatOpenAI(model=MODEL_NAME, base_url=BASE_URL, api_key=API_KEY)
 
 
 def main() -> None:
@@ -56,12 +51,14 @@ def main() -> None:
         return {"messages": [resp]}
 
     inner_graph = (
-            StateGraph(MessagesState)
-            .add_node("compiled", compiled_node, metadata={"agent_name": "CompiledAgent"}) # This is needed to identify the invoke agent span for the inner nested subggraph.
-            .add_edge(START, "compiled")
-            .add_edge("compiled", END)
-            .compile(name="InnerWorkflow")
-        )
+        StateGraph(MessagesState)
+        .add_node(
+            "compiled", compiled_node, metadata={"agent_name": "CompiledAgent"}
+        )  # This is needed to identify the invoke agent span for the inner nested subggraph.
+        .add_edge(START, "compiled")
+        .add_edge("compiled", END)
+        .compile(name="InnerWorkflow")
+    )
 
     graph = (
         StateGraph(MessagesState)

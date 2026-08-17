@@ -34,7 +34,8 @@ def main() -> None:
         base_url=BASE_URL,
         api_key=API_KEY,
         use_responses_api=True,
-        # Required so gen_ai.response.model reflects the served model. Langchain documentation - https://reference.langchain.com/python/langchain-openai/chat_models/base/BaseChatOpenAI/include_response_headers
+        # Required so gen_ai.response.model reflects the served model. 
+        # Langchain documentation - https://reference.langchain.com/python/langchain-openai/chat_models/base/BaseChatOpenAI/include_response_headers
         include_response_headers=True,
     )
 
