@@ -34,8 +34,8 @@ IDENTITY = IdentityKey(
 
 
 def _record_kwargs(record_id: int, payload: str, created_at: float) -> dict[str, object]:
-    kwargs: dict[str, object] = {
-        "schema_version": 1 if "url" in DurableRecord.__dataclass_fields__ else 2,
+    return {
+        "schema_version": 2,
         "tenant_id": IDENTITY.tenant_id,
         "agent_id": IDENTITY.agent_id,
         "agentic_user_id": IDENTITY.agentic_user_id,
@@ -44,9 +44,6 @@ def _record_kwargs(record_id: int, payload: str, created_at: float) -> dict[str,
         "created_at": created_at,
         "record_id": record_id,
     }
-    if "url" in DurableRecord.__dataclass_fields__:
-        kwargs["url"] = "https://example.test"
-    return kwargs
 
 
 RECORD = DurableRecord(**_record_kwargs(1, '{"value":1}', 1.0))
@@ -125,7 +122,7 @@ def test_replay_deletes_delivered_record() -> None:
     coordinator.run_once()
 
     assert storage.deleted == [RECORD.record_id]
-    assert storage.released == []
+    assert not storage.released
     gate.record_success.assert_called_once_with(IDENTITY)
 
 
@@ -159,7 +156,7 @@ def test_replay_retains_retryable_record_and_updates_gate() -> None:
     coordinator.run_once()
 
     assert storage.released == [RECORD.record_id]
-    assert storage.deleted == []
+    assert not storage.deleted
     gate.record_retryable_failure.assert_called_once_with(IDENTITY, 45)
 
 
@@ -176,7 +173,7 @@ def test_replay_deletes_permanent_record() -> None:
     coordinator.run_once()
 
     assert storage.deleted == [RECORD.record_id]
-    assert storage.released == []
+    assert not storage.released
     gate.record_success.assert_called_once_with(IDENTITY)
 
 
@@ -259,7 +256,7 @@ def test_endpoint_error_retains_record_and_stops_pass(caplog) -> None:
     coordinator = ReplayCoordinator(storage, gate, send=send)
 
     assert coordinator.run_once() is False
-    assert storage.deleted == []
+    assert not storage.deleted
     assert storage.released == [RECORD.record_id, SECOND_RECORD.record_id]
     assert "unexpected error during replay" not in caplog.text.lower()
     gate.release_probe.assert_called_once_with(IDENTITY)
@@ -302,7 +299,7 @@ def test_general_exception_releases_current_and_remaining_and_stops() -> None:
 
     assert RECORD.record_id in storage.released
     assert SECOND_RECORD.record_id in storage.released
-    assert storage.deleted == []
+    assert not storage.deleted
     gate.release_probe.assert_called_once_with(IDENTITY)
 
 
@@ -330,7 +327,7 @@ def test_start_and_wake_process_a_later_batch() -> None:
     coordinator.start()
     try:
         assert wait_until(lambda: storage.claim_calls >= 1)
-        assert storage.deleted == []
+        assert not storage.deleted
 
         coordinator.wake()
 
@@ -416,7 +413,7 @@ def test_gate_blocked_releases_record_without_send() -> None:
     coordinator.run_once()
 
     assert storage.released == [RECORD.record_id]
-    assert storage.deleted == []
+    assert not storage.deleted
     send.assert_not_called()
 
 
@@ -459,7 +456,7 @@ def test_mid_batch_stop_releases_remaining_records() -> None:
 
     assert RECORD.record_id in storage.released
     assert SECOND_RECORD.record_id in storage.released
-    assert storage.deleted == []
+    assert not storage.deleted
 
 
 def test_run_once_requests_continuation_after_full_pass() -> None:
@@ -507,7 +504,7 @@ def test_run_once_no_continuation_when_full_pass_gate_blocked() -> None:
 
     assert coordinator.run_once() is False
     assert len(storage.released) == 10
-    assert storage.deleted == []
+    assert not storage.deleted
 
 
 def test_start_drains_backlog_larger_than_one_pass() -> None:

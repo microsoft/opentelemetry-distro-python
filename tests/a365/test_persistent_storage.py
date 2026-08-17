@@ -30,10 +30,7 @@ LEGACY_URL = "https://example.test"
 
 
 def _new_record(payload: str, key: IdentityKey = KEY) -> DurableRecord:
-    params = list(inspect.signature(DurableRecord.new).parameters)
-    if params == ["key", "payload"]:
-        return DurableRecord.new(key, payload)
-    return DurableRecord.new(key, LEGACY_URL, payload)
+    return DurableRecord.new(key, payload)
 
 
 def _schema_version_for(columns: set[str]) -> int:
@@ -153,7 +150,7 @@ def test_claim_prunes_expired_rows(tmp_path):
 
     # claim must prune the expired row and return nothing
     claimed = storage.claim(limit=10, lease_seconds=30)
-    assert claimed == []
+    assert not claimed
 
     # Row must actually be gone
     with storage._lock:
@@ -217,7 +214,7 @@ def test_store_claim_delete_round_trip(tmp_path):
     claimed = storage.claim(limit=10, lease_seconds=30)
     assert [item.payload for item in claimed] == [record.payload]
     assert storage.delete(claimed[0].record_id)
-    assert storage.claim(limit=10, lease_seconds=30) == []
+    assert not storage.claim(limit=10, lease_seconds=30)
     storage.close()
 
 
@@ -235,7 +232,7 @@ def test_release_makes_record_claimable_again(tmp_path):
     assert len(claimed) == 1
 
     # While leased, claim returns nothing
-    assert storage.claim(limit=10, lease_seconds=30) == []
+    assert not storage.claim(limit=10, lease_seconds=30)
 
     # After release the record is available again
     assert storage.release(claimed[0].record_id)
@@ -387,7 +384,7 @@ def test_rejects_directory_owned_by_another_uid(tmp_path):
     import types
     import microsoft.opentelemetry.a365.core.exporters.persistent_storage as _mod
 
-    foreign_uid = os.getuid() + 1
+    foreign_uid = getattr(os, "getuid")() + 1
 
     real_stat = os.lstat(tmp_path)
     mock_result = types.SimpleNamespace(

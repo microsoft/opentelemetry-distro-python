@@ -81,7 +81,12 @@ def make_exporter(token_resolver=None, **kwargs):
     ``exporter._storage`` (or passing ``enable_durable_delivery=True``).
     """
     if token_resolver is None and "contextual_token_resolver" not in kwargs:
-        token_resolver = lambda a, t: "token"  # noqa: E731
+
+        def default_token_resolver(_agent_id, _tenant_id):
+            return "token"
+
+        token_resolver = default_token_resolver
+
     kwargs.setdefault("enable_durable_delivery", False)
     return _Agent365Exporter(token_resolver=token_resolver, **kwargs)
 
@@ -104,21 +109,17 @@ def _make_durable_record(
     agent_id="a1",
     agentic_user_id=None,
     use_s2s_endpoint=False,
-    url="https://stale.example.test/observability/tenants/stale/otlp/agents/stale/traces?api-version=1",
 ):
-    kwargs = {
-        "schema_version": 1 if "url" in DurableRecord.__dataclass_fields__ else 2,
-        "tenant_id": tenant_id,
-        "agent_id": agent_id,
-        "agentic_user_id": agentic_user_id,
-        "use_s2s_endpoint": use_s2s_endpoint,
-        "payload": payload,
-        "created_at": 1.0,
-        "record_id": 1,
-    }
-    if "url" in DurableRecord.__dataclass_fields__:
-        kwargs["url"] = url
-    return DurableRecord(**kwargs)
+    return DurableRecord(
+        schema_version=2,
+        tenant_id=tenant_id,
+        agent_id=agent_id,
+        agentic_user_id=agentic_user_id,
+        use_s2s_endpoint=use_s2s_endpoint,
+        payload=payload,
+        created_at=1.0,
+        record_id=1,
+    )
 
 
 class TestAgent365ExporterInit(unittest.TestCase):
@@ -178,7 +179,7 @@ class TestAgent365ExporterInit(unittest.TestCase):
             parent_storage = exporter._storage
             self.assertIsNotNone(parent_storage)
             read_fd, write_fd = os.pipe()
-            child_pid = os.fork()
+            child_pid = getattr(os, "fork")()
             if child_pid == 0:
                 os.close(read_fd)
                 try:
@@ -192,7 +193,9 @@ class TestAgent365ExporterInit(unittest.TestCase):
                         raise AssertionError("child could not persist after fork")
                     exporter.shutdown()
                     os.write(write_fd, b"ok")
-                except BaseException as exc:  # pragma: no cover - POSIX-only child diagnostics
+                except BaseException as exc:  # pylint: disable=broad-exception-caught
+                    # POSIX-only child diagnostics must report every failure
+                    # before os._exit() bypasses normal test exception handling.
                     os.write(write_fd, repr(exc).encode("utf-8", errors="replace"))
                 finally:
                     os.close(write_fd)
@@ -501,7 +504,7 @@ class TestAgent365ExporterActiveReplayShutdown(unittest.TestCase):
         def call_owner_shutdown():
             try:
                 exporter.shutdown()
-            except BaseException as exc:  # pragma: no cover - asserted below
+            except BaseException as exc:  # pylint: disable=broad-exception-caught
                 owner_errors.append(exc)
 
         owner_thread = threading.Thread(target=call_owner_shutdown)
@@ -514,7 +517,7 @@ class TestAgent365ExporterActiveReplayShutdown(unittest.TestCase):
         def call_follower_shutdown():
             try:
                 exporter.shutdown()
-            except BaseException as exc:  # pragma: no cover - asserted below
+            except BaseException as exc:  # pylint: disable=broad-exception-caught
                 follower_errors.append(exc)
             finally:
                 follower_done.set()
@@ -786,9 +789,12 @@ class TestAgent365ExporterDurableDelivery(unittest.TestCase):
 
         self.assertIs(result.disposition, DeliveryDisposition.DELIVERED)
         sent_url = exporter._post_once.call_args[0][0]
+        expected_url = "https://current.example.test/observability/tenants/t1/" + (
+            "otlp/agents/a1/traces?api-version=1"
+        )
         self.assertEqual(
             sent_url,
-            "https://current.example.test/observability/tenants/t1/otlp/agents/a1/traces" "?api-version=1",
+            expected_url,
         )
         exporter.shutdown()
 
@@ -813,9 +819,6 @@ class TestAgent365ExporterStorageDirectory(unittest.TestCase):
 
     @patch.dict(os.environ, {}, clear=True)
     def test_storage_directory_is_honored_end_to_end(self):
-        import tempfile
-        from pathlib import Path
-
         with tempfile.TemporaryDirectory() as tmp:
             storage_dir = Path(tmp) / "queue"
             exporter = _Agent365Exporter(
@@ -831,9 +834,6 @@ class TestAgent365ExporterStorageDirectory(unittest.TestCase):
 
     @patch.dict(os.environ, {}, clear=True)
     def test_no_disk_writes_when_durable_delivery_disabled(self):
-        import tempfile
-        from pathlib import Path
-
         with tempfile.TemporaryDirectory() as tmp:
             storage_dir = Path(tmp) / "queue"
             exporter = _Agent365Exporter(

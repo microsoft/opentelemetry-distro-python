@@ -487,7 +487,7 @@ class TestEnrichingBatchSpanProcessorLifecycle(unittest.TestCase):
             try:
                 for i in range(spans_per_producer):
                     processor.on_end(_make_span(name=f"p{index}-{i}"))
-            except BaseException as exc:  # pragma: no cover - failure path
+            except BaseException as exc:  # pylint: disable=broad-exception-caught
                 with errors_lock:
                     errors.append(exc)
 
