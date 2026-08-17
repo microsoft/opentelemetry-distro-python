@@ -9,8 +9,9 @@ import inspect
 import os
 import sqlite3
 import stat
+import subprocess
 import time
-from unittest.mock import patch
+from unittest.mock import call, patch
 
 import pytest
 
@@ -372,6 +373,61 @@ def test_restrict_file_permissions_locks_db_and_sidecars(tmp_path, monkeypatch):
         assert recorded.get("queue.db-shm") == 0o600
     finally:
         storage.close()
+
+
+# ---------------------------------------------------------------------------
+# Windows permissions
+# ---------------------------------------------------------------------------
+
+
+def test_windows_directory_permissions_restrict_access_to_admins_and_current_user(tmp_path, monkeypatch):
+    import microsoft.opentelemetry.a365.core.exporters.persistent_storage as _mod
+
+    monkeypatch.setenv("SYSTEMROOT", r"C:\Windows")
+    monkeypatch.setenv("USERDOMAIN", "CONTOSO")
+    monkeypatch.setenv("USERNAME", "alice")
+
+    with patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0)) as run:
+        _mod._restrict_windows_directory_permissions(tmp_path)
+
+    common_options = {
+        "check": False,
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.PIPE,
+        "text": True,
+    }
+    assert run.call_args_list == [
+        call(
+            [r"C:\Windows\System32\icacls.exe", str(tmp_path), "/reset", "/T"],
+            **common_options,
+        ),
+        call(
+            [
+                r"C:\Windows\System32\icacls.exe",
+                str(tmp_path),
+                "/inheritance:r",
+                "/grant:r",
+                "*S-1-5-32-544:(OI)(CI)F",
+                r"CONTOSO\alice:(OI)(CI)F",
+            ],
+            **common_options,
+        ),
+    ]
+
+
+def test_windows_directory_permissions_fail_closed_when_icacls_fails(tmp_path, monkeypatch):
+    import microsoft.opentelemetry.a365.core.exporters.persistent_storage as _mod
+
+    monkeypatch.setenv("USERDOMAIN", "CONTOSO")
+    monkeypatch.setenv("USERNAME", "alice")
+
+    results = [
+        subprocess.CompletedProcess([], 0),
+        subprocess.CompletedProcess([], 5, stderr="Access is denied."),
+    ]
+    with patch("subprocess.run", side_effect=results):
+        with pytest.raises(PermissionError, match="Access is denied"):
+            _mod._restrict_windows_directory_permissions(tmp_path)
 
 
 # ---------------------------------------------------------------------------

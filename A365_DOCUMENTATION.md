@@ -129,7 +129,7 @@ use_microsoft_opentelemetry(
 )
 ```
 
-> **Security note:** Stored OTLP payloads are unencrypted. When sensitive-data capture is enabled (`enable_sensitive_data=True`), payloads may include prompts, completions, or tool arguments. Restrict the storage directory to the service account running the agent (e.g., `chmod 700`).
+> **Security note:** Stored OTLP payloads are unencrypted. When sensitive-data capture is enabled (`enable_sensitive_data=True`), payloads may include prompts, completions, or tool arguments. The exporter restricts the queue directory to the current user and administrators on Windows; on POSIX systems it enforces mode `0700` on the directory and `0600` on the SQLite database and sidecar files.
 
 ## Auto-Instrumented Libraries
 

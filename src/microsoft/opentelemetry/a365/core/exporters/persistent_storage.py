@@ -11,6 +11,7 @@ import logging
 import os
 import sqlite3
 import stat
+import subprocess
 import sys
 import tempfile
 import threading
@@ -93,26 +94,62 @@ def _resolve_default_directory() -> Path:
     return base / "a365-durable-queue" / digest
 
 
+def _restrict_windows_directory_permissions(directory: Path) -> None:
+    """Restrict a Windows queue directory to administrators and the current user."""
+    domain = os.environ.get("USERDOMAIN")
+    username = os.environ.get("USERNAME")
+    current_user = f"{domain}\\{username}" if domain and username else os.getlogin()
+    system_root = Path(os.environ.get("SYSTEMROOT", r"C:\Windows"))
+    icacls = str(system_root / "System32" / "icacls.exe")
+    commands = [
+        [icacls, str(directory), "/reset", "/T"],
+        [
+            icacls,
+            str(directory),
+            "/inheritance:r",
+            "/grant:r",
+            "*S-1-5-32-544:(OI)(CI)F",
+            f"{current_user}:(OI)(CI)F",
+        ],
+    ]
+    for command in commands:
+        result = subprocess.run(
+            command,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        if result.returncode == 0:
+            continue
+        detail = result.stderr.strip() or f"icacls exited with code {result.returncode}"
+        raise PermissionError(f"Could not restrict durable queue permissions: {detail}")
+
+
 def _ensure_private_directory(directory: Path) -> None:
     """Create the directory with mode 0700, or validate ownership if it exists."""
     if directory.exists():
-        if os.name != "nt":
-            # Use a non-symlink-following lstat so a symlinked queue directory
-            # cannot redirect telemetry writes outside a private, caller-owned
-            # location or defeat the ownership check via its target.
-            st = os.lstat(directory)
-            if stat.S_ISLNK(st.st_mode):
-                raise PermissionError(f"Durable queue directory must not be a symlink: {directory}")
-            if st.st_uid != os.getuid():  # pylint: disable=no-member
-                raise PermissionError(f"Durable queue directory has unsafe ownership: {directory}")
-            os.chmod(directory, 0o700)
+        if os.name == "nt":
+            _restrict_windows_directory_permissions(directory)
+            return
+        # Use a non-symlink-following lstat so a symlinked queue directory
+        # cannot redirect telemetry writes outside a private, caller-owned
+        # location or defeat the ownership check via its target.
+        st = os.lstat(directory)
+        if stat.S_ISLNK(st.st_mode):
+            raise PermissionError(f"Durable queue directory must not be a symlink: {directory}")
+        if st.st_uid != getattr(os, "getuid")():
+            raise PermissionError(f"Durable queue directory has unsafe ownership: {directory}")
+        os.chmod(directory, 0o700)
         return
     # Create parents first (no mode enforcement needed for intermediate dirs),
     # then create the final directory with explicit mode so the kernel sets it
     # before any child entry can appear. chmod follows to override a restrictive umask.
     directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-    if os.name != "nt":
-        os.chmod(directory, 0o700)
+    if os.name == "nt":
+        _restrict_windows_directory_permissions(directory)
+        return
+    os.chmod(directory, 0o700)
 
 
 class PersistentStorage:

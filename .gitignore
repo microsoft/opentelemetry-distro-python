@@ -13,5 +13,6 @@ build/
 .mypy_cache/
 docs/_build/
 docs/api/
+docs/superpowers/
 *.log
 *_output.txt
