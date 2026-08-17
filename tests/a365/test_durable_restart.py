@@ -98,7 +98,9 @@ def test_restart_replays_persisted_record_with_fresh_token(tmp_path):
         storage_directory=storage_dir,
         enable_durable_delivery=True,
     )
-    exporter_a._post_once = MagicMock(return_value=DeliveryResult(DeliveryDisposition.RETRYABLE, 30))
+    exporter_a._post_once = MagicMock(  # type: ignore[method-assign]
+        return_value=DeliveryResult(DeliveryDisposition.RETRYABLE, 30)
+    )
 
     assert exporter_a.export([_make_span(agentic_user_id="user-9")]) is SpanExportResult.SUCCESS
     assert _queue_size(exporter_a._storage) == 1
@@ -123,7 +125,7 @@ def test_restart_replays_persisted_record_with_fresh_token(tmp_path):
         captured["authorization"] = headers.get("authorization")
         return DeliveryResult(DeliveryDisposition.DELIVERED)
 
-    exporter_b._post_once = fake_post_once
+    exporter_b._post_once = fake_post_once  # type: ignore[method-assign]
 
     # The leftover record is claimed, re-authenticated, delivered, and removed.
     exporter_b._replay.run_once()
@@ -142,7 +144,9 @@ def test_restart_replays_using_current_exporter_endpoint_settings(tmp_path):
         enable_durable_delivery=True,
     )
     exporter_a._domain_override = "https://stale.example.test"
-    exporter_a._post_once = MagicMock(return_value=DeliveryResult(DeliveryDisposition.RETRYABLE, 30))
+    exporter_a._post_once = MagicMock(  # type: ignore[method-assign]
+        return_value=DeliveryResult(DeliveryDisposition.RETRYABLE, 30)
+    )
 
     assert exporter_a.export([_make_span()]) is SpanExportResult.SUCCESS
     assert _queue_size(exporter_a._storage) == 1
@@ -162,7 +166,7 @@ def test_restart_replays_using_current_exporter_endpoint_settings(tmp_path):
         captured["url"] = url
         return DeliveryResult(DeliveryDisposition.DELIVERED)
 
-    exporter_b._post_once = fake_post_once
+    exporter_b._post_once = fake_post_once  # type: ignore[method-assign]
 
     exporter_b._replay.run_once()
 
@@ -183,7 +187,7 @@ def test_restart_replays_record_persisted_after_token_failure(tmp_path):
         enable_durable_delivery=True,
     )
     # No send should happen when the token cannot be resolved.
-    exporter_a._post_once = MagicMock()
+    exporter_a._post_once = MagicMock()  # type: ignore[method-assign]
 
     assert exporter_a.export([_make_span()]) is SpanExportResult.SUCCESS
     exporter_a._post_once.assert_not_called()
@@ -197,7 +201,9 @@ def test_restart_replays_record_persisted_after_token_failure(tmp_path):
         enable_durable_delivery=True,
     )
     exporter_b._ensure_durable_initialized()
-    exporter_b._post_once = MagicMock(return_value=DeliveryResult(DeliveryDisposition.DELIVERED))
+    exporter_b._post_once = MagicMock(  # type: ignore[method-assign]
+        return_value=DeliveryResult(DeliveryDisposition.DELIVERED)
+    )
 
     exporter_b._replay.run_once()
 

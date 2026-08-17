@@ -841,7 +841,7 @@ class TestAgent365ExporterStorageDirectory(unittest.TestCase):
                 storage_directory=storage_dir,
                 enable_durable_delivery=False,
             )
-            exporter._post_once = MagicMock(return_value=_retryable(30))
+            exporter._post_once = MagicMock(return_value=_retryable(30))  # type: ignore[method-assign]
             # A retryable failure with storage disabled must surface FAILURE and
             # must not create any on-disk queue.
             self.assertIs(exporter.export([_make_span()]), SpanExportResult.FAILURE)
