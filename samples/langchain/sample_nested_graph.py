@@ -39,7 +39,7 @@ def main() -> None:
         return ChatOpenAI(
             model="gpt-4o",
             temperature=0,
-            base_url=os.environ.get("AZURE_OPENAI_ENDPOINT") + "openai/v1",
+            base_url=os.environ.get("AZURE_OPENAI_ENDPOINT"),
             api_key=os.environ.get("AZURE_OPENAI_API_KEY"),
         )
 
