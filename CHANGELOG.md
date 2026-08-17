@@ -19,6 +19,7 @@
   than reusing a stale URL, permanently-rejected or malformed ("poison") records are discarded
   instead of retried forever, and `shutdown()` is drain-safe: it waits for any in-flight replay
   send to finish before closing the durable store and HTTP session (parity with `.NET` PR #137).
+  ([#248](https://github.com/microsoft/opentelemetry-distro-python/pull/248))
 
 # 1.3.7 (2026-08-05)
 ### Features Added
