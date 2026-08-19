@@ -130,14 +130,14 @@ class AgenticTokenCache:
             auth_handler_id = entry.agentic_token_struct.auth_handler_name
 
             # Exchange the turn token for an observability token
-            token = await authorization.exchange_token(
+            token_response = await authorization.exchange_token(
                 context=turn_context,
                 scopes=entry.scopes,
                 auth_handler_id=auth_handler_id,
             )
 
             logger.info("Successfully exchanged token for %s", key)
-            return token  # type: ignore[no-any-return]
+            return token_response.token
         except Exception as e:  # pylint: disable=broad-exception-caught
             # Return None if token generation fails
             logger.error("Token exchange failed for %s: %s", key, type(e).__name__)
