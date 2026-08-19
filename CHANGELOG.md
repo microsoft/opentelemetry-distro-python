@@ -1,6 +1,6 @@
 # Release History
 
-# 1.3.8 (2026-08-19)
+# 1.3.8 (2026-08-20)
 ### Features Added
 - Add support for agent identity propagation for compiled agents in nested graph
   ([#245](https://github.com/microsoft/opentelemetry-distro-python/pull/245))
