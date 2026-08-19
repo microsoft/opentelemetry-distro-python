@@ -19,6 +19,9 @@ import threading
 import time
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from email.utils import parsedate_to_datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, List, Optional, TypeVar
 from urllib.parse import urlparse
 
@@ -266,10 +269,13 @@ def build_export_url(endpoint: str, agent_id: str, tenant_id: str, use_s2s_endpo
     return f"https://{endpoint}{endpoint_path}?api-version=1"
 
 
-def parse_retry_after(headers: Mapping[str, str]) -> float | None:
+def parse_retry_after(
+    headers: Mapping[str, str],
+    now: Callable[[], datetime] | None = None,
+) -> float | None:
     """Parse the ``Retry-After`` header value.
 
-    Only numeric (seconds) values are supported. HTTP-date values are ignored.
+    Supports delta-seconds and HTTP-date values.
     """
     retry_after = headers.get("Retry-After")
     if retry_after is None:
@@ -277,7 +283,18 @@ def parse_retry_after(headers: Mapping[str, str]) -> float | None:
     try:
         return float(retry_after)
     except (ValueError, TypeError):
-        return None
+        try:
+            retry_at = parsedate_to_datetime(retry_after)
+        except (TypeError, ValueError, IndexError, OverflowError):
+            return None
+
+        if retry_at.tzinfo is None:
+            retry_at = retry_at.replace(tzinfo=timezone.utc)
+
+        current_time = now() if now is not None else datetime.now(timezone.utc)
+        if current_time.tzinfo is None:
+            current_time = current_time.replace(tzinfo=timezone.utc)
+        return (retry_at - current_time).total_seconds()
 
 
 def is_agent365_exporter_enabled() -> bool:
@@ -620,9 +637,29 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return val in ("true", "1", "yes", "on")
 
 
+def coerce_storage_directory(value: Optional[str | Path]) -> Optional[Path]:
+    """Normalize a ``storage_directory`` option to a ``Path`` or ``None``.
+
+    ``None`` selects the platform default path. An explicitly empty or
+    whitespace-only string is rejected with :class:`ValueError` so it is never
+    silently treated as "use the default".
+    """
+    if value is None:
+        return None
+    if isinstance(value, Path):
+        return value
+    if isinstance(value, str):
+        if not value.strip():
+            raise ValueError("storage_directory must be a non-empty path or None")
+        return Path(value)
+    raise ValueError("storage_directory must be a string path, Path, or None")
+
+
 def create_a365_components(
     token_resolver: Callable[[str, str], Optional[str]] | None = None,
     contextual_token_resolver: Callable[[TokenResolverContext], Optional[str]] | None = None,
+    disable_offline_storage: bool = False,
+    storage_directory: Optional[str] = None,
 ) -> A365Handlers:
     """Create Agent365 span processors ready to be added to a TracerProvider.
 
@@ -632,6 +669,10 @@ def create_a365_components(
     :param contextual_token_resolver: Optional callable ``(TokenResolverContext) -> str | None``.
         Provides rich context including the agentic user ID. Takes precedence over
         ``token_resolver`` when set.
+    :param disable_offline_storage: When True, disables durable delivery (no disk writes or
+        replay). Defaults to False.
+    :param storage_directory: Custom directory for durable offline storage. When None, a
+        platform default path is used. Defaults to None.
 
     All other configuration is read from environment variables:
       - ``ENABLE_A365_OBSERVABILITY_EXPORTER`` -- must be true for the HTTP exporter
@@ -660,6 +701,8 @@ def create_a365_components(
         token_resolver=resolved_token_resolver,
         contextual_token_resolver=contextual_token_resolver,
         use_s2s_endpoint=use_s2s_endpoint,
+        disable_offline_storage=disable_offline_storage,
+        storage_directory=storage_directory,
     )
 
     # Create the exporter (Agent365 HTTP or console fallback)
@@ -671,6 +714,8 @@ def create_a365_components(
             cluster_category=options.cluster_category,
             use_s2s_endpoint=options.use_s2s_endpoint,
             max_payload_bytes=options.max_payload_bytes,
+            enable_durable_delivery=not options.disable_offline_storage,
+            storage_directory=coerce_storage_directory(options.storage_directory),
         )
     else:
         logger.warning(

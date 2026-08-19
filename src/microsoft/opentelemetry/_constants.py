@@ -113,6 +113,8 @@ A365_MAX_QUEUE_SIZE_ARG = "a365_max_queue_size"
 A365_SCHEDULED_DELAY_MS_ARG = "a365_scheduled_delay_ms"
 A365_EXPORTER_TIMEOUT_MS_ARG = "a365_exporter_timeout_ms"
 A365_MAX_EXPORT_BATCH_SIZE_ARG = "a365_max_export_batch_size"
+A365_EXPORTER_DISABLE_OFFLINE_STORAGE_ARG = "a365_exporter_disable_offline_storage"
+A365_EXPORTER_STORAGE_DIRECTORY_ARG = "a365_exporter_storage_directory"
 
 # --- GenAI Main Agent Constants ---
 

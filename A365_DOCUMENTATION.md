@@ -42,6 +42,8 @@ use_microsoft_opentelemetry(
 | `a365_scheduled_delay_ms` | `int` | `5000` | — | Delay between A365 export batches in milliseconds. |
 | `a365_exporter_timeout_ms` | `int` | `30000` | — | Timeout for a single A365 export operation in milliseconds. |
 | `a365_max_export_batch_size` | `int` | `512` | — | Maximum batch size for a single A365 export operation. |
+| `a365_exporter_disable_offline_storage` | `bool` | `False` | — | Disable durable offline storage. When `True`, failed exports are not persisted to disk and at-least-once delivery is not guaranteed. Defaults to `False` (storage enabled). |
+| `a365_exporter_storage_directory` | `str` | `None` | — | Custom directory for durable offline storage. When `None`, a platform default path is used. Choose a path that only the current user or service account can read, because stored OTLP payloads may contain prompts or completions when sensitive-data capture is enabled. |
 
 ### Resource / Service Name
 
@@ -82,6 +84,52 @@ use_microsoft_opentelemetry(
     a365_max_export_batch_size=256,
 )
 ```
+
+### Durable Delivery (Offline Storage)
+
+When `a365_enable_observability_exporter=True`, the A365 exporter persists failed export payloads to disk and replays them once connectivity is restored — providing **at-least-once delivery** semantics.
+
+Key defaults and limits:
+
+| Property | Value |
+|---|---|
+| Enabled by default | Yes (when exporter is active) |
+| Retention window | 2 days |
+| Maximum storage size | 50 MB |
+| Storage path | Platform default (see below) |
+
+The default path is a sub-directory of the platform's local app data folder,
+derived from the user, executable, and working directory. Processes for the
+same application can share the SQLite queue; leases coordinate replay across
+those processes.
+
+**Replay behavior:**
+
+- Each queued record stores only its identity (tenant, agent, agentic user, S2S flag) and payload — not a fixed URL. On replay, the exporter reconstructs the export endpoint from the exporter's *current* configuration and re-resolves a fresh bearer token, so records queued before an endpoint or credential change are still delivered correctly, and any endpoint that would not resolve to HTTPS is rejected rather than replayed.
+- Records that are permanently rejected by the service (e.g. `400 Bad Request`) or that fail internal validation (unsupported schema version, blank tenant/agent id, or blank payload — "poison" records) are discarded from the durable queue instead of being retried forever.
+- `shutdown()` is drain-safe: it signals the background replay loop to stop and blocks until any in-flight replay send actually finishes before closing the durable store and HTTP session, so an in-progress send is never left holding a closed resource and no accepted span is dropped mid-flight. Concurrent `shutdown()` callers all wait for that same cleanup to complete.
+
+**To disable durable storage** (no disk writes, best-effort delivery only):
+
+```python
+use_microsoft_opentelemetry(
+    enable_a365=True,
+    a365_enable_observability_exporter=True,
+    a365_exporter_disable_offline_storage=True,
+)
+```
+
+**To specify a custom storage directory:**
+
+```python
+use_microsoft_opentelemetry(
+    enable_a365=True,
+    a365_enable_observability_exporter=True,
+    a365_exporter_storage_directory="/var/lib/my-agent/telemetry",
+)
+```
+
+> **Security note:** Stored OTLP payloads are unencrypted. When sensitive-data capture is enabled (`enable_sensitive_data=True`), payloads may include prompts, completions, or tool arguments. The exporter restricts the queue directory to the current user and administrators on Windows; on POSIX systems it enforces mode `0700` on the directory and `0600` on the SQLite database and sidecar files.
 
 ## Auto-Instrumented Libraries
 

@@ -3,7 +3,7 @@
 
 import os
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from microsoft.opentelemetry.a365 import (
     A365Handlers,
@@ -93,6 +93,91 @@ class TestA365HandlersDefault(unittest.TestCase):
     def test_default_empty(self):
         handlers = A365Handlers()
         self.assertEqual(handlers.span_processors, [])
+
+
+class TestA365ExporterOptionsOfflineStorage(unittest.TestCase):
+    """Tests that Agent365ExporterOptions exposes offline-storage config."""
+
+    def test_disable_offline_storage_defaults_false(self):
+        from microsoft.opentelemetry.a365.core.exporters.agent365_exporter_options import Agent365ExporterOptions
+
+        opts = Agent365ExporterOptions()
+        self.assertFalse(opts.disable_offline_storage)
+
+    def test_storage_directory_defaults_none(self):
+        from microsoft.opentelemetry.a365.core.exporters.agent365_exporter_options import Agent365ExporterOptions
+
+        opts = Agent365ExporterOptions()
+        self.assertIsNone(opts.storage_directory)
+
+    def test_disable_offline_storage_can_be_set_true(self):
+        from microsoft.opentelemetry.a365.core.exporters.agent365_exporter_options import Agent365ExporterOptions
+
+        opts = Agent365ExporterOptions(disable_offline_storage=True)
+        self.assertTrue(opts.disable_offline_storage)
+
+    def test_storage_directory_can_be_set(self):
+        from microsoft.opentelemetry.a365.core.exporters.agent365_exporter_options import Agent365ExporterOptions
+
+        opts = Agent365ExporterOptions(storage_directory="C:\\telemetry")
+        self.assertEqual(opts.storage_directory, "C:\\telemetry")
+
+    def test_empty_storage_directory_raises_value_error(self):
+        from microsoft.opentelemetry.a365.core.exporters.agent365_exporter_options import Agent365ExporterOptions
+
+        with self.assertRaises(ValueError):
+            Agent365ExporterOptions(storage_directory="")
+
+    def test_whitespace_storage_directory_raises_value_error(self):
+        from microsoft.opentelemetry.a365.core.exporters.agent365_exporter_options import Agent365ExporterOptions
+
+        with self.assertRaises(ValueError):
+            Agent365ExporterOptions(storage_directory="   ")
+
+
+class TestCreateA365ComponentsOfflineStorage(unittest.TestCase):
+    """Tests that create_a365_components forwards offline-storage options."""
+
+    @patch.dict(os.environ, {"ENABLE_A365_OBSERVABILITY_EXPORTER": "true"})
+    def test_disable_offline_storage_forwarded_to_exporter(self):
+        with patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
+            exporter_mock.return_value = MagicMock()
+            create_a365_components(disable_offline_storage=True)
+        _, kwargs = exporter_mock.call_args
+        self.assertFalse(kwargs["enable_durable_delivery"])
+
+    @patch.dict(os.environ, {"ENABLE_A365_OBSERVABILITY_EXPORTER": "true"})
+    def test_storage_directory_forwarded_to_exporter_as_path(self):
+        from pathlib import Path
+
+        with patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
+            exporter_mock.return_value = MagicMock()
+            create_a365_components(storage_directory="C:\\telemetry")
+        _, kwargs = exporter_mock.call_args
+        self.assertEqual(kwargs["storage_directory"], Path("C:\\telemetry"))
+
+    @patch.dict(os.environ, {"ENABLE_A365_OBSERVABILITY_EXPORTER": "true"})
+    def test_durable_delivery_enabled_by_default(self):
+        with patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
+            exporter_mock.return_value = MagicMock()
+            create_a365_components()
+        _, kwargs = exporter_mock.call_args
+        self.assertTrue(kwargs["enable_durable_delivery"])
+
+    @patch.dict(os.environ, {"ENABLE_A365_OBSERVABILITY_EXPORTER": "true"})
+    def test_storage_directory_none_by_default(self):
+        with patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter") as exporter_mock:
+            exporter_mock.return_value = MagicMock()
+            create_a365_components()
+        _, kwargs = exporter_mock.call_args
+        self.assertIsNone(kwargs["storage_directory"])
+
+    @patch.dict(os.environ, {"ENABLE_A365_OBSERVABILITY_EXPORTER": "true"})
+    def test_empty_storage_directory_rejected_end_to_end(self):
+        """An explicitly empty storage directory must raise ValueError rather
+        than silently defaulting to the platform path."""
+        with self.assertRaises(ValueError):
+            create_a365_components(storage_directory="")
 
 
 if __name__ == "__main__":

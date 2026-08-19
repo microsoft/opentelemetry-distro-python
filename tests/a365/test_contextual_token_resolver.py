@@ -11,6 +11,10 @@ from opentelemetry.trace import SpanKind, StatusCode
 from microsoft.opentelemetry.a365.core.exporters.agent365_exporter import (
     _Agent365Exporter,
 )
+from microsoft.opentelemetry.a365.core.exporters.durable_delivery import (
+    DeliveryDisposition,
+    DeliveryResult,
+)
 from microsoft.opentelemetry.a365.core.exporters.token_resolver_context import (
     AgentIdentity,
     TokenResolverContext,
@@ -132,12 +136,12 @@ class TestContextualTokenResolverInit(unittest.TestCase):
 
 
 class TestContextualTokenResolverExport(unittest.TestCase):
-    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter._post_with_retries")
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter._post_once")
     @patch.dict(os.environ, {}, clear=True)
     def test_contextual_resolver_called_with_context(self, mock_post):
-        mock_post.return_value = True
+        mock_post.return_value = DeliveryResult(DeliveryDisposition.DELIVERED)
         resolver = MagicMock(return_value="ctx-token")
-        exporter = _Agent365Exporter(contextual_token_resolver=resolver)
+        exporter = _Agent365Exporter(contextual_token_resolver=resolver, enable_durable_delivery=False)
         span = _make_span(tenant_id="t1", agent_id="a1", agentic_user_id="user-42")
         exporter.export([span])
 
@@ -149,12 +153,12 @@ class TestContextualTokenResolverExport(unittest.TestCase):
         self.assertEqual(ctx.tenant_id, "t1")
         exporter.shutdown()
 
-    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter._post_with_retries")
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter._post_once")
     @patch.dict(os.environ, {}, clear=True)
     def test_contextual_resolver_null_agentic_user_id(self, mock_post):
-        mock_post.return_value = True
+        mock_post.return_value = DeliveryResult(DeliveryDisposition.DELIVERED)
         resolver = MagicMock(return_value="ctx-token")
-        exporter = _Agent365Exporter(contextual_token_resolver=resolver)
+        exporter = _Agent365Exporter(contextual_token_resolver=resolver, enable_durable_delivery=False)
         span = _make_span(tenant_id="t1", agent_id="a1")  # no agentic_user_id
         exporter.export([span])
 
@@ -162,15 +166,16 @@ class TestContextualTokenResolverExport(unittest.TestCase):
         self.assertIsNone(ctx.identity.agentic_user_id)
         exporter.shutdown()
 
-    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter._post_with_retries")
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter._post_once")
     @patch.dict(os.environ, {}, clear=True)
     def test_contextual_resolver_takes_precedence_over_token_resolver(self, mock_post):
-        mock_post.return_value = True
+        mock_post.return_value = DeliveryResult(DeliveryDisposition.DELIVERED)
         token_resolver = MagicMock(return_value="old-token")
         contextual_resolver = MagicMock(return_value="new-token")
         exporter = _Agent365Exporter(
             token_resolver=token_resolver,
             contextual_token_resolver=contextual_resolver,
+            enable_durable_delivery=False,
         )
         span = _make_span(tenant_id="t1", agent_id="a1")
         exporter.export([span])
@@ -180,38 +185,42 @@ class TestContextualTokenResolverExport(unittest.TestCase):
         token_resolver.assert_not_called()
         exporter.shutdown()
 
-    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter._post_with_retries")
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter._post_once")
     @patch.dict(os.environ, {}, clear=True)
     def test_token_resolver_used_when_no_contextual(self, mock_post):
-        mock_post.return_value = True
+        mock_post.return_value = DeliveryResult(DeliveryDisposition.DELIVERED)
         token_resolver = MagicMock(return_value="old-token")
-        exporter = _Agent365Exporter(token_resolver=token_resolver)
+        exporter = _Agent365Exporter(token_resolver=token_resolver, enable_durable_delivery=False)
         span = _make_span(tenant_id="t1", agent_id="a1")
         exporter.export([span])
 
         token_resolver.assert_called_once_with("a1", "t1")
         exporter.shutdown()
 
-    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter._post_with_retries")
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter._post_once")
     @patch.dict(os.environ, {}, clear=True)
     def test_contextual_resolver_exception_marks_failure(self, mock_post):
-        mock_post.return_value = True
+        # Durable storage disabled => a token failure cannot be persisted, so
+        # the export surfaces failure and no send is attempted.
         resolver = MagicMock(side_effect=Exception("auth error"))
-        exporter = _Agent365Exporter(contextual_token_resolver=resolver)
+        exporter = _Agent365Exporter(contextual_token_resolver=resolver, enable_durable_delivery=False)
         span = _make_span(tenant_id="t1", agent_id="a1")
         result = exporter.export([span])
         self.assertEqual(result, SpanExportResult.FAILURE)
+        mock_post.assert_not_called()
         exporter.shutdown()
 
-    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter._post_with_retries")
+    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter._post_once")
     @patch.dict(os.environ, {}, clear=True)
-    def test_contextual_resolver_returns_none_no_auth_header(self, mock_post):
-        mock_post.return_value = True
+    def test_contextual_resolver_returns_none_is_permanent_failure(self, mock_post):
+        # An empty token is a permanent condition: nothing is sent or stored and
+        # the export fails.
         resolver = MagicMock(return_value=None)
-        exporter = _Agent365Exporter(contextual_token_resolver=resolver)
+        exporter = _Agent365Exporter(contextual_token_resolver=resolver, enable_durable_delivery=False)
         span = _make_span(tenant_id="t1", agent_id="a1")
         result = exporter.export([span])
-        self.assertEqual(result, SpanExportResult.SUCCESS)
+        self.assertEqual(result, SpanExportResult.FAILURE)
+        mock_post.assert_not_called()
         exporter.shutdown()
 
 
