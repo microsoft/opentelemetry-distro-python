@@ -1,12 +1,11 @@
 # Release History
 
-# 1.3.8 (Unreleased)
-
-### Other Changes
-- Contribute Microsoft distro profile information (`component="mot"` and distro version) to the OneSettings control plane during `use_microsoft_opentelemetry()`.
+# 1.3.8 (2026-08-20)
 ### Features Added
 - Add support for agent identity propagation for compiled agents in nested graph
   ([#245](https://github.com/microsoft/opentelemetry-distro-python/pull/245))
+- Add samples and documentation for LangChain special scenarios, including Foundry Responses API and nested graphs
+  ([#249](https://github.com/microsoft/opentelemetry-distro-python/pull/249))
 - Expose A365 offline storage options: `a365_exporter_disable_offline_storage` (default `False`)
   and `a365_exporter_storage_directory` (default `None`) on `use_microsoft_opentelemetry`,
   `Agent365ExporterOptions`, and `create_a365_components`.
@@ -20,6 +19,14 @@
   instead of retried forever, and `shutdown()` is drain-safe: it waits for any in-flight replay
   send to finish before closing the durable store and HTTP session (parity with `.NET` PR #137).
   ([#248](https://github.com/microsoft/opentelemetry-distro-python/pull/248))
+
+### Other Changes
+- Contribute Microsoft distro profile information (`component="mot"` and distro version) to the OneSettings control plane during `use_microsoft_opentelemetry()`.
+  ([#244](https://github.com/microsoft/opentelemetry-distro-python/pull/244))
+- Pin GitHub Actions to full-length commit SHAs
+  ([#246](https://github.com/microsoft/opentelemetry-distro-python/pull/246))
+- Apply formatting fixes across source and test files
+  ([#241](https://github.com/microsoft/opentelemetry-distro-python/pull/241))
 
 # 1.3.7 (2026-08-05)
 ### Features Added

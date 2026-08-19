@@ -161,7 +161,8 @@ class OutputLoggingMiddleware:
                 await send_next()
                 return
 
-            traceparent: str | None = turn_context.turn_state.get(A365_PARENT_TRACEPARENT_KEY)
+            traceparent_value = turn_context.turn_state.get(A365_PARENT_TRACEPARENT_KEY)
+            traceparent = traceparent_value if isinstance(traceparent_value, str) else None
             parent_context = None
             if traceparent:
                 parent_context = extract_context_from_headers({"traceparent": traceparent})
