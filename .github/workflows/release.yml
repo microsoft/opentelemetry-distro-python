@@ -1,0 +1,205 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - pyproject.toml
+      - CHANGELOG.md
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release (defaults to pyproject.toml version)
+        required: false
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    outputs:
+      released: ${{ steps.create.outputs.released }}
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Resolve version and tag
+        id: v
+        env:
+          INPUT_VERSION: ${{ github.event.inputs.version }}
+        run: |
+          if [ -n "$INPUT_VERSION" ]; then
+            VERSION="$INPUT_VERSION"
+          else
+            VERSION="$(python -c "import tomllib; print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")"
+          fi
+
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid release version: $VERSION"
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Decide whether to release
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+          TAG: ${{ steps.v.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          # (1) the changelog entry for this version must be dated, not "(Unreleased)"
+          DATED="$(python - "$VERSION" <<'PY'
+          import re, sys
+          version = sys.argv[1]
+          proceed = "false"
+          for line in open("CHANGELOG.md", encoding="utf-8"):
+              if re.match(rf"^#\s+{re.escape(version)}(?=\s|\(|$)", line):
+                  proceed = "false" if "unreleased" in line.lower() else "true"
+                  break
+          print(proceed)
+          PY
+          )"
+          # (2) the release must not already exist
+          if gh release view "$TAG" --repo "$REPOSITORY" >/dev/null 2>&1; then
+            EXISTS=true
+          else
+            EXISTS=false
+          fi
+          if [ "$DATED" = "true" ] && [ "$EXISTS" = "false" ]; then
+            echo "proceed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "proceed=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping: dated=$DATED exists=$EXISTS"
+          fi
+
+      - name: Extract release notes
+        if: steps.gate.outputs.proceed == 'true'
+        env:
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          python - "$VERSION" > RELEASE_NOTES.md <<'PY'
+          import re, sys
+          version = sys.argv[1]
+          lines = open("CHANGELOG.md", encoding="utf-8").read().splitlines()
+          start = next((i + 1 for i, l in enumerate(lines)
+                        if re.match(rf"^#\s+{re.escape(version)}(?=\s|\(|$)", l)), None)
+          if start is None:
+              raise SystemExit(f"CHANGELOG entry not found for {version}")
+          body = []
+          for l in lines[start:]:
+              if re.match(r"^#\s+\S", l):
+                  break
+              body.append(l)
+          sys.stdout.write("\n".join(body).strip() or f"Release {version}.")
+          PY
+
+      - name: Create tag and GitHub release
+        id: create
+        if: steps.gate.outputs.proceed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.v.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+          TARGET_SHA: ${{ github.sha }}
+        run: |
+          gh release create "$TAG" \
+            --repo "$REPOSITORY" \
+            --target "$TARGET_SHA" \
+            --title "$TAG" \
+            --notes-file RELEASE_NOTES.md
+          echo "released=true" >> "$GITHUB_OUTPUT"
+
+  post-release:
+    needs: release
+    if: needs.release.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Compute next version
+        id: next
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+        run: |
+          NEXT="$(python - "$VERSION" <<'PY'
+          import re, sys
+          m = re.match(r"^(\d+)\.(\d+)\.(\d+)", sys.argv[1])
+          maj, minr, pat = map(int, m.groups())
+          print(f"{maj}.{minr}.{pat + 1}")   # patch bump; adjust rule if you want minor
+          PY
+          )"
+          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
+
+      - name: Bump pyproject.toml and scaffold CHANGELOG
+        env:
+          OLD: ${{ needs.release.outputs.version }}
+          NEXT: ${{ steps.next.outputs.next }}
+        run: |
+          python - "$OLD" "$NEXT" <<'PY'
+          import re, sys
+          old, nxt = sys.argv[1], sys.argv[2]
+
+          # bump the [project] version
+          pp = open("pyproject.toml", encoding="utf-8").read()
+            updated = pp.replace(f'version = "{old}"', f'version = "{nxt}"', 1)
+            if updated == pp:
+              raise SystemExit(f'Version {old} not found in pyproject.toml')
+            open("pyproject.toml", "w", encoding="utf-8").write(updated)
+
+          # prepend a new Unreleased block right after "# Release History"
+          block = (
+              f"# {nxt} (Unreleased)\n\n"
+              "### Features Added\n\n"
+              "### Breaking Changes\n\n"
+              "### Bugs Fixed\n\n"
+              "### Other Changes\n\n"
+          )
+          lines = open("CHANGELOG.md", encoding="utf-8").read().splitlines(keepends=True)
+          out, inserted = [], False
+          for line in lines:
+              out.append(line)
+              if not inserted and line.strip().lower() == "# release history":
+                  out.append("\n" + block)
+                  inserted = True
+          if not inserted:                      # no title? put it at the very top
+              out.insert(0, block)
+          open("CHANGELOG.md", "w", encoding="utf-8").write("".join(out))
+          PY
+
+      - name: Open PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEXT: ${{ steps.next.outputs.next }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          BRANCH="post-release/prepare-v$NEXT"
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add pyproject.toml CHANGELOG.md
+          git commit -m "chore: prepare for v$NEXT development"
+          git push --set-upstream origin "$BRANCH"
+          gh pr create --repo "$REPOSITORY" --base main --head "$BRANCH" \
+            --title "Prepare for v$NEXT development" \
+            --body "Automated post-release: bumps version to \`$NEXT\` and scaffolds the \`# $NEXT (Unreleased)\` CHANGELOG section. Merge to resume development; this will **not** trigger a release (the entry is marked Unreleased)."
