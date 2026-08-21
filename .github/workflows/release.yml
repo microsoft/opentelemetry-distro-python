@@ -162,10 +162,10 @@ jobs:
 
           # bump the [project] version
           pp = open("pyproject.toml", encoding="utf-8").read()
-            updated = pp.replace(f'version = "{old}"', f'version = "{nxt}"', 1)
-            if updated == pp:
-              raise SystemExit(f'Version {old} not found in pyproject.toml')
-            open("pyproject.toml", "w", encoding="utf-8").write(updated)
+          updated = pp.replace(f'version = "{old}"', f'version = "{nxt}"', 1)
+          if updated == pp:
+            raise SystemExit(f'Version {old} not found in pyproject.toml')
+          open("pyproject.toml", "w", encoding="utf-8").write(updated)
 
           # prepend a new Unreleased block right after "# Release History"
           block = (
