@@ -46,6 +46,7 @@ class TestLangChainInstrumentor(TestCase):
         wrap_kwargs = mock_wrap.call_args
         self.assertEqual(wrap_kwargs.kwargs.get("module") or wrap_kwargs[0][0], "langchain_core.callbacks")
         self.assertIsNotNone(inst._tracer)
+        self.assertEqual(inst._tracer._schema_format, "original+chat")
 
     @patch("microsoft.opentelemetry._genai._langchain._tracer_instrumentor.get_otel_logger")
     @patch("microsoft.opentelemetry._genai._langchain._tracer_instrumentor.trace_api.get_tracer")

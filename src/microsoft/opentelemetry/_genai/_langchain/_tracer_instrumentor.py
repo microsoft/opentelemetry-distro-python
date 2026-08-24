@@ -91,6 +91,11 @@ class LangChainInstrumentor(BaseInstrumentor):
             agent_config=agent_config,
             event_logger=event_logger,
             enable_sensitive_data=enable_sensitive_data,
+            # Without this, LangChain routes chat models through the legacy
+            # `on_llm_start` callback and gives the tracer one flattened
+            # "System: ... Human: ..." prompt. The chat-aware schema keeps
+            # the original messages so each becomes a GenAI input message.
+            _schema_format="original+chat",
         )
 
         self._original_cb_init = langchain_core.callbacks.BaseCallbackManager.__init__
