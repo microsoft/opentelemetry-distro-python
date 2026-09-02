@@ -1,0 +1,15 @@
+[project]
+name = "a365-s2s-sample"
+version = "0.1.0"
+description = "A365 S2S (service-to-service) exporter sample"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "microsoft-opentelemetry",
+    "msal",
+    "python-dotenv",
+]
+
+[tool.uv]
+# This is a runnable application, not a distributable package.
+package = false

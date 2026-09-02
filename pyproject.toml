@@ -53,9 +53,16 @@ langchain = [
 ]
 agent-framework = [
     "agent-framework>=1.4.0",
+    # openai 2.45.0 made InputTokensDetails.cache_write_tokens a required field,
+    # which breaks openai-agents (pulled transitively by agent-framework) since it
+    # constructs InputTokensDetails(cached_tokens=0). Cap until openai-agents adds it.
+    "openai>=2.36.0,<2.45.0",
 ]
 openai-agents = [
     "openai-agents>=0.0.7",
+    # See note above: openai 2.45.0's required cache_write_tokens field breaks
+    # openai-agents' InputTokensDetails(cached_tokens=0) construction.
+    "openai>=2.36.0,<2.45.0",
 ]
 hosting = [
     "microsoft-agents-activity>=0.9.0",
