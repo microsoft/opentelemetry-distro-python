@@ -102,7 +102,7 @@ The complete license text is available at:
 
 https://github.com/tqdm/tqdm/blob/v4.70.0/LICENCE
 
-https://github.com/tqdm/tqdm/blob/v4.67.3/LICENSE
+https://github.com/tqdm/tqdm/blob/v4.67.2/LICENCE
 
 License notice for ml-dtypes
 ---------------------------------------------------------
