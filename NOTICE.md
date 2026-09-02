@@ -7,6 +7,7 @@ When third-party notice obligations apply, the relevant notices should be includ
 As the dependency set for this project evolves, this notice file may be updated to reflect additional third-party attribution requirements.
 
 License notice for Sphinx
+
 ------------------------------------------------------------------------------
 
 Unless otherwise indicated, all code in the Sphinx project is licenced under the
