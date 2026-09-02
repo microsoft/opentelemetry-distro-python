@@ -62,7 +62,7 @@ https://hg.mozilla.org/mozilla-central/file/tip/security/nss/lib/ckfw/builtins/c
 It contains the certificates in PEM format and therefore
 can be directly used with curl / libcurl / php_curl, or with
 an Apache+mod_ssl webserver for SSL client authentication.
-Just configure this file as the SSLCACertificateFile.#
+Just configure this file as the SSLCACertificateFile.
 
 ***** BEGIN LICENSE BLOCK *****
 This Source Code Form is subject to the terms of the Mozilla Public License,
