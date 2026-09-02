@@ -8,7 +8,7 @@ As the dependency set for this project evolves, this notice file may be updated 
 
 License notice for Sphinx
 
-------------------------------------------------------------------------------
+---------------------------------------------------------
 
 Unless otherwise indicated, all code in the Sphinx project is licenced under the
 two clause BSD licence below.
@@ -41,7 +41,7 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 License notice for Astroid
 
-------------------------------------------------------------------------------
+---------------------------------------------------------
 
 Astroid is licensed under the GNU Lesser General Public License, version 2.1 or
 (at your option) any later version (LGPL-2.1-or-later).
@@ -52,7 +52,7 @@ https://github.com/pylint-dev/astroid/blob/v4.0.4/LICENSE
 
 License notice for Certifi
 
-------------------------------------------------------------------------------
+---------------------------------------------------------
 
 This package contains a modified version of ca-bundle.crt:
 
@@ -75,19 +75,56 @@ one at http://mozilla.org/MPL/2.0/.
 ***** END LICENSE BLOCK *****
 @(#) $RCSfile: certdata.txt,v $ $Revision: 1.80 $ $Date: 2011/11/03 15:11:58 $
 
+License notice for orjson
 
+---------------------------------------------------------
 
+orjson was written by ijl <ijl@mailbox.org>, copyright 2018 - 2026, with some
+source files available under the Mozilla Public License 2.0 (MPL-2.0).
 
+The complete license text is available at:
 
+https://github.com/ijl/orjson/blob/3.11.9/LICENSE-MPL-2.0
 
+License notice for PathSpec
 
+---------------------------------------------------------
 
+PathSpec is licensed under the Mozilla Public License 2.0 (MPL-2.0).
 
+The complete license text is available at:
 
+https://github.com/cpburnz/python-pathspec/blob/v1.1.1/LICENSE
 
+License notice for tqdm
 
+---------------------------------------------------------
 
+tqdm is licensed under the Mozilla Public License 2.0 (MPL-2.0) and the
+MIT License.
 
+The complete license text is available at:
 
+https://github.com/tqdm/tqdm/blob/v4.70.0/LICENCE
 
+License notice for ml-dtypes
 
+---------------------------------------------------------
+
+Some source files included in ml-dtypes are licensed under the
+Mozilla Public License 2.0 (MPL-2.0).
+
+The complete license text is available at:
+
+https://github.com/jax-ml/ml_dtypes/blob/v0.5.4/LICENSE.eigen
+
+License notice for Pylint
+
+---------------------------------------------------------
+
+Pylint is licensed under the GNU General Public License, version 2 or
+(at your option) any later version (GPL-2.0-or-later).
+
+The complete license text is available at:
+
+https://github.com/pylint-dev/pylint/blob/v4.0.5/LICENSE
