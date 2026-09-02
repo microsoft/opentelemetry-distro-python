@@ -65,12 +65,14 @@ an Apache+mod_ssl webserver for SSL client authentication.
 Just configure this file as the SSLCACertificateFile.
 
 ***** BEGIN LICENSE BLOCK *****
+
 This Source Code Form is subject to the terms of the Mozilla Public License,
 v. 2.0. If a copy of the MPL was not distributed with this file, You can obtain
 one at http://mozilla.org/MPL/2.0/.
 
 ***** END LICENSE BLOCK *****
-@(#) $RCSfile: certdata.txt,v $ $Revision: 1.80 $ $Date: 2011/11/03 15:11:58 $
+
+`@(#) $RCSfile: certdata.txt,v $ $Revision: 1.80 $ $Date: 2011/11/03 15:11:58 $`
 
 License notice for orjson
 ---------------------------------------------------------
@@ -100,6 +102,7 @@ MIT License.
 The complete license text is available at:
 
 https://github.com/tqdm/tqdm/blob/v4.70.0/LICENCE
+https://github.com/tqdm/tqdm/blob/v4.67.3/LICENSE
 
 License notice for ml-dtypes
 ---------------------------------------------------------
