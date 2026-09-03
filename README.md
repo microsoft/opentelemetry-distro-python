@@ -210,6 +210,7 @@ Microsoft OpenTelemetry automatically instruments the following libraries when i
 | `fastapi` | Web framework |
 | `flask` | Web framework |
 | `httpx` | HTTP client |
+| `httpx2` | HTTP client |
 | `psycopg2` | Database |
 | `requests` | HTTP client |
 | `urllib` | HTTP client |
@@ -245,6 +246,7 @@ following instrumentations by default** when `enable_a365=True`:
 | `fastapi` | disabled |
 | `flask` | disabled |
 | `httpx` | disabled |
+| `httpx2` | disabled |
 | `psycopg2` | disabled |
 | `requests` | disabled |
 | `urllib` | disabled |

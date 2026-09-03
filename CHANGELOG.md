@@ -1,4 +1,8 @@
 # Release History
+# 1.3.9 (Unreleased)
+### Features Added
+- - Update OpenTelemetry dependencies to latest versions, bump `langchain-core` minimum version to address S360, and support the new `httpx2` entry point exposed by `opentelemetry-instrumentation-httpx`.
+  ([#254](https://github.com/microsoft/opentelemetry-distro-python/pull/254))
 
 # 1.3.8 (2026-08-20)
 ### Features Added
