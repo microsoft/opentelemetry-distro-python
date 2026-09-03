@@ -14,7 +14,6 @@ enabled directly in the tests.
 import threading
 import unittest
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from unittest.mock import patch
 
 import pytest
 
