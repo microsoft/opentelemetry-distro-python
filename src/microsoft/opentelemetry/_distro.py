@@ -841,8 +841,6 @@ def _setup_instrumentations(otel_kwargs: Dict[str, Any], **kwargs: Any) -> None:
                 merged_kwargs[ENABLE_SENSITIVE_DATA_ARG] = enable_sensitive_data
             instrumentor: Any = entry_point.load()
             instrumentor().instrument(skip_dep_check=True, **merged_kwargs)
-            if lib_name == "httpx":
-                _setup_httpx2_instrumentation(merged_kwargs)
             set_sdkstats_instrumentation_by_name(lib_name)
         except Exception as ex:  # pylint: disable=broad-except
             _logger.warning(
@@ -850,15 +848,6 @@ def _setup_instrumentations(otel_kwargs: Dict[str, Any], **kwargs: Any) -> None:
                 lib_name,
                 exc_info=ex,
             )
-
-
-def _setup_httpx2_instrumentation(instrumentation_kwargs: Dict[str, Any]) -> None:
-    """Enable HTTPX2 when supported by the installed HTTPX instrumentor."""
-    try:
-        from opentelemetry.instrumentation.httpx import HTTPX2ClientInstrumentor
-    except ImportError:
-        return
-    HTTPX2ClientInstrumentor().instrument(skip_dep_check=True, **instrumentation_kwargs)
 
 
 def _setup_a365_openai_agents_instrumentation() -> None:

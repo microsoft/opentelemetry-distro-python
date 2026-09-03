@@ -31,7 +31,6 @@ from microsoft.opentelemetry._constants import (  # noqa: E402
     _A365_DISABLED_INSTRUMENTATIONS,
     _SUPPORTED_INSTRUMENTED_LIBRARIES,
 )
-from microsoft.opentelemetry._distro import _setup_httpx2_instrumentation  # noqa: E402
 
 # pylint: enable=wrong-import-position
 
@@ -53,13 +52,11 @@ class TestHttpxInstrumentationConfig(unittest.TestCase):
 
     def test_httpx_in_supported_libraries(self):
         self.assertIn("httpx", _SUPPORTED_INSTRUMENTED_LIBRARIES)
+        self.assertIn("httpx2", _SUPPORTED_INSTRUMENTED_LIBRARIES)
 
     def test_httpx_in_a365_disabled_list(self):
         self.assertIn("httpx", _A365_DISABLED_INSTRUMENTATIONS)
-
-    def test_httpx2_is_ignored_when_not_available(self):
-        with patch("builtins.__import__", side_effect=ImportError):
-            _setup_httpx2_instrumentation({})
+        self.assertIn("httpx2", _A365_DISABLED_INSTRUMENTATIONS)
 
 
 class TestHttpxInstrumentorLifecycle(unittest.TestCase):

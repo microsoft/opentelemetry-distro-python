@@ -273,6 +273,17 @@ class TestInstrumentationOptionsFunctionalValidation(unittest.TestCase):
         self.assertEqual(call_kwargs["request_hook"], "req_hook")
         self.assertEqual(call_kwargs["response_hook"], "resp_hook")
 
+    def test_httpx2_forwards_kwargs(self):
+        call_kwargs = self._run_with_options(
+            "httpx2",
+            {
+                "request_hook": "req_hook",
+                "response_hook": "resp_hook",
+            },
+        )
+        self.assertEqual(call_kwargs["request_hook"], "req_hook")
+        self.assertEqual(call_kwargs["response_hook"], "resp_hook")
+
     def test_psycopg2_forwards_kwargs(self):
         call_kwargs = self._run_with_options(
             "psycopg2",
@@ -447,6 +458,59 @@ class TestInstrumentationOptionsFunctionalValidation(unittest.TestCase):
         self.assertNotIn("request_hook", a_kwargs)
         self.assertEqual(b_kwargs["request_hook"], "b_hook")
         self.assertNotIn("excluded_urls", b_kwargs)
+
+    def test_httpx2_can_be_disabled_independently(self):
+        httpx_instrumentor = MagicMock()
+        httpx2_instrumentor = MagicMock()
+
+        httpx_entry_point = MagicMock(name="httpx_entry_point")
+        httpx_entry_point.name = "httpx"
+        httpx_entry_point.load.return_value = lambda: httpx_instrumentor
+
+        httpx2_entry_point = MagicMock(name="httpx2_entry_point")
+        httpx2_entry_point.name = "httpx2"
+        httpx2_entry_point.load.return_value = lambda: httpx2_instrumentor
+
+        with (
+            patch("microsoft.opentelemetry._distro.get_dist_dependency_conflicts", return_value=None),
+            patch(
+                "microsoft.opentelemetry._distro.entry_points",
+                return_value=[httpx_entry_point, httpx2_entry_point],
+            ),
+        ):
+            _setup_instrumentations(
+                {"instrumentation_options": {"httpx2": {"enabled": False}}}
+            )
+
+        httpx_instrumentor.instrument.assert_called_once()
+        httpx2_instrumentor.instrument.assert_not_called()
+
+    @patch("microsoft.opentelemetry._distro.set_sdkstats_instrumentation_by_name")
+    def test_httpx2_failure_does_not_affect_httpx(self, set_sdkstats):
+        httpx_instrumentor = MagicMock()
+        httpx2_instrumentor = MagicMock()
+        httpx2_instrumentor.instrument.side_effect = RuntimeError("httpx2 failed")
+
+        httpx_entry_point = MagicMock(name="httpx_entry_point")
+        httpx_entry_point.name = "httpx"
+        httpx_entry_point.load.return_value = lambda: httpx_instrumentor
+
+        httpx2_entry_point = MagicMock(name="httpx2_entry_point")
+        httpx2_entry_point.name = "httpx2"
+        httpx2_entry_point.load.return_value = lambda: httpx2_instrumentor
+
+        with (
+            patch("microsoft.opentelemetry._distro.get_dist_dependency_conflicts", return_value=None),
+            patch(
+                "microsoft.opentelemetry._distro.entry_points",
+                return_value=[httpx_entry_point, httpx2_entry_point],
+            ),
+        ):
+            _setup_instrumentations({})
+
+        httpx_instrumentor.instrument.assert_called_once()
+        httpx2_instrumentor.instrument.assert_called_once()
+        set_sdkstats.assert_called_once_with("httpx")
 
     def test_kwargs_not_forwarded_to_disabled_lib(self):
         """A disabled library should not have instrument() called at all."""

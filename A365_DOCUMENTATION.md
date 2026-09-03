@@ -167,6 +167,7 @@ When `enable_a365=True` (and `enable_azure_monitor` is **not** set), the **web-f
 | `fastapi` | disabled |
 | `flask` | disabled |
 | `httpx` | disabled |
+| `httpx2` | disabled |
 | `psycopg2` | disabled |
 | `requests` | disabled |
 | `urllib` | disabled |
