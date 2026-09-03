@@ -855,7 +855,6 @@ def _setup_instrumentations(otel_kwargs: Dict[str, Any], **kwargs: Any) -> None:
 def _setup_httpx2_instrumentation(instrumentation_kwargs: Dict[str, Any]) -> None:
     """Enable HTTPX2 when supported by the installed HTTPX instrumentor."""
     try:
-        import httpx2  # noqa: F401
         from opentelemetry.instrumentation.httpx import HTTPX2ClientInstrumentor
     except ImportError:
         return
