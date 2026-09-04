@@ -478,9 +478,7 @@ class TestInstrumentationOptionsFunctionalValidation(unittest.TestCase):
                 return_value=[httpx_entry_point, httpx2_entry_point],
             ),
         ):
-            _setup_instrumentations(
-                {"instrumentation_options": {"httpx2": {"enabled": False}}}
-            )
+            _setup_instrumentations({"instrumentation_options": {"httpx2": {"enabled": False}}})
 
         httpx_instrumentor.instrument.assert_called_once()
         httpx2_instrumentor.instrument.assert_not_called()
