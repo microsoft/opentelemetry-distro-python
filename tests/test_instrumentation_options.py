@@ -527,14 +527,16 @@ class TestInstrumentationOptionsFunctionalValidation(unittest.TestCase):
                     entry_point.load.return_value = lambda instrumentor=instrumentor: instrumentor
                     entry_points_by_name.append(entry_point)
 
-                def dependency_conflict(dependencies):
-                    return object() if dependencies == [f"{conflicting_lib}>=1"] else None
+                dependency_conflicts = [
+                    object() if conflicting_lib == "httpx" else None,
+                    object() if conflicting_lib == "httpx2" else None,
+                ]
 
                 with (
                     patch("microsoft.opentelemetry._distro.get_dist_dependency_conflicts", return_value=None),
                     patch(
                         "microsoft.opentelemetry._distro.get_dependency_conflicts",
-                        side_effect=dependency_conflict,
+                        side_effect=dependency_conflicts,
                     ),
                     patch(
                         "microsoft.opentelemetry._distro.entry_points",
