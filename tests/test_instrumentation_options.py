@@ -478,9 +478,7 @@ class TestInstrumentationOptionsFunctionalValidation(unittest.TestCase):
                 return_value=[httpx_entry_point, httpx2_entry_point],
             ),
         ):
-            _setup_instrumentations(
-                {"instrumentation_options": {"httpx2": {"enabled": False}}}
-            )
+            _setup_instrumentations({"instrumentation_options": {"httpx2": {"enabled": False}}})
 
         httpx_instrumentor.instrument.assert_called_once()
         httpx2_instrumentor.instrument.assert_not_called()
@@ -511,6 +509,97 @@ class TestInstrumentationOptionsFunctionalValidation(unittest.TestCase):
         httpx_instrumentor.instrument.assert_called_once()
         httpx2_instrumentor.instrument.assert_called_once()
         set_sdkstats.assert_called_once_with("httpx")
+
+    @patch("microsoft.opentelemetry._distro.set_sdkstats_instrumentation_by_name")
+    def test_httpx_dependency_conflict_skips_only_affected_entry_point(self, set_sdkstats):
+        for conflicting_lib in ("httpx", "httpx2"):
+            with self.subTest(conflicting_lib=conflicting_lib):
+                set_sdkstats.reset_mock()
+                instrumentors = {
+                    "httpx": MagicMock(name="httpx_instrumentor"),
+                    "httpx2": MagicMock(name="httpx2_instrumentor"),
+                }
+                entry_points_by_name = []
+                for lib_name, instrumentor in instrumentors.items():
+                    instrumentor.instrumentation_dependencies.return_value = [f"{lib_name}>=1"]
+                    entry_point = MagicMock(name=f"{lib_name}_entry_point")
+                    entry_point.name = lib_name
+                    entry_point.load.return_value = lambda instrumentor=instrumentor: instrumentor
+                    entry_points_by_name.append(entry_point)
+
+                dependency_conflicts = [
+                    object() if conflicting_lib == "httpx" else None,
+                    object() if conflicting_lib == "httpx2" else None,
+                ]
+
+                with (
+                    patch("microsoft.opentelemetry._distro.get_dist_dependency_conflicts", return_value=None),
+                    patch(
+                        "microsoft.opentelemetry._distro.get_dependency_conflicts",
+                        side_effect=dependency_conflicts,
+                    ),
+                    patch(
+                        "microsoft.opentelemetry._distro.entry_points",
+                        return_value=entry_points_by_name,
+                    ),
+                ):
+                    _setup_instrumentations({})
+
+                sibling_lib = "httpx2" if conflicting_lib == "httpx" else "httpx"
+                instrumentors[conflicting_lib].instrument.assert_not_called()
+                instrumentors[sibling_lib].instrument.assert_called_once_with(skip_dep_check=True)
+                set_sdkstats.assert_called_once_with(sibling_lib)
+
+    @patch("microsoft.opentelemetry._distro.get_dependency_conflicts", return_value=None)
+    def test_httpx_entry_points_instrument_when_dependencies_are_available(self, get_conflicts):
+        httpx_instrumentor = MagicMock()
+        httpx_instrumentor.instrumentation_dependencies.return_value = ["httpx>=1"]
+        httpx2_instrumentor = MagicMock()
+        httpx2_instrumentor.instrumentation_dependencies.return_value = ["httpx-ws>=1"]
+
+        httpx_entry_point = MagicMock(name="httpx_entry_point")
+        httpx_entry_point.name = "httpx"
+        httpx_entry_point.load.return_value = lambda: httpx_instrumentor
+
+        httpx2_entry_point = MagicMock(name="httpx2_entry_point")
+        httpx2_entry_point.name = "httpx2"
+        httpx2_entry_point.load.return_value = lambda: httpx2_instrumentor
+
+        with (
+            patch("microsoft.opentelemetry._distro.get_dist_dependency_conflicts", return_value=None),
+            patch(
+                "microsoft.opentelemetry._distro.entry_points",
+                return_value=[httpx_entry_point, httpx2_entry_point],
+            ),
+        ):
+            _setup_instrumentations({})
+
+        self.assertEqual(
+            get_conflicts.call_args_list,
+            [unittest.mock.call(["httpx>=1"]), unittest.mock.call(["httpx-ws>=1"])],
+        )
+        httpx_instrumentor.instrument.assert_called_once_with(skip_dep_check=True)
+        httpx2_instrumentor.instrument.assert_called_once_with(skip_dep_check=True)
+
+    @patch("microsoft.opentelemetry._distro.get_dependency_conflicts")
+    def test_non_httpx_entry_point_does_not_run_instrumentor_dependency_check(self, get_conflicts):
+        requests_instrumentor = MagicMock()
+        requests_entry_point = MagicMock(name="requests_entry_point")
+        requests_entry_point.name = "requests"
+        requests_entry_point.load.return_value = lambda: requests_instrumentor
+
+        with (
+            patch("microsoft.opentelemetry._distro.get_dist_dependency_conflicts", return_value=None),
+            patch(
+                "microsoft.opentelemetry._distro.entry_points",
+                return_value=[requests_entry_point],
+            ),
+        ):
+            _setup_instrumentations({})
+
+        requests_instrumentor.instrumentation_dependencies.assert_not_called()
+        get_conflicts.assert_not_called()
+        requests_instrumentor.instrument.assert_called_once_with(skip_dep_check=True)
 
     def test_kwargs_not_forwarded_to_disabled_lib(self):
         """A disabled library should not have instrument() called at all."""
