@@ -83,7 +83,7 @@ from microsoft.opentelemetry._genai.main_agent import (
     GenAIMainAgentLogRecordProcessor,
     GenAIMainAgentSpanProcessor,
 )
-from microsoft.opentelemetry._instrumentation import get_dist_dependency_conflicts
+from microsoft.opentelemetry._instrumentation import get_dist_dependency_conflicts, get_dependency_conflicts
 from microsoft.opentelemetry._otlp import is_otlp_enabled
 from microsoft.opentelemetry._sdkstats._state import (
     SdkStatsFeature,
@@ -840,7 +840,17 @@ def _setup_instrumentations(otel_kwargs: Dict[str, Any], **kwargs: Any) -> None:
             if lib_name in ["agent_framework", "langchain"]:
                 merged_kwargs[ENABLE_SENSITIVE_DATA_ARG] = enable_sensitive_data
             instrumentor: Any = entry_point.load()
-            instrumentor().instrument(skip_dep_check=True, **merged_kwargs)
+            instrumentor_instance = instrumentor()
+            if lib_name in ("httpx", "httpx2"):
+                conflict = get_dependency_conflicts(instrumentor_instance.instrumentation_dependencies())
+                if conflict:
+                    _logger.debug(
+                        "Skipping instrumentation %s: %s",
+                        entry_point.name,
+                        conflict,
+                    )
+                    continue
+            instrumentor_instance.instrument(skip_dep_check=True, **merged_kwargs)
             set_sdkstats_instrumentation_by_name(lib_name)
         except Exception as ex:  # pylint: disable=broad-except
             _logger.warning(
