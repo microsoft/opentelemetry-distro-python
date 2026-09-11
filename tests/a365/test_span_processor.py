@@ -7,10 +7,32 @@ from unittest.mock import MagicMock
 
 from opentelemetry import baggage, context
 
+from microsoft.opentelemetry.a365.constants import (
+    APPLY_GUARDRAIL_OPERATION_NAME,
+    CHAT_OPERATION_NAME,
+    EXECUTE_TOOL_OPERATION_NAME,
+    GEN_AI_OPERATION_NAME_KEY,
+    INVOKE_AGENT_OPERATION_NAME,
+    OUTPUT_MESSAGES_OPERATION_NAME,
+)
+from microsoft.opentelemetry.a365.core.inference_operation_type import InferenceOperationType
 from microsoft.opentelemetry.a365.core.exporters.span_processor import (
     A365SpanProcessor,
     COMMON_ATTRIBUTES,
     INVOKE_AGENT_ATTRIBUTES,
+)
+
+RECOGNIZED_OPERATION_NAMES = tuple(
+    dict.fromkeys(
+        [
+            INVOKE_AGENT_OPERATION_NAME,
+            EXECUTE_TOOL_OPERATION_NAME,
+            OUTPUT_MESSAGES_OPERATION_NAME,
+            CHAT_OPERATION_NAME,
+            APPLY_GUARDRAIL_OPERATION_NAME,
+            *(operation.value for operation in InferenceOperationType),
+        ]
+    )
 )
 
 
@@ -20,24 +42,24 @@ class TestA365SpanProcessor(unittest.TestCase):
     def test_stamps_tenant_id_from_constructor(self):
         processor = A365SpanProcessor(tenant_id="cfg-tenant")
         span = MagicMock()
-        span.name = "test_span"
-        span.attributes = {}
+        span.name = "invoke_agent Test"
+        span.attributes = {GEN_AI_OPERATION_NAME_KEY: INVOKE_AGENT_OPERATION_NAME}
         processor.on_start(span, parent_context=context.get_current())
         span.set_attribute.assert_any_call("microsoft.tenant.id", "cfg-tenant")
 
     def test_stamps_agent_id_from_constructor(self):
         processor = A365SpanProcessor(agent_id="cfg-agent")
         span = MagicMock()
-        span.name = "test_span"
-        span.attributes = {}
+        span.name = "invoke_agent Test"
+        span.attributes = {GEN_AI_OPERATION_NAME_KEY: INVOKE_AGENT_OPERATION_NAME}
         processor.on_start(span, parent_context=context.get_current())
         span.set_attribute.assert_any_call("gen_ai.agent.id", "cfg-agent")
 
     def test_stamps_both_identity_fields(self):
         processor = A365SpanProcessor(tenant_id="t1", agent_id="a1")
         span = MagicMock()
-        span.name = "test_span"
-        span.attributes = {}
+        span.name = "invoke_agent Test"
+        span.attributes = {GEN_AI_OPERATION_NAME_KEY: INVOKE_AGENT_OPERATION_NAME}
         processor.on_start(span, parent_context=context.get_current())
         span.set_attribute.assert_any_call("microsoft.tenant.id", "t1")
         span.set_attribute.assert_any_call("gen_ai.agent.id", "a1")
@@ -45,8 +67,12 @@ class TestA365SpanProcessor(unittest.TestCase):
     def test_identity_does_not_overwrite_existing(self):
         processor = A365SpanProcessor(tenant_id="cfg-tenant", agent_id="cfg-agent")
         span = MagicMock()
-        span.name = "test_span"
-        span.attributes = {"microsoft.tenant.id": "existing", "gen_ai.agent.id": "existing"}
+        span.name = "invoke_agent Test"
+        span.attributes = {
+            GEN_AI_OPERATION_NAME_KEY: INVOKE_AGENT_OPERATION_NAME,
+            "microsoft.tenant.id": "existing",
+            "gen_ai.agent.id": "existing",
+        }
         processor.on_start(span, parent_context=context.get_current())
         for call in span.set_attribute.call_args_list:
             self.assertNotIn(call[0][0], ("microsoft.tenant.id", "gen_ai.agent.id"))
@@ -54,10 +80,26 @@ class TestA365SpanProcessor(unittest.TestCase):
     def test_identity_with_empty_baggage(self):
         processor = A365SpanProcessor(tenant_id="t1", agent_id="a1")
         span = MagicMock()
-        span.name = "test_span"
-        span.attributes = {}
+        span.name = "invoke_agent Test"
+        span.attributes = {GEN_AI_OPERATION_NAME_KEY: INVOKE_AGENT_OPERATION_NAME}
         processor.on_start(span, parent_context=context.get_current())
         self.assertEqual(span.set_attribute.call_count, 2)
+
+    def test_recognized_operation_values_receive_identity_and_common_baggage(self):
+        for operation_name in RECOGNIZED_OPERATION_NAMES:
+            with self.subTest(operation_name=operation_name):
+                processor = A365SpanProcessor(tenant_id="cfg-tenant", agent_id="cfg-agent")
+                span = MagicMock()
+                span.name = f"{operation_name} Test"
+                span.attributes = {GEN_AI_OPERATION_NAME_KEY: operation_name}
+
+                ctx = baggage.set_baggage("user.id", "user-1", context.get_current())
+
+                processor.on_start(span, parent_context=ctx)
+
+                span.set_attribute.assert_any_call("microsoft.tenant.id", "cfg-tenant")
+                span.set_attribute.assert_any_call("gen_ai.agent.id", "cfg-agent")
+                span.set_attribute.assert_any_call("user.id", "user-1")
 
     # -- baggage propagation --
 
@@ -65,8 +107,8 @@ class TestA365SpanProcessor(unittest.TestCase):
         processor = A365SpanProcessor()
 
         span = MagicMock()
-        span.name = "test_span"
-        span.attributes = {}
+        span.name = "invoke_agent Test"
+        span.attributes = {GEN_AI_OPERATION_NAME_KEY: INVOKE_AGENT_OPERATION_NAME}
 
         ctx = context.get_current()
         ctx = baggage.set_baggage("microsoft.tenant.id", "my-tenant", ctx)
@@ -81,8 +123,11 @@ class TestA365SpanProcessor(unittest.TestCase):
         processor = A365SpanProcessor()
 
         span = MagicMock()
-        span.name = "test_span"
-        span.attributes = {"microsoft.tenant.id": "existing-tenant"}
+        span.name = "invoke_agent Test"
+        span.attributes = {
+            GEN_AI_OPERATION_NAME_KEY: INVOKE_AGENT_OPERATION_NAME,
+            "microsoft.tenant.id": "existing-tenant",
+        }
 
         ctx = context.get_current()
         ctx = baggage.set_baggage("microsoft.tenant.id", "baggage-tenant", ctx)
@@ -142,12 +187,36 @@ class TestA365SpanProcessor(unittest.TestCase):
 
         span.set_attribute.assert_not_called()
 
+    def test_unrelated_span_receives_no_identity_or_baggage(self):
+        processor = A365SpanProcessor(tenant_id="tenant", agent_id="agent")
+        span = MagicMock()
+        span.name = "http.request"
+        span.attributes = {}
+        ctx = baggage.set_baggage("user.id", "user", context.get_current())
+        processor.on_start(span, parent_context=ctx)
+        span.set_attribute.assert_not_called()
+
+    def test_recognized_name_prefix_receives_identity_and_common_baggage_without_operation_attribute(self):
+        for operation_name in RECOGNIZED_OPERATION_NAMES:
+            with self.subTest(operation_name=operation_name):
+                processor = A365SpanProcessor(tenant_id="tenant", agent_id="agent")
+                span = MagicMock()
+                span.name = f"{operation_name} Test"
+                span.attributes = {}
+                ctx = baggage.set_baggage("user.id", "user", context.get_current())
+
+                processor.on_start(span, parent_context=ctx)
+
+                span.set_attribute.assert_any_call("microsoft.tenant.id", "tenant")
+                span.set_attribute.assert_any_call("gen_ai.agent.id", "agent")
+                span.set_attribute.assert_any_call("user.id", "user")
+
     def test_none_context(self):
         processor = A365SpanProcessor()
 
         span = MagicMock()
-        span.name = "test_span"
-        span.attributes = {}
+        span.name = "invoke_agent Test"
+        span.attributes = {GEN_AI_OPERATION_NAME_KEY: INVOKE_AGENT_OPERATION_NAME}
 
         # Should not raise
         processor.on_start(span, parent_context=None)

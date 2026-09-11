@@ -6,7 +6,7 @@
 
 """Span processor for propagating OpenTelemetry baggage entries onto spans.
 
-For every new span:
+For every recognized GenAI span:
   * Retrieve the current (or parent) context
   * Obtain all baggage entries
   * For each documented key with a truthy value not already present as a span
@@ -15,6 +15,9 @@ For every new span:
 """
 
 from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any
 
 from opentelemetry import baggage, context
 from opentelemetry.sdk.trace import SpanProcessor as BaseSpanProcessor
@@ -54,10 +57,11 @@ from microsoft.opentelemetry.a365.constants import (
     USER_ID_KEY,
     USER_NAME_KEY,
 )
+from microsoft.opentelemetry.a365.core.exporters.utils import GEN_AI_OPERATION_NAMES
 
 # mypy: disable-error-code="no-untyped-def"
 
-# Generic / common tracing attributes propagated from baggage to all spans
+# Generic / common tracing attributes propagated from baggage to qualifying GenAI spans
 COMMON_ATTRIBUTES = [
     TENANT_ID_KEY,
     CUSTOM_PARENT_SPAN_ID_KEY,
@@ -98,12 +102,36 @@ INVOKE_AGENT_ATTRIBUTES = [
 ]
 
 
+def _matches_operation_name(span: Any, existing_attributes: Mapping[str, object], operation_name: str) -> bool:
+    existing_operation_name = existing_attributes.get(GEN_AI_OPERATION_NAME_KEY)
+    if existing_operation_name:
+        return existing_operation_name == operation_name
+
+    span_name = getattr(span, "name", None)
+    return isinstance(span_name, str) and (span_name == operation_name or span_name.startswith(f"{operation_name} "))
+
+
+def _is_gen_ai_span(span: Any, existing_attributes: Mapping[str, object]) -> bool:
+    operation_name = existing_attributes.get(GEN_AI_OPERATION_NAME_KEY)
+    if operation_name:
+        return operation_name in GEN_AI_OPERATION_NAMES
+
+    span_name = getattr(span, "name", None)
+    if not isinstance(span_name, str):
+        return False
+
+    return any(
+        span_name == operation_name or span_name.startswith(f"{operation_name} ")
+        for operation_name in GEN_AI_OPERATION_NAMES
+    )
+
+
 # pylint: disable=broad-exception-caught, too-many-branches, useless-parent-delegation
 # pylint: disable=global-statement
 class A365SpanProcessor(BaseSpanProcessor):
     """Span processor that stamps agent identity and propagates baggage to span attributes.
 
-    Static identity (tenant_id, agent_id) is set from configuration on every span.
+    Static identity (tenant_id, agent_id) is set from configuration on qualifying GenAI spans.
     Additional baggage entries are propagated selectively for documented keys.
     Never overwrites existing attributes.
     """
@@ -125,6 +153,9 @@ class A365SpanProcessor(BaseSpanProcessor):
             existing = getattr(span, "attributes", {}) or {}
         except Exception:
             existing = {}
+
+        if not _is_gen_ai_span(span, existing):
+            return super().on_start(span, parent_context)
 
         if self._tenant_id and TENANT_ID_KEY not in existing:
             try:
@@ -151,13 +182,7 @@ class A365SpanProcessor(BaseSpanProcessor):
         except Exception:
             baggage_map = {}
 
-        operation_name = existing.get(GEN_AI_OPERATION_NAME_KEY)
-        is_invoke_agent = False
-        if operation_name == INVOKE_AGENT_OPERATION_NAME:
-            is_invoke_agent = True
-        elif isinstance(getattr(span, "name", None), str) and span.name.startswith(INVOKE_AGENT_OPERATION_NAME):
-            is_invoke_agent = True
-
+        is_invoke_agent = _matches_operation_name(span, existing, INVOKE_AGENT_OPERATION_NAME)
         target_keys = list(COMMON_ATTRIBUTES)
         if is_invoke_agent:
             for k in INVOKE_AGENT_ATTRIBUTES:
