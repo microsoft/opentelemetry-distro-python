@@ -122,6 +122,28 @@ See the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/bl
 
 > For A365 token resolver patterns, baggage, and scope classes, see the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md).
 
+### InvokeAgent semantic parameters
+
+Manual `InvokeAgentScope` instrumentation accepts Python-native request and response parameter models:
+
+```python
+from microsoft.opentelemetry.a365.core import GenAiRequestParameters, GenAiResponseParameters, InvokeAgentScopeDetails
+
+details = InvokeAgentScopeDetails(
+    request_parameters=GenAiRequestParameters(model="gpt-4o", max_tokens=256, stop_sequences=["END"])
+)
+
+with InvokeAgentScope.start(request, details, agent_details) as scope:
+    response = call_agent(request)
+    scope.record_response_parameters(GenAiResponseParameters(finish_reasons=["stop"], output_tokens=18))
+```
+
+Unset fields are omitted. Supported attributes include `gen_ai.request.*`,
+`gen_ai.data_source.id`, `gen_ai.output.type`, `gen_ai.system_instructions`,
+`gen_ai.response.finish_reasons`, and `gen_ai.usage.*` token counts. See the
+[A365 guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md#invokeagentscope)
+for the full list.
+
 ### Sampling
 
 Configured via standard OpenTelemetry environment variables:
