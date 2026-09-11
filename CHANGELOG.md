@@ -8,6 +8,9 @@
 - Update NOTICE to include the license declarations for external packages flagged in MPL review.
   ([#255](https://github.com/microsoft/opentelemetry-distro-python/pull/255))
 
+### Bugs Fixed
+- Prevent `OpenTelemetryScope.record_attributes()` from overwriting span attributes that were already set by scope construction or earlier custom attributes, while preserving dictionary and iterable inputs.
+
 # 1.3.8 (2026-08-20)
 ### Features Added
 - Add support for agent identity propagation for compiled agents in nested graph
