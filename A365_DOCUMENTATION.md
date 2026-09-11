@@ -386,6 +386,74 @@ with ExecuteToolScope.start(
     scope.record_response(result)
 ```
 
+`ToolCallDetails.arguments` and `ExecuteToolScope.record_response()` also accept typed execute-tool schema models.
+Typed top-level arguments and results serialize to the Agent365 JSON contract with `schema_version: "1.0"`,
+while raw dictionaries and strings remain supported and keep their existing behavior.
+
+```python
+from microsoft.opentelemetry.a365.core import (
+    ExecuteToolCallArguments,
+    ExecuteToolCallResult,
+    ExecuteToolScope,
+    ToolCallDetails,
+    ToolCallResource,
+    ToolCallResultOutcome,
+    ToolCallResultPagination,
+    Request,
+)
+
+arguments = ExecuteToolCallArguments(
+    action="read",
+    resources=[
+        ToolCallResource(
+            resource_id="file-1",
+            uri="https://contoso.example/files/1",
+            name="Forecast",
+            resource_type="file",
+            provider="sharepoint",
+        )
+    ],
+    parameters={"city": "Seattle"},
+    extension_data={"provider_operation": "weather.lookup"},
+)
+
+with ExecuteToolScope.start(
+    request=Request(content="What's the weather?"),
+    details=ToolCallDetails(tool_name="get_weather", tool_call_id="call_1", arguments=arguments),
+    agent_details=agent,
+) as scope:
+    scope.record_response(
+        ExecuteToolCallResult(
+            outcome=ToolCallResultOutcome(status="success"),
+            data={"temperature_f": 68},
+            pagination=ToolCallResultPagination(has_more=False, total_count=1),
+        )
+    )
+```
+
+The typed arguments above generate a JSON payload shaped like:
+
+```json
+{
+  "schema_version": "1.0",
+  "action": "read",
+  "resources": [
+    {
+      "id": "file-1",
+      "uri": "https://contoso.example/files/1",
+      "name": "Forecast",
+      "type": "file",
+      "provider": "sharepoint"
+    }
+  ],
+  "parameters": {"city": "Seattle"},
+  "provider_operation": "weather.lookup"
+}
+```
+
+Model fields that are `None` are omitted. `False`, zero, empty dictionaries, and empty lists are preserved.
+`extension_data` is merged into the same JSON object as the model and cannot overwrite schema-owned keys.
+
 ### InferenceScope
 
 ```python

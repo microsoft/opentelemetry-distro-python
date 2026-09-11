@@ -72,6 +72,22 @@ use_microsoft_opentelemetry(
 
 See the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md) for A365-specific configuration.
 
+Agent365 manual execute-tool spans support typed JSON schema payloads:
+
+```python
+from microsoft.opentelemetry.a365.core import ExecuteToolCallArguments, ToolCallResource
+
+arguments = ExecuteToolCallArguments(
+    action="read",
+    resources=[ToolCallResource(resource_id="file-1", resource_type="file", provider="sharepoint")],
+    extension_data={"provider_operation": "lookup"},
+)
+```
+
+Typed arguments and results emit `schema_version: "1.0"` and serialize with schema field names such as
+`id`, `type`, `provider_code`, and `has_more`. Raw dictionary and string arguments/results remain supported.
+See the A365 guide for complete examples.
+
 ---
 
 ## Configuration Reference
