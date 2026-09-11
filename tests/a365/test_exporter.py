@@ -22,7 +22,6 @@ from microsoft.opentelemetry.a365.core.exporters.durable_delivery import (
     IdentityKey,
 )
 from microsoft.opentelemetry.a365.core.exporters.persistent_storage import DurableRecord
-from microsoft.opentelemetry.a365.core.inference_operation_type import InferenceOperationType
 
 
 def _make_span(
@@ -605,24 +604,21 @@ class TestAgent365ExporterFiltering(unittest.TestCase):
         exporter.shutdown()
 
     @patch.dict(os.environ, {}, clear=True)
-    def test_export_includes_all_inference_operation_type_spans(self):
-        """Spans with every InferenceOperationType value are kept."""
+    def test_export_filters_out_unsupported_inference_operation_types(self):
+        """Spans with TextCompletion / GenerateContent are filtered out."""
         exporter = make_exporter()
         exporter._post_once = MagicMock(return_value=_delivered())
-        spans = [
-            _make_span(
-                name=f"{operation_type.value}_span",
-                trace_id=index + 3,
-                span_id=index + 4,
-                operation_name=operation_type.value,
-            )
-            for index, operation_type in enumerate(InferenceOperationType)
-        ]
+        text_completion_span = _make_span(
+            name="text_completion_span", trace_id=3, span_id=4, operation_name="TextCompletion"
+        )
+        generate_content_span = _make_span(
+            name="generate_content_span", trace_id=5, span_id=6, operation_name="GenerateContent"
+        )
 
-        result = exporter.export(spans)
+        result = exporter.export([text_completion_span, generate_content_span])
 
         self.assertEqual(result, SpanExportResult.SUCCESS)
-        exporter._post_once.assert_called_once()
+        exporter._post_once.assert_not_called()
         exporter.shutdown()
 
     @patch.dict(os.environ, {}, clear=True)
