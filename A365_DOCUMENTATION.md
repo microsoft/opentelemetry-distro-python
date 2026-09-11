@@ -254,6 +254,26 @@ with (
         ...
 ```
 
+To copy an application-specific baggage value onto Agent365 GenAI spans,
+explicitly opt in each key with `custom_attribute()` or `custom_attributes()`:
+
+```python
+with (
+    BaggageBuilder()
+    .tenant_id("contoso-tenant")
+    .agent_id("weather-agent-001")
+    .custom_attribute("customer.tier", "gold")
+    .custom_attributes({"customer.region": "west"})
+    .build()
+):
+    with InvokeAgentScope.start(...) as scope:
+        ...
+```
+
+`set_pairs()` only sets baggage. It does not opt arbitrary baggage keys into
+span attributes; use `custom_attribute()` for any custom key that should appear
+on GenAI spans.
+
 ### From TurnContext (Hosting Framework)
 
 ```python

@@ -1,4 +1,10 @@
 # Release History
+# Unreleased
+### Features Added
+- Add explicit `BaggageBuilder.custom_attribute()` and `custom_attributes()`
+  APIs for opting application-specific baggage keys into Agent365 GenAI span
+  attributes.
+
 # 1.3.9 (2026-09-09)
 ### Features Added
 - Update OpenTelemetry dependencies to latest versions, bump `langchain-core` minimum version to address S360, and support the new `httpx2` entry point exposed by `opentelemetry-instrumentation-httpx`.
