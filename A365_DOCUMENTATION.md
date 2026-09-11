@@ -231,7 +231,7 @@ ObservabilityHostingManager.configure(
 
 ## Baggage
 
-Baggage sets per-request context (tenant, agent, user) that flows to all spans. **Without `tenant_id` and `agent_id`, the exporter silently drops spans.**
+Baggage sets per-request context (tenant, agent, user) that flows to recognized GenAI spans only. **Without `tenant_id` and `agent_id`, the exporter silently drops spans.**
 
 ### BaggageBuilder
 

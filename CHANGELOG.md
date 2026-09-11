@@ -1,4 +1,8 @@
 # Release History
+# Unreleased
+### Bugs Fixed
+- Stop adding A365 baggage and configured identity attributes to unrelated application spans, matching the .NET PR #99 GenAI-only processing behavior.
+
 # 1.3.9 (2026-09-09)
 ### Features Added
 - Update OpenTelemetry dependencies to latest versions, bump `langchain-core` minimum version to address S360, and support the new `httpx2` entry point exposed by `opentelemetry-instrumentation-httpx`.
@@ -7,9 +11,6 @@
   ([#259](https://github.com/microsoft/opentelemetry-distro-python/pull/259))
 - Update NOTICE to include the license declarations for external packages flagged in MPL review.
   ([#255](https://github.com/microsoft/opentelemetry-distro-python/pull/255))
-
-### Bugs Fixed
-- Stop adding A365 baggage and configured identity attributes to unrelated application spans, matching the .NET PR #99 GenAI-only processing behavior.
 
 # 1.3.8 (2026-08-20)
 ### Features Added
