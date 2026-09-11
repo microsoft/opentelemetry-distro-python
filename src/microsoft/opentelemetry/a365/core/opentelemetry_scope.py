@@ -248,7 +248,14 @@ class OpenTelemetryScope:
         if not self._is_telemetry_enabled() or self._span is None:
             return
 
-        existing_keys = set(self._span.attributes or {})
+        if not self._span.is_recording():
+            return
+
+        span_attributes = getattr(self._span, "attributes", None)
+        if span_attributes is None:
+            return
+
+        existing_keys = set(span_attributes)
         items = attributes.items() if isinstance(attributes, dict) else attributes
 
         for key, value in items:

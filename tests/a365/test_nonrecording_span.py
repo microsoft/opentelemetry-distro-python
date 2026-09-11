@@ -38,7 +38,7 @@ def _make_non_recording_span(trace_id=0, span_id=0):
 class TestOpenTelemetryScopeNonRecordingSpan(unittest.TestCase):
     """Verify OpenTelemetryScope works when the tracer returns a NonRecordingSpan."""
 
-    @patch.dict(os.environ, {"ENABLE_OBSERVABILITY": "true"})
+    @patch.dict(os.environ, {"ENABLE_OBSERVABILITY": "true"}, clear=True)
     @patch.object(OpenTelemetryScope, "_get_tracer")
     def test_init_with_non_recording_span(self, mock_get_tracer):
         """__init__ must not crash when tracer.start_span returns NonRecordingSpan."""
@@ -55,7 +55,7 @@ class TestOpenTelemetryScopeNonRecordingSpan(unittest.TestCase):
 
         self.assertIs(scope._span, nr_span)
 
-    @patch.dict(os.environ, {"ENABLE_OBSERVABILITY": "true"})
+    @patch.dict(os.environ, {"ENABLE_OBSERVABILITY": "true"}, clear=True)
     @patch.object(OpenTelemetryScope, "_get_tracer")
     def test_end_with_non_recording_span(self, mock_get_tracer):
         """_end() must not crash when the span is a NonRecordingSpan."""
@@ -72,7 +72,7 @@ class TestOpenTelemetryScopeNonRecordingSpan(unittest.TestCase):
         # Should not raise AttributeError
         scope._end()
 
-    @patch.dict(os.environ, {"ENABLE_OBSERVABILITY": "true"})
+    @patch.dict(os.environ, {"ENABLE_OBSERVABILITY": "true"}, clear=True)
     @patch.object(OpenTelemetryScope, "_get_tracer")
     def test_dispose_with_non_recording_span(self, mock_get_tracer):
         """Full dispose lifecycle must not crash with NonRecordingSpan."""
@@ -88,6 +88,25 @@ class TestOpenTelemetryScopeNonRecordingSpan(unittest.TestCase):
 
         # Context manager exit should not raise
         scope.__exit__(None, None, None)
+
+    @patch.dict(os.environ, {"ENABLE_OBSERVABILITY": "true"}, clear=True)
+    @patch.object(OpenTelemetryScope, "_get_tracer")
+    def test_record_attributes_with_non_recording_span(self, mock_get_tracer):
+        """record_attributes() must no-op when start_span returns NonRecordingSpan."""
+        mock_tracer = MagicMock()
+        nr_span = _make_non_recording_span(trace_id=0xABCD, span_id=0x1234)
+        mock_tracer.start_span.return_value = nr_span
+        mock_get_tracer.return_value = mock_tracer
+
+        scope = OpenTelemetryScope(
+            operation_name="invoke_agent",
+            activity_name="test_activity",
+        )
+
+        scope.record_attributes({"custom.key": "custom-value"})
+
+        self.assertIs(scope._span, nr_span)
+        self.assertFalse(hasattr(nr_span, "attributes"))
 
 
 class TestEnrichedReadableSpanNonRecordingSpan(unittest.TestCase):
