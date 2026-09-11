@@ -1,6 +1,8 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+import logging
+
 from opentelemetry.trace import SpanKind
 
 from microsoft.opentelemetry.a365.core.agent_details import AgentDetails
@@ -25,6 +27,7 @@ from microsoft.opentelemetry.a365.core.constants import (
 from microsoft.opentelemetry.a365.core.utils import safe_json_dumps, validate_and_normalize_ip
 from microsoft.opentelemetry.a365.core.models.user_details import UserDetails
 from microsoft.opentelemetry.a365.core.models.tool_call_schema import (
+    TOOL_CALL_SERIALIZATION_ERROR_JSON,
     ExecuteToolCallArguments,
     ExecuteToolCallResult,
     serialize_tool_call_payload,
@@ -33,6 +36,26 @@ from microsoft.opentelemetry.a365.core.opentelemetry_scope import OpenTelemetryS
 from microsoft.opentelemetry.a365.core.request import Request
 from microsoft.opentelemetry.a365.core.span_details import SpanDetails
 from microsoft.opentelemetry.a365.core.tool_call_details import ToolCallDetails
+
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
+
+
+def _serialize_tool_payload(payload: ExecuteToolCallArguments | ExecuteToolCallResult | dict[str, object]) -> str:
+    """Serialize an execute-tool payload without ever raising.
+
+    Typed payloads use the Agent365 schema contract; raw dictionaries keep their
+    existing ``safe_json_dumps`` behavior. Either way a payload that cannot be
+    serialized records the diagnostic payload instead of failing the span.
+    """
+    if isinstance(payload, (ExecuteToolCallArguments, ExecuteToolCallResult)):
+        serialized = serialize_tool_call_payload(payload)
+        return serialized if serialized is not None else TOOL_CALL_SERIALIZATION_ERROR_JSON
+    try:
+        return safe_json_dumps(payload)
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        logger.warning("Failed to serialize execute tool payload: %r", exc)
+        return TOOL_CALL_SERIALIZATION_ERROR_JSON
 
 
 class ExecuteToolScope(OpenTelemetryScope):
@@ -113,10 +136,11 @@ class ExecuteToolScope(OpenTelemetryScope):
 
         self.set_tag_maybe(GEN_AI_TOOL_NAME_KEY, tool_name)
         if arguments is not None:
-            if isinstance(arguments, ExecuteToolCallArguments):
-                serialized = serialize_tool_call_payload(arguments)
-            else:
-                serialized = safe_json_dumps(arguments) if isinstance(arguments, dict) else arguments
+            serialized = (
+                _serialize_tool_payload(arguments)
+                if isinstance(arguments, (ExecuteToolCallArguments, dict))
+                else arguments
+            )
             self.set_tag_maybe(GEN_AI_TOOL_ARGS_KEY, serialized)
         self.set_tag_maybe(GEN_AI_TOOL_TYPE_KEY, tool_type)
         self.set_tag_maybe(GEN_AI_TOOL_CALL_ID_KEY, tool_call_id)
@@ -159,8 +183,8 @@ class ExecuteToolScope(OpenTelemetryScope):
             result: Tool call result as a typed schema model, a structured dict,
                 a JSON string, or None to omit the attribute
         """
-        if isinstance(result, ExecuteToolCallResult):
-            serialized = serialize_tool_call_payload(result)
+        if isinstance(result, (ExecuteToolCallResult, dict)):
+            serialized: str | None = _serialize_tool_payload(result)
         else:
-            serialized = safe_json_dumps(result) if isinstance(result, dict) else result
+            serialized = result
         self.set_tag_maybe(GEN_AI_TOOL_CALL_RESULT_KEY, serialized)

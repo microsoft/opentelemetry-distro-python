@@ -371,6 +371,30 @@ def test_tuples_serialize_as_json_arrays():
     assert json.loads(serialize_tool_call_payload(payload))["data"] == {"items": [1, 2]}
 
 
+def test_sets_and_views_serialize_as_json_arrays_like_dotnet_collections():
+    payload = ExecuteToolCallResult(
+        data={
+            "scopes": {"read"},
+            "frozen": frozenset(["write"]),
+            "keys": {"a": 1}.keys(),
+            "values": {"a": 1}.values(),
+        }
+    )
+
+    assert json.loads(serialize_tool_call_payload(payload))["data"] == {
+        "scopes": ["read"],
+        "frozen": ["write"],
+        "keys": ["a"],
+        "values": [1],
+    }
+
+
+def test_generators_are_not_supported():
+    payload = ExecuteToolCallResult(data={"items": (index for index in range(2))})
+
+    assert serialize_tool_call_payload(payload) == DOTNET_SERIALIZATION_ERROR
+
+
 @pytest.mark.parametrize(
     ("payload", "expected"),
     [

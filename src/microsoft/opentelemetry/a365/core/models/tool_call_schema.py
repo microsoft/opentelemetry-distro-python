@@ -16,7 +16,7 @@ import datetime
 import json
 import logging
 import uuid
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Collection, Mapping
 from dataclasses import dataclass, field, fields, is_dataclass
 from decimal import Decimal
 from enum import Enum
@@ -202,7 +202,7 @@ def _to_isoformat(value: datetime.datetime | datetime.date | datetime.time) -> s
     return value.isoformat()
 
 
-# Ordered scalar conversions; ``bool`` must precede ``int`` and ``str`` must precede ``Sequence``.
+# Ordered scalar conversions; ``bool`` must precede ``int`` and ``str`` must precede ``Collection``.
 _SCALAR_CONVERTERS: tuple[tuple[type | tuple[type, ...], Callable[[Any], Any]], ...] = (
     (str, str),
     (bool, bool),
@@ -253,8 +253,8 @@ def _to_json_value(value: Any, stack: set[int]) -> Any:
         return _dataclass_to_json_value(value, stack)
     if isinstance(value, Mapping):
         return _mapping_to_json_value(value, stack)
-    if isinstance(value, Sequence):
-        return _sequence_to_json_value(value, stack)
+    if isinstance(value, Collection):
+        return _collection_to_json_value(value, stack)
     raise TypeError(f"Object of type {type(value).__name__} is not supported in an execute tool payload.")
 
 
@@ -309,8 +309,8 @@ def _mapping_to_json_value(value: Mapping[Any, Any], stack: set[int]) -> dict[st
         stack.discard(marker)
 
 
-def _sequence_to_json_value(value: Sequence[Any], stack: set[int]) -> list[Any]:
-    """Serialize a caller-supplied sequence, preserving ``None`` items as JSON ``null``."""
+def _collection_to_json_value(value: Collection[Any], stack: set[int]) -> list[Any]:
+    """Serialize a caller-supplied collection as a JSON array, preserving ``None`` items."""
     marker = _enter(value, stack)
     try:
         return [_to_json_value(item_value, stack) for item_value in value]

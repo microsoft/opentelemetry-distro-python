@@ -183,6 +183,25 @@ class TestExecuteToolScope(unittest.TestCase):
         self.assertEqual(attrs[GEN_AI_TOOL_ARGS_KEY], TOOL_CALL_SERIALIZATION_ERROR_JSON)
         self.assertEqual(attrs[GEN_AI_TOOL_CALL_RESULT_KEY], TOOL_CALL_SERIALIZATION_ERROR_JSON)
 
+    def test_unserializable_raw_dict_payloads_do_not_orphan_the_span(self):
+        cyclic_arguments: dict[str, object] = {}
+        cyclic_arguments["self"] = cyclic_arguments
+        cyclic_result: dict[str, object] = {}
+        cyclic_result["self"] = cyclic_result
+
+        with ExecuteToolScope.start(
+            Request(),
+            ToolCallDetails(tool_name="read_file", arguments=cyclic_arguments),
+            self._make_agent_details(),
+        ) as scope:
+            span = scope._span
+            scope.record_response(cyclic_result)
+
+        attrs = dict(span.attributes)
+        self.assertIsNotNone(span.end_time)
+        self.assertEqual(attrs[GEN_AI_TOOL_ARGS_KEY], TOOL_CALL_SERIALIZATION_ERROR_JSON)
+        self.assertEqual(attrs[GEN_AI_TOOL_CALL_RESULT_KEY], TOOL_CALL_SERIALIZATION_ERROR_JSON)
+
 
 @patch.dict(os.environ, {"ENABLE_OBSERVABILITY": "false"})
 class TestExecuteToolScopeWithTelemetryDisabled(unittest.TestCase):
@@ -195,6 +214,8 @@ class TestExecuteToolScopeWithTelemetryDisabled(unittest.TestCase):
     def test_unserializable_typed_payloads_are_safe_when_telemetry_is_disabled(self):
         result = ExecuteToolCallResult()
         result.extension_data["self"] = result
+        cyclic_arguments: dict[str, object] = {}
+        cyclic_arguments["self"] = cyclic_arguments
 
         scope = ExecuteToolScope.start(
             Request(),
@@ -207,4 +228,13 @@ class TestExecuteToolScopeWithTelemetryDisabled(unittest.TestCase):
         scope.record_response(result)
         scope.dispose()
 
+        raw_scope = ExecuteToolScope.start(
+            Request(),
+            ToolCallDetails(tool_name="read_file", arguments=cyclic_arguments),
+            AgentDetails(agent_id="agent-1"),
+        )
+        raw_scope.record_response(cyclic_arguments)
+        raw_scope.dispose()
+
         self.assertIsNone(scope._span)
+        self.assertIsNone(raw_scope._span)

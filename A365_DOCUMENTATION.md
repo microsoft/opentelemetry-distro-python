@@ -488,7 +488,9 @@ logged:
 ```
 
 `bytes` and `bytearray` are emitted as base64 strings, `datetime`/`date`/`time` as ISO-8601 strings, `UUID`
-as its canonical string, `Decimal` as a JSON number, and any `Enum` as its value.
+as its canonical string, `Decimal` as a JSON number, any `Enum` as its value, and lists, tuples, sets, and
+other sized collections as JSON arrays. Raw dictionary arguments and results keep their existing
+serialization but also fall back to the same diagnostic payload instead of raising.
 
 ### InferenceScope
 
