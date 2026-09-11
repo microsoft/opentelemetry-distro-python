@@ -147,25 +147,33 @@ def _to_json_value(value: Any) -> Any:
     if is_dataclass(value):
         serialized: dict[str, object] = {}
         extension_data: Mapping[str, object] | None = None
+        json_names: set[str] = set()
         for item in fields(value):
-            item_value = getattr(value, item.name)
             if item.name == "extension_data":
-                extension_data = item_value
-                continue
-            if item_value is None:
+                extension_data = getattr(value, item.name)
                 continue
             json_name = item.metadata.get("json_name", item.name)
+            json_names.add(json_name)
+            item_value = getattr(value, item.name)
+            if item_value is None:
+                continue
             serialized[json_name] = _to_json_value(item_value)
 
         if extension_data:
             for key, item_value in extension_data.items():
-                if key in serialized:
+                if key in json_names:
                     raise ValueError(f"Extension data cannot overwrite model property '{key}'.")
-                serialized[key] = _to_json_value(item_value)
+                json_value = _to_json_value(item_value)
+                if json_value is not None:
+                    serialized[key] = json_value
         return serialized
 
     if isinstance(value, Mapping):
-        return {key: _to_json_value(item_value) for key, item_value in value.items()}
+        return {
+            key: json_value
+            for key, item_value in value.items()
+            if (json_value := _to_json_value(item_value)) is not None
+        }
 
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
         return [_to_json_value(item_value) for item_value in value]

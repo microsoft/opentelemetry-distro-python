@@ -83,6 +83,30 @@ def test_execute_tool_arguments_reject_extension_property_collisions():
             schema.ExecuteToolCallArguments(action="read", extension_data={"action": "write"})
         )
 
+    with pytest.raises(ValueError, match="action"):
+        schema.serialize_tool_call_payload(schema.ExecuteToolCallArguments(extension_data={"action": "write"}))
+
+
+def test_execute_tool_payload_omits_none_values_recursively():
+    schema = importlib.import_module("microsoft.opentelemetry.a365.core.models.tool_call_schema")
+
+    payload = schema.ExecuteToolCallResult(
+        outcome=schema.ToolCallResultOutcome(
+            status="success",
+            provider_code=None,
+            extension_data={"provider_outcome": None, "attempts": 0},
+        ),
+        data={"content": None, "matches": []},
+        extension_data={"provider_result": None, "cached": False},
+    )
+
+    assert json.loads(schema.serialize_tool_call_payload(payload)) == {
+        "schema_version": "1.0",
+        "outcome": {"status": "success", "attempts": 0},
+        "data": {"matches": []},
+        "cached": False,
+    }
+
 
 def test_execute_tool_result_serializes_with_schema_names():
     schema = importlib.import_module("microsoft.opentelemetry.a365.core.models.tool_call_schema")
