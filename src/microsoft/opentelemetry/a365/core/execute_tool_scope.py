@@ -144,16 +144,20 @@ class ExecuteToolScope(OpenTelemetryScope):
             )
 
     def record_response(  # pylint: disable=arguments-renamed
-        self, result: ExecuteToolCallResult | dict[str, object] | str
+        self, result: ExecuteToolCallResult | dict[str, object] | str | None
     ) -> None:
         """Record the tool call result for telemetry tracking.
 
         Per OTEL spec, the result is expected to be an object. If a string
         is provided, it is recorded as-is (JSON string fallback). If a dict
-        is provided, it is serialized to JSON.
+        is provided, it is serialized to JSON. Typed
+        :class:`~microsoft.opentelemetry.a365.core.models.tool_call_schema.ExecuteToolCallResult`
+        payloads are serialized with the Agent365 schema contract; a payload that cannot
+        be serialized records the diagnostic payload instead of raising.
 
         Args:
-            result: Tool call result as a structured dict or JSON string
+            result: Tool call result as a typed schema model, a structured dict,
+                a JSON string, or None to omit the attribute
         """
         if isinstance(result, ExecuteToolCallResult):
             serialized = serialize_tool_call_payload(result)

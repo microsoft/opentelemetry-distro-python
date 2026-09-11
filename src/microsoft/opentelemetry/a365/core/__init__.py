@@ -49,8 +49,10 @@ from microsoft.opentelemetry.a365.core.models.response import Response
 from microsoft.opentelemetry.a365.core.models.tool_call_schema import (
     ExecuteToolCallArguments,
     ExecuteToolCallResult,
+    ToolCallAction,
     ToolCallContainer,
     ToolCallIdentifier,
+    ToolCallOutcomeStatus,
     ToolCallPayload,
     ToolCallResource,
     ToolCallResultOutcome,
@@ -59,6 +61,7 @@ from microsoft.opentelemetry.a365.core.models.tool_call_schema import (
     ToolCallResultResource,
     ToolCallResultSecurity,
     ToolCallResultSensitivity,
+    ToolPolicyDecision,
     serialize_tool_call_payload,
 )
 from microsoft.opentelemetry.a365.core.models.user_details import UserDetails
@@ -115,6 +118,9 @@ __all__ = [
     # Enums
     "InferenceOperationType",
     "ToolType",
+    "ToolCallAction",
+    "ToolCallOutcomeStatus",
+    "ToolPolicyDecision",
     # OTEL gen-ai message format types
     "MessageRole",
     "FinishReason",

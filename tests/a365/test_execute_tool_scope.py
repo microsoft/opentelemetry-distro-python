@@ -16,8 +16,11 @@ from microsoft.opentelemetry.a365.core.constants import (
 )
 from microsoft.opentelemetry.a365.core.execute_tool_scope import ExecuteToolScope
 from microsoft.opentelemetry.a365.core.models.tool_call_schema import (
+    TOOL_CALL_SERIALIZATION_ERROR_JSON,
     ExecuteToolCallArguments,
     ExecuteToolCallResult,
+    ToolCallAction,
+    ToolCallOutcomeStatus,
     ToolCallResource,
     ToolCallResultOutcome,
 )
@@ -46,7 +49,7 @@ class TestExecuteToolScope(unittest.TestCase):
             ToolCallDetails(
                 tool_name="read_file",
                 arguments=ExecuteToolCallArguments(
-                    action="read",
+                    action=ToolCallAction.READ,
                     resources=[ToolCallResource(resource_id="file-1")],
                 ),
             ),
@@ -71,7 +74,7 @@ class TestExecuteToolScope(unittest.TestCase):
         try:
             scope.record_response(
                 ExecuteToolCallResult(
-                    outcome=ToolCallResultOutcome(status="success"),
+                    outcome=ToolCallResultOutcome(status=ToolCallOutcomeStatus.SUCCESS),
                     data={"count": 0},
                 )
             )
@@ -115,3 +118,93 @@ class TestExecuteToolScope(unittest.TestCase):
             self.assertEqual(attrs[GEN_AI_TOOL_CALL_RESULT_KEY], "raw result")
         finally:
             scope.dispose()
+
+    def test_unserializable_typed_arguments_record_diagnostic_payload(self):
+        scope = ExecuteToolScope.start(
+            Request(),
+            ToolCallDetails(
+                tool_name="read_file",
+                arguments=ExecuteToolCallArguments(extension_data={"bad": object()}),
+            ),
+            self._make_agent_details(),
+        )
+        try:
+            attrs = dict(scope._span.attributes)
+
+            self.assertEqual(attrs[GEN_AI_TOOL_ARGS_KEY], TOOL_CALL_SERIALIZATION_ERROR_JSON)
+        finally:
+            scope.dispose()
+
+    def test_unserializable_typed_result_records_diagnostic_payload(self):
+        scope = ExecuteToolScope.start(
+            Request(),
+            ToolCallDetails(tool_name="read_file"),
+            self._make_agent_details(),
+        )
+        try:
+            result = ExecuteToolCallResult()
+            result.extension_data["self"] = result
+            scope.record_response(result)
+            attrs = dict(scope._span.attributes)
+
+            self.assertEqual(attrs[GEN_AI_TOOL_CALL_RESULT_KEY], TOOL_CALL_SERIALIZATION_ERROR_JSON)
+        finally:
+            scope.dispose()
+
+    def test_none_result_omits_result_tag(self):
+        scope = ExecuteToolScope.start(
+            Request(),
+            ToolCallDetails(tool_name="read_file"),
+            self._make_agent_details(),
+        )
+        try:
+            scope.record_response(None)
+
+            self.assertNotIn(GEN_AI_TOOL_CALL_RESULT_KEY, dict(scope._span.attributes))
+        finally:
+            scope.dispose()
+
+    def test_unserializable_payloads_do_not_orphan_the_span(self):
+        with ExecuteToolScope.start(
+            Request(),
+            ToolCallDetails(
+                tool_name="read_file",
+                arguments=ExecuteToolCallArguments(extension_data={"bad": object()}),
+            ),
+            self._make_agent_details(),
+        ) as scope:
+            span = scope._span
+            self.assertTrue(span.is_recording())
+            scope.record_response(ExecuteToolCallResult(data={"bad": float("nan")}))
+
+        attrs = dict(span.attributes)
+        self.assertIsNotNone(span.end_time)
+        self.assertFalse(span.is_recording())
+        self.assertEqual(attrs[GEN_AI_TOOL_ARGS_KEY], TOOL_CALL_SERIALIZATION_ERROR_JSON)
+        self.assertEqual(attrs[GEN_AI_TOOL_CALL_RESULT_KEY], TOOL_CALL_SERIALIZATION_ERROR_JSON)
+
+
+@patch.dict(os.environ, {"ENABLE_OBSERVABILITY": "false"})
+class TestExecuteToolScopeWithTelemetryDisabled(unittest.TestCase):
+    def setUp(self):
+        OpenTelemetryScope._tracer = None
+
+    def tearDown(self):
+        OpenTelemetryScope._tracer = None
+
+    def test_unserializable_typed_payloads_are_safe_when_telemetry_is_disabled(self):
+        result = ExecuteToolCallResult()
+        result.extension_data["self"] = result
+
+        scope = ExecuteToolScope.start(
+            Request(),
+            ToolCallDetails(
+                tool_name="read_file",
+                arguments=ExecuteToolCallArguments(extension_data={"bad": object()}),
+            ),
+            AgentDetails(agent_id="agent-1"),
+        )
+        scope.record_response(result)
+        scope.dispose()
+
+        self.assertIsNone(scope._span)
