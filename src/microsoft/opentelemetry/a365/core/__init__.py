@@ -46,6 +46,21 @@ from microsoft.opentelemetry.a365.core.models.messages import (
     UriPart,
 )
 from microsoft.opentelemetry.a365.core.models.response import Response
+from microsoft.opentelemetry.a365.core.models.tool_call_schema import (
+    ExecuteToolCallArguments,
+    ExecuteToolCallResult,
+    ToolCallContainer,
+    ToolCallIdentifier,
+    ToolCallPayload,
+    ToolCallResource,
+    ToolCallResultOutcome,
+    ToolCallResultPagination,
+    ToolCallResultPolicy,
+    ToolCallResultResource,
+    ToolCallResultSecurity,
+    ToolCallResultSensitivity,
+    serialize_tool_call_payload,
+)
 from microsoft.opentelemetry.a365.core.models.user_details import UserDetails
 from microsoft.opentelemetry.a365.core.opentelemetry_scope import OpenTelemetryScope
 from microsoft.opentelemetry.a365.core.request import Request
@@ -84,6 +99,19 @@ __all__ = [
     "SpanDetails",
     "InferenceCallDetails",
     "ServiceEndpoint",
+    "ExecuteToolCallArguments",
+    "ExecuteToolCallResult",
+    "ToolCallContainer",
+    "ToolCallIdentifier",
+    "ToolCallPayload",
+    "ToolCallResource",
+    "ToolCallResultOutcome",
+    "ToolCallResultPagination",
+    "ToolCallResultPolicy",
+    "ToolCallResultResource",
+    "ToolCallResultSecurity",
+    "ToolCallResultSensitivity",
+    "serialize_tool_call_payload",
     # Enums
     "InferenceOperationType",
     "ToolType",

@@ -24,6 +24,11 @@ from microsoft.opentelemetry.a365.core.constants import (
 )
 from microsoft.opentelemetry.a365.core.utils import safe_json_dumps, validate_and_normalize_ip
 from microsoft.opentelemetry.a365.core.models.user_details import UserDetails
+from microsoft.opentelemetry.a365.core.models.tool_call_schema import (
+    ExecuteToolCallArguments,
+    ExecuteToolCallResult,
+    serialize_tool_call_payload,
+)
 from microsoft.opentelemetry.a365.core.opentelemetry_scope import OpenTelemetryScope
 from microsoft.opentelemetry.a365.core.request import Request
 from microsoft.opentelemetry.a365.core.span_details import SpanDetails
@@ -108,7 +113,10 @@ class ExecuteToolScope(OpenTelemetryScope):
 
         self.set_tag_maybe(GEN_AI_TOOL_NAME_KEY, tool_name)
         if arguments is not None:
-            serialized = safe_json_dumps(arguments) if isinstance(arguments, dict) else arguments
+            if isinstance(arguments, ExecuteToolCallArguments):
+                serialized = serialize_tool_call_payload(arguments)
+            else:
+                serialized = safe_json_dumps(arguments) if isinstance(arguments, dict) else arguments
             self.set_tag_maybe(GEN_AI_TOOL_ARGS_KEY, serialized)
         self.set_tag_maybe(GEN_AI_TOOL_TYPE_KEY, tool_type)
         self.set_tag_maybe(GEN_AI_TOOL_CALL_ID_KEY, tool_call_id)
@@ -135,7 +143,9 @@ class ExecuteToolScope(OpenTelemetryScope):
                 validate_and_normalize_ip(user_details.user_client_ip),
             )
 
-    def record_response(self, result: dict[str, object] | str) -> None:  # pylint: disable=arguments-renamed
+    def record_response(  # pylint: disable=arguments-renamed
+        self, result: ExecuteToolCallResult | dict[str, object] | str
+    ) -> None:
         """Record the tool call result for telemetry tracking.
 
         Per OTEL spec, the result is expected to be an object. If a string
@@ -145,5 +155,8 @@ class ExecuteToolScope(OpenTelemetryScope):
         Args:
             result: Tool call result as a structured dict or JSON string
         """
-        serialized = safe_json_dumps(result) if isinstance(result, dict) else result
+        if isinstance(result, ExecuteToolCallResult):
+            serialized = serialize_tool_call_payload(result)
+        else:
+            serialized = safe_json_dumps(result) if isinstance(result, dict) else result
         self.set_tag_maybe(GEN_AI_TOOL_CALL_RESULT_KEY, serialized)

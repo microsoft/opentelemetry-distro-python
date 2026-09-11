@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from microsoft.opentelemetry.a365.core.models.tool_call_schema import ExecuteToolCallArguments
 from microsoft.opentelemetry.a365.core.models.service_endpoint import ServiceEndpoint
 
 
@@ -15,7 +16,7 @@ class ToolCallDetails:
     """Details of a tool call made by an agent in the system."""
 
     tool_name: str
-    arguments: dict[str, object] | str | None = None
+    arguments: ExecuteToolCallArguments | dict[str, object] | str | None = None
     tool_call_id: str | None = None
     description: str | None = None
     tool_type: str | None = None
