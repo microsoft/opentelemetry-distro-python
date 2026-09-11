@@ -4,6 +4,7 @@
 # Per request baggage builder for OpenTelemetry context propagation.
 
 import logging
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 from opentelemetry import baggage, context
@@ -37,6 +38,8 @@ from microsoft.opentelemetry.a365.core.utils import validate_and_normalize_ip
 
 logger = logging.getLogger(__name__)
 
+_CUSTOM_KEYS_BAGGAGE_KEY = "_internal.custom_keys"
+
 
 class BaggageBuilder:
     """Per request baggage builder.
@@ -60,6 +63,7 @@ class BaggageBuilder:
     def __init__(self):
         """Initialize the baggage builder."""
         self._pairs: dict[str, str] = {}
+        self._custom_keys: list[str] = []
 
     def operation_source(self, value: str | None) -> "BaggageBuilder":
         """Set the operation source baggage value.
@@ -238,13 +242,36 @@ class BaggageBuilder:
             self._set(str(k), str(v))
         return self
 
+    def custom_attribute(self, key: str, value: str | None) -> "BaggageBuilder":
+        """Set a custom baggage value that should propagate to GenAI spans."""
+        normalized_key = self._validate_custom_key(key)
+        if value is not None and value.strip():
+            self._pairs[normalized_key] = value
+            if normalized_key not in self._custom_keys:
+                self._custom_keys.append(normalized_key)
+        return self
+
+    def custom_attributes(
+        self,
+        attributes: Mapping[str, str | None] | Iterable[tuple[str, str | None]],
+    ) -> "BaggageBuilder":
+        """Set custom baggage values that should propagate to GenAI spans."""
+        iterator = attributes.items() if isinstance(attributes, Mapping) else attributes
+        for key, value in iterator:
+            self.custom_attribute(key, value)
+        return self
+
     def build(self) -> "BaggageScope":
         """Apply the collected baggage to the current context.
 
         Returns:
             A context manager that restores the previous baggage on exit
         """
-        return BaggageScope(self._pairs)
+        pairs = self._pairs.copy()
+        custom_keys = [key for key in self._custom_keys if pairs.get(key, "").strip()]
+        if custom_keys:
+            pairs[_CUSTOM_KEYS_BAGGAGE_KEY] = ",".join(custom_keys)
+        return BaggageScope(pairs)
 
     def _set(self, key: str, value: str | None) -> None:
         """Add a baggage key/value if the value is not None or whitespace.
@@ -255,6 +282,17 @@ class BaggageBuilder:
         """
         if value is not None and value.strip():
             self._pairs[key] = value
+
+    @staticmethod
+    def _validate_custom_key(key: str) -> str:
+        normalized_key = key.strip()
+        if not normalized_key:
+            raise ValueError("custom baggage key must not be blank")
+        if "," in normalized_key:
+            raise ValueError("custom baggage key must not contain commas")
+        if normalized_key == _CUSTOM_KEYS_BAGGAGE_KEY:
+            raise ValueError(f"{_CUSTOM_KEYS_BAGGAGE_KEY} is reserved")
+        return normalized_key
 
 
 class BaggageScope:
