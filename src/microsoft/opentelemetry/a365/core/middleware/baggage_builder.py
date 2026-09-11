@@ -60,7 +60,7 @@ class BaggageBuilder:
             # Baggage is restored after exiting the context
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize the baggage builder."""
         self._pairs: dict[str, str] = {}
         self._custom_keys: list[str] = []

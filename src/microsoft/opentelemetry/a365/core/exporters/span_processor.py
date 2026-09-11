@@ -54,6 +54,8 @@ from microsoft.opentelemetry.a365.constants import (
     USER_ID_KEY,
     USER_NAME_KEY,
 )
+from microsoft.opentelemetry.a365.core.exporters.utils import GEN_AI_OPERATION_NAMES
+from microsoft.opentelemetry.a365.core.middleware.baggage_builder import _CUSTOM_KEYS_BAGGAGE_KEY
 
 # mypy: disable-error-code="no-untyped-def"
 
@@ -96,6 +98,30 @@ INVOKE_AGENT_ATTRIBUTES = [
     SERVER_ADDRESS_KEY,
     SERVER_PORT_KEY,
 ]
+
+
+def _is_genai_span(span, existing) -> bool:
+    operation_name = existing.get(GEN_AI_OPERATION_NAME_KEY)
+    if operation_name in GEN_AI_OPERATION_NAMES:
+        return True
+
+    span_name = getattr(span, "name", None)
+    return isinstance(span_name, str) and any(span_name.startswith(name) for name in GEN_AI_OPERATION_NAMES)
+
+
+def _custom_baggage_keys(baggage_map) -> list[str]:
+    metadata = baggage_map.get(_CUSTOM_KEYS_BAGGAGE_KEY)
+    if not metadata:
+        return []
+
+    keys: list[str] = []
+    for raw_key in str(metadata).split(","):
+        key = raw_key.strip()
+        if not key or key == _CUSTOM_KEYS_BAGGAGE_KEY:
+            continue
+        if key not in keys:
+            keys.append(key)
+    return keys
 
 
 # pylint: disable=broad-exception-caught, too-many-branches, useless-parent-delegation
@@ -151,6 +177,7 @@ class A365SpanProcessor(BaseSpanProcessor):
         except Exception:
             baggage_map = {}
 
+        is_genai_span = _is_genai_span(span, existing)
         operation_name = existing.get(GEN_AI_OPERATION_NAME_KEY)
         is_invoke_agent = False
         if operation_name == INVOKE_AGENT_OPERATION_NAME:
@@ -161,6 +188,10 @@ class A365SpanProcessor(BaseSpanProcessor):
         target_keys = list(COMMON_ATTRIBUTES)
         if is_invoke_agent:
             for k in INVOKE_AGENT_ATTRIBUTES:
+                if k not in target_keys:
+                    target_keys.append(k)
+        if is_genai_span:
+            for k in _custom_baggage_keys(baggage_map):
                 if k not in target_keys:
                     target_keys.append(k)
 

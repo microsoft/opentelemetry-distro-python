@@ -70,7 +70,7 @@ GEN_AI_OPERATION_NAMES: frozenset[str] = frozenset(
         OUTPUT_MESSAGES_OPERATION_NAME,
         CHAT_OPERATION_NAME,
         APPLY_GUARDRAIL_OPERATION_NAME,
-        InferenceOperationType.CHAT.value,
+        *(operation_type.value for operation_type in InferenceOperationType),
     }
 )
 

@@ -7,11 +7,14 @@ from unittest.mock import MagicMock
 
 from opentelemetry import baggage, context
 
+from microsoft.opentelemetry.a365.core.exporters.utils import GEN_AI_OPERATION_NAMES
 from microsoft.opentelemetry.a365.core.exporters.span_processor import (
     A365SpanProcessor,
     COMMON_ATTRIBUTES,
     INVOKE_AGENT_ATTRIBUTES,
 )
+from microsoft.opentelemetry.a365.core.inference_operation_type import InferenceOperationType
+from microsoft.opentelemetry.a365.core.middleware.baggage_builder import BaggageBuilder
 
 
 class TestA365SpanProcessor(unittest.TestCase):
@@ -128,6 +131,61 @@ class TestA365SpanProcessor(unittest.TestCase):
         # Caller agent should NOT be propagated (invoke-agent only)
         for call in span.set_attribute.call_args_list:
             self.assertNotEqual(call[0][0], "microsoft.a365.caller.agent.id")
+
+    def test_custom_baggage_attribute_propagated_to_genai_span(self):
+        processor = A365SpanProcessor()
+
+        span = MagicMock()
+        span.name = "invoke_agent Travel_Assistant"
+        span.attributes = {"gen_ai.operation.name": "invoke_agent"}
+
+        with BaggageBuilder().custom_attribute("customer.tier", "gold").build():
+            processor.on_start(span, parent_context=context.get_current())
+
+        span.set_attribute.assert_any_call("customer.tier", "gold")
+
+    def test_set_pairs_custom_baggage_is_not_propagated_without_opt_in(self):
+        processor = A365SpanProcessor()
+
+        span = MagicMock()
+        span.name = "invoke_agent Travel_Assistant"
+        span.attributes = {"gen_ai.operation.name": "invoke_agent"}
+
+        with BaggageBuilder().set_pairs({"customer.tier": "gold"}).build():
+            processor.on_start(span, parent_context=context.get_current())
+
+        for call in span.set_attribute.call_args_list:
+            self.assertNotEqual(call[0][0], "customer.tier")
+
+    def test_custom_baggage_attribute_does_not_overwrite_span_attribute(self):
+        processor = A365SpanProcessor()
+
+        span = MagicMock()
+        span.name = "invoke_agent Travel_Assistant"
+        span.attributes = {"gen_ai.operation.name": "invoke_agent", "customer.tier": "direct"}
+
+        with BaggageBuilder().custom_attribute("customer.tier", "gold").build():
+            processor.on_start(span, parent_context=context.get_current())
+
+        for call in span.set_attribute.call_args_list:
+            self.assertNotEqual(call[0][0], "customer.tier")
+
+    def test_custom_baggage_attribute_ignored_on_non_genai_span(self):
+        processor = A365SpanProcessor()
+
+        span = MagicMock()
+        span.name = "http request"
+        span.attributes = {"gen_ai.operation.name": "not_genai"}
+
+        with BaggageBuilder().custom_attribute("customer.tier", "gold").build():
+            processor.on_start(span, parent_context=context.get_current())
+
+        for call in span.set_attribute.call_args_list:
+            self.assertNotEqual(call[0][0], "customer.tier")
+
+    def test_genai_operation_names_include_all_inference_operation_values(self):
+        for operation_type in InferenceOperationType:
+            self.assertIn(operation_type.value, GEN_AI_OPERATION_NAMES)
 
     def test_empty_baggage(self):
         processor = A365SpanProcessor()
