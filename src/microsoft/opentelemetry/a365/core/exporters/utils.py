@@ -458,7 +458,7 @@ def _create_fic_token_resolver(scope_override: Optional[str] = None) -> Callable
       - ``A365_AGENTIC_USER_ID``
     """
     try:
-        import msal  # type: ignore[import-untyped]
+        import msal
     except ImportError:
         logger.warning(
             "msal is not installed. Install it (`pip install msal`) to use FIC token authentication for A365 export."
