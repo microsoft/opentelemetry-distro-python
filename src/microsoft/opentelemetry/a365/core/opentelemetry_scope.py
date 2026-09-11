@@ -6,6 +6,7 @@
 import logging
 import os
 from datetime import datetime
+from collections.abc import Iterable
 from threading import Lock
 from typing import TYPE_CHECKING, Any
 
@@ -235,7 +236,7 @@ class OpenTelemetryScope:
         if value is not None and self._span and self._is_telemetry_enabled():
             self._span.set_attribute(name, value)
 
-    def record_attributes(self, attributes: dict[str, Any] | list[tuple[str, Any]]) -> None:
+    def record_attributes(self, attributes: dict[str, Any] | Iterable[tuple[str, Any]]) -> None:
         """Record multiple attribute key/value pairs for telemetry tracking.
 
         This method allows setting multiple custom attributes on the span at once.
@@ -247,12 +248,13 @@ class OpenTelemetryScope:
         if not self._is_telemetry_enabled() or self._span is None:
             return
 
-        # Handle both dict and list of tuples
+        existing_keys = set(self._span.attributes or {})
         items = attributes.items() if isinstance(attributes, dict) else attributes
 
         for key, value in items:
-            if key and key.strip():
+            if key and key.strip() and key not in existing_keys:
                 self._span.set_attribute(key, value)
+                existing_keys.add(key)
 
     def set_end_time(self, end_time: datetime) -> None:
         """Set a custom end time for the scope.
