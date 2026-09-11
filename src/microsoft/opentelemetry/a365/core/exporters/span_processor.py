@@ -43,6 +43,10 @@ from microsoft.opentelemetry.a365.constants import (
     GEN_AI_CONVERSATION_ID_KEY,
     GEN_AI_CONVERSATION_ITEM_LINK_KEY,
     GEN_AI_OPERATION_NAME_KEY,
+    APPLY_GUARDRAIL_OPERATION_NAME,
+    CHAT_OPERATION_NAME,
+    EXECUTE_TOOL_OPERATION_NAME,
+    OUTPUT_MESSAGES_OPERATION_NAME,
     INVOKE_AGENT_OPERATION_NAME,
     SERVER_ADDRESS_KEY,
     SERVER_PORT_KEY,
@@ -54,7 +58,7 @@ from microsoft.opentelemetry.a365.constants import (
     USER_ID_KEY,
     USER_NAME_KEY,
 )
-from microsoft.opentelemetry.a365.core.exporters.utils import GEN_AI_OPERATION_NAMES
+from microsoft.opentelemetry.a365.core.inference_operation_type import InferenceOperationType
 from microsoft.opentelemetry.a365.core.middleware.baggage_builder import _CUSTOM_KEYS_BAGGAGE_KEY
 
 # mypy: disable-error-code="no-untyped-def"
@@ -100,13 +104,31 @@ INVOKE_AGENT_ATTRIBUTES = [
 ]
 
 
+# Recognized GenAI operation names for the custom-baggage gate only.
+# This is intentionally broader than the export filter allowlist so custom
+# baggage keeps flowing for inference spans even if export filtering remains
+# unchanged.
+_CUSTOM_BAGGAGE_GENAI_OPERATION_NAMES: frozenset[str] = frozenset(
+    {
+        INVOKE_AGENT_OPERATION_NAME,
+        EXECUTE_TOOL_OPERATION_NAME,
+        OUTPUT_MESSAGES_OPERATION_NAME,
+        CHAT_OPERATION_NAME,
+        APPLY_GUARDRAIL_OPERATION_NAME,
+        *(operation_type.value for operation_type in InferenceOperationType),
+    }
+)
+
+
 def _is_genai_span(span, existing) -> bool:
     operation_name = existing.get(GEN_AI_OPERATION_NAME_KEY)
-    if operation_name in GEN_AI_OPERATION_NAMES:
+    if operation_name in _CUSTOM_BAGGAGE_GENAI_OPERATION_NAMES:
         return True
 
     span_name = getattr(span, "name", None)
-    return isinstance(span_name, str) and any(span_name.startswith(name) for name in GEN_AI_OPERATION_NAMES)
+    return isinstance(span_name, str) and any(
+        span_name.startswith(name) for name in _CUSTOM_BAGGAGE_GENAI_OPERATION_NAMES
+    )
 
 
 def _custom_baggage_keys(baggage_map) -> list[str]:

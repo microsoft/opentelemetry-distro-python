@@ -7,13 +7,11 @@ from unittest.mock import MagicMock
 
 from opentelemetry import baggage, context
 
-from microsoft.opentelemetry.a365.core.exporters.utils import GEN_AI_OPERATION_NAMES
 from microsoft.opentelemetry.a365.core.exporters.span_processor import (
     A365SpanProcessor,
     COMMON_ATTRIBUTES,
     INVOKE_AGENT_ATTRIBUTES,
 )
-from microsoft.opentelemetry.a365.core.inference_operation_type import InferenceOperationType
 from microsoft.opentelemetry.a365.core.middleware.baggage_builder import BaggageBuilder
 
 
@@ -183,9 +181,29 @@ class TestA365SpanProcessor(unittest.TestCase):
         for call in span.set_attribute.call_args_list:
             self.assertNotEqual(call[0][0], "customer.tier")
 
-    def test_genai_operation_names_include_all_inference_operation_values(self):
-        for operation_type in InferenceOperationType:
-            self.assertIn(operation_type.value, GEN_AI_OPERATION_NAMES)
+    def test_custom_baggage_attribute_propagated_to_text_completion_span(self):
+        processor = A365SpanProcessor()
+
+        span = MagicMock()
+        span.name = "TextCompletion summarize"
+        span.attributes = {"gen_ai.operation.name": "TextCompletion"}
+
+        with BaggageBuilder().custom_attribute("customer.tier", "gold").build():
+            processor.on_start(span, parent_context=context.get_current())
+
+        span.set_attribute.assert_any_call("customer.tier", "gold")
+
+    def test_custom_baggage_attribute_propagated_to_generate_content_span(self):
+        processor = A365SpanProcessor()
+
+        span = MagicMock()
+        span.name = "GenerateContent image"
+        span.attributes = {"gen_ai.operation.name": "GenerateContent"}
+
+        with BaggageBuilder().custom_attribute("customer.tier", "gold").build():
+            processor.on_start(span, parent_context=context.get_current())
+
+        span.set_attribute.assert_any_call("customer.tier", "gold")
 
     def test_empty_baggage(self):
         processor = A365SpanProcessor()
