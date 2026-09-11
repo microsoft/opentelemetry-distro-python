@@ -46,6 +46,10 @@ from microsoft.opentelemetry.a365.constants import (
     GEN_AI_CONVERSATION_ID_KEY,
     GEN_AI_CONVERSATION_ITEM_LINK_KEY,
     GEN_AI_OPERATION_NAME_KEY,
+    APPLY_GUARDRAIL_OPERATION_NAME,
+    CHAT_OPERATION_NAME,
+    EXECUTE_TOOL_OPERATION_NAME,
+    OUTPUT_MESSAGES_OPERATION_NAME,
     INVOKE_AGENT_OPERATION_NAME,
     SERVER_ADDRESS_KEY,
     SERVER_PORT_KEY,
@@ -57,9 +61,22 @@ from microsoft.opentelemetry.a365.constants import (
     USER_ID_KEY,
     USER_NAME_KEY,
 )
-from microsoft.opentelemetry.a365.core.exporters.utils import GEN_AI_OPERATION_NAMES
+from microsoft.opentelemetry.a365.core.inference_operation_type import InferenceOperationType
 
 # mypy: disable-error-code="no-untyped-def"
+
+# Processor-only operation names used to classify qualifying GenAI spans.
+GEN_AI_RECOGNIZED_OPERATION_NAMES: frozenset[str] = frozenset(
+    {
+        INVOKE_AGENT_OPERATION_NAME,
+        EXECUTE_TOOL_OPERATION_NAME,
+        OUTPUT_MESSAGES_OPERATION_NAME,
+        CHAT_OPERATION_NAME,
+        APPLY_GUARDRAIL_OPERATION_NAME,
+    }
+    | {operation.value for operation in InferenceOperationType}
+)
+
 
 # Generic / common tracing attributes propagated from baggage to qualifying GenAI spans
 COMMON_ATTRIBUTES = [
@@ -114,7 +131,7 @@ def _matches_operation_name(span: Any, existing_attributes: Mapping[str, object]
 def _is_gen_ai_span(span: Any, existing_attributes: Mapping[str, object]) -> bool:
     operation_name = existing_attributes.get(GEN_AI_OPERATION_NAME_KEY)
     if operation_name:
-        return operation_name in GEN_AI_OPERATION_NAMES
+        return operation_name in GEN_AI_RECOGNIZED_OPERATION_NAMES
 
     span_name = getattr(span, "name", None)
     if not isinstance(span_name, str):
@@ -122,7 +139,7 @@ def _is_gen_ai_span(span: Any, existing_attributes: Mapping[str, object]) -> boo
 
     return any(
         span_name == operation_name or span_name.startswith(f"{operation_name} ")
-        for operation_name in GEN_AI_OPERATION_NAMES
+        for operation_name in GEN_AI_RECOGNIZED_OPERATION_NAMES
     )
 
 
