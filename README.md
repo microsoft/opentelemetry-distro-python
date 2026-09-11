@@ -75,18 +75,19 @@ See the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/bl
 Agent365 manual execute-tool spans support typed JSON schema payloads:
 
 ```python
-from microsoft.opentelemetry.a365.core import ExecuteToolCallArguments, ToolCallResource
+from microsoft.opentelemetry.a365.core import ExecuteToolCallArguments, ToolCallAction, ToolCallResource
 
 arguments = ExecuteToolCallArguments(
-    action="read",
+    action=ToolCallAction.READ,
     resources=[ToolCallResource(resource_id="file-1", resource_type="file", provider="sharepoint")],
     extension_data={"provider_operation": "lookup"},
 )
 ```
 
 Typed arguments and results emit `schema_version: "1.0"` and serialize with schema field names such as
-`id`, `type`, `provider_code`, and `has_more`. Raw dictionary and string arguments/results remain supported.
-See the A365 guide for complete examples.
+`id`, `type`, `provider_code`, and `has_more`. Serialization never raises: an unserializable payload is
+replaced by `{"serialization_error": "Failed to serialize execute tool payload."}`. Raw dictionary and
+string arguments/results remain supported. See the A365 guide for complete examples.
 
 ---
 
