@@ -12,6 +12,7 @@ from opentelemetry import baggage, context
 from microsoft.opentelemetry.a365.core.constants import (
     CHANNEL_LINK_KEY,
     CHANNEL_NAME_KEY,
+    CUSTOM_KEYS_BAGGAGE_KEY,
     GEN_AI_AGENT_AUID_KEY,
     GEN_AI_AGENT_BLUEPRINT_ID_KEY,
     GEN_AI_AGENT_DESCRIPTION_KEY,
@@ -37,8 +38,6 @@ from microsoft.opentelemetry.a365.core.utils import validate_and_normalize_ip
 # mypy: disable-error-code="no-untyped-def"
 
 logger = logging.getLogger(__name__)
-
-_CUSTOM_KEYS_BAGGAGE_KEY = "_internal.custom_keys"
 
 
 class BaggageBuilder:
@@ -270,7 +269,7 @@ class BaggageBuilder:
         pairs = self._pairs.copy()
         custom_keys = [key for key in self._custom_keys if pairs.get(key, "").strip()]
         if custom_keys:
-            pairs[_CUSTOM_KEYS_BAGGAGE_KEY] = ",".join(custom_keys)
+            pairs[CUSTOM_KEYS_BAGGAGE_KEY] = ",".join(custom_keys)
         return BaggageScope(pairs)
 
     def _set(self, key: str, value: str | None) -> None:
@@ -290,8 +289,8 @@ class BaggageBuilder:
             raise ValueError("custom baggage key must not be blank")
         if "," in normalized_key:
             raise ValueError("custom baggage key must not contain commas")
-        if normalized_key == _CUSTOM_KEYS_BAGGAGE_KEY:
-            raise ValueError(f"{_CUSTOM_KEYS_BAGGAGE_KEY} is reserved")
+        if normalized_key == CUSTOM_KEYS_BAGGAGE_KEY:
+            raise ValueError(f"{CUSTOM_KEYS_BAGGAGE_KEY} is reserved")
         return normalized_key
 
 

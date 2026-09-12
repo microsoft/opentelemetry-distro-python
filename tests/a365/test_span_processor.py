@@ -13,6 +13,7 @@ from microsoft.opentelemetry.a365.core.exporters.span_processor import (
     INVOKE_AGENT_ATTRIBUTES,
 )
 from microsoft.opentelemetry.a365.core.middleware.baggage_builder import BaggageBuilder
+from microsoft.opentelemetry.a365.core.constants import GEN_AI_OPERATION_NAME_KEY
 
 
 class TestA365SpanProcessor(unittest.TestCase):
@@ -174,6 +175,51 @@ class TestA365SpanProcessor(unittest.TestCase):
         span = MagicMock()
         span.name = "http request"
         span.attributes = {"gen_ai.operation.name": "not_genai"}
+
+        with BaggageBuilder().custom_attribute("customer.tier", "gold").build():
+            processor.on_start(span, parent_context=context.get_current())
+
+        for call in span.set_attribute.call_args_list:
+            self.assertNotEqual(call[0][0], "customer.tier")
+
+    def test_custom_baggage_attribute_ignored_for_false_operation_prefixes(self):
+        processor = A365SpanProcessor()
+
+        for span_name in ("chatbot_loop", "execute_toolbox"):
+            with self.subTest(span_name=span_name):
+                span = MagicMock()
+                span.name = span_name
+                span.attributes = {}
+
+                with BaggageBuilder().custom_attribute("customer.tier", "gold").build():
+                    processor.on_start(span, parent_context=context.get_current())
+
+                for call in span.set_attribute.call_args_list:
+                    self.assertNotEqual(call[0][0], "customer.tier")
+
+    def test_custom_baggage_attribute_uses_recognized_baggage_operation_name(self):
+        processor = A365SpanProcessor()
+
+        span = MagicMock()
+        span.name = "http request"
+        span.attributes = {}
+
+        with (
+            BaggageBuilder()
+            .set_pairs({GEN_AI_OPERATION_NAME_KEY: "chat"})
+            .custom_attribute("customer.tier", "gold")
+            .build()
+        ):
+            processor.on_start(span, parent_context=context.get_current())
+
+        span.set_attribute.assert_any_call("customer.tier", "gold")
+
+    def test_custom_baggage_attribute_honors_unrecognized_explicit_operation_name(self):
+        processor = A365SpanProcessor()
+
+        span = MagicMock()
+        span.name = "chat gpt-4"
+        span.attributes = {GEN_AI_OPERATION_NAME_KEY: "not_genai"}
 
         with BaggageBuilder().custom_attribute("customer.tier", "gold").build():
             processor.on_start(span, parent_context=context.get_current())

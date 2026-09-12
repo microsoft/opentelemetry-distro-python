@@ -4,6 +4,8 @@
 - Add explicit `BaggageBuilder.custom_attribute()` and `custom_attributes()`
   APIs for opting application-specific baggage keys into Agent365 GenAI span
   attributes.
+- Recognize Agent365 and inference operation names when deciding whether
+  opted-in custom baggage applies to a span.
 
 # 1.3.9 (2026-09-09)
 ### Features Added

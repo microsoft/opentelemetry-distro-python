@@ -16,12 +16,16 @@ For every new span:
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 from opentelemetry import baggage, context
 from opentelemetry.sdk.trace import SpanProcessor as BaseSpanProcessor
 
-from microsoft.opentelemetry.a365.constants import (
+from microsoft.opentelemetry.a365.core.constants import (
     CHANNEL_LINK_KEY,
     CHANNEL_NAME_KEY,
+    CUSTOM_KEYS_BAGGAGE_KEY,
     CUSTOM_PARENT_SPAN_ID_KEY,
     CUSTOM_SPAN_NAME_KEY,
     GEN_AI_AGENT_AUID_KEY,
@@ -43,10 +47,7 @@ from microsoft.opentelemetry.a365.constants import (
     GEN_AI_CONVERSATION_ID_KEY,
     GEN_AI_CONVERSATION_ITEM_LINK_KEY,
     GEN_AI_OPERATION_NAME_KEY,
-    APPLY_GUARDRAIL_OPERATION_NAME,
-    CHAT_OPERATION_NAME,
-    EXECUTE_TOOL_OPERATION_NAME,
-    OUTPUT_MESSAGES_OPERATION_NAME,
+    GEN_AI_PROCESSOR_OPERATION_NAMES,
     INVOKE_AGENT_OPERATION_NAME,
     SERVER_ADDRESS_KEY,
     SERVER_PORT_KEY,
@@ -58,8 +59,6 @@ from microsoft.opentelemetry.a365.constants import (
     USER_ID_KEY,
     USER_NAME_KEY,
 )
-from microsoft.opentelemetry.a365.core.inference_operation_type import InferenceOperationType
-from microsoft.opentelemetry.a365.core.middleware.baggage_builder import _CUSTOM_KEYS_BAGGAGE_KEY
 
 # mypy: disable-error-code="no-untyped-def"
 
@@ -104,42 +103,49 @@ INVOKE_AGENT_ATTRIBUTES = [
 ]
 
 
-# Recognized GenAI operation names for the custom-baggage gate only.
-# This is intentionally broader than the export filter allowlist so custom
-# baggage keeps flowing for inference spans even if export filtering remains
-# unchanged.
-_CUSTOM_BAGGAGE_GENAI_OPERATION_NAMES: frozenset[str] = frozenset(
-    {
-        INVOKE_AGENT_OPERATION_NAME,
-        EXECUTE_TOOL_OPERATION_NAME,
-        OUTPUT_MESSAGES_OPERATION_NAME,
-        CHAT_OPERATION_NAME,
-        APPLY_GUARDRAIL_OPERATION_NAME,
-        *(operation_type.value for operation_type in InferenceOperationType),
-    }
-)
+def _recognized_operation_name(value: object | None) -> str | None:
+    return value if isinstance(value, str) and value in GEN_AI_PROCESSOR_OPERATION_NAMES else None
 
 
-def _is_genai_span(span, existing) -> bool:
-    operation_name = existing.get(GEN_AI_OPERATION_NAME_KEY)
-    if operation_name in _CUSTOM_BAGGAGE_GENAI_OPERATION_NAMES:
-        return True
-
+def _operation_name_from_span_name(span: Any) -> str | None:
     span_name = getattr(span, "name", None)
-    return isinstance(span_name, str) and any(
-        span_name.startswith(name) for name in _CUSTOM_BAGGAGE_GENAI_OPERATION_NAMES
-    )
+    if not isinstance(span_name, str):
+        return None
+
+    for operation_name in GEN_AI_PROCESSOR_OPERATION_NAMES:
+        if span_name == operation_name or span_name.startswith(f"{operation_name} "):
+            return operation_name
+    return None
+
+
+def _classify_gen_ai_operation(
+    span: Any,
+    existing_attributes: Mapping[str, object],
+    baggage_map: Mapping[str, object],
+) -> str | None:
+    if GEN_AI_OPERATION_NAME_KEY in existing_attributes:
+        return _recognized_operation_name(existing_attributes.get(GEN_AI_OPERATION_NAME_KEY))
+
+    baggage_operation_name = _recognized_operation_name(baggage_map.get(GEN_AI_OPERATION_NAME_KEY))
+    if baggage_operation_name is not None:
+        return baggage_operation_name
+
+    return _operation_name_from_span_name(span)
+
+
+def _is_gen_ai_span(span: Any, existing_attributes: Mapping[str, object], baggage_map: Mapping[str, object]) -> bool:
+    return _classify_gen_ai_operation(span, existing_attributes, baggage_map) is not None
 
 
 def _custom_baggage_keys(baggage_map) -> list[str]:
-    metadata = baggage_map.get(_CUSTOM_KEYS_BAGGAGE_KEY)
+    metadata = baggage_map.get(CUSTOM_KEYS_BAGGAGE_KEY)
     if not metadata:
         return []
 
     keys: list[str] = []
     for raw_key in str(metadata).split(","):
         key = raw_key.strip()
-        if not key or key == _CUSTOM_KEYS_BAGGAGE_KEY:
+        if not key or key == CUSTOM_KEYS_BAGGAGE_KEY:
             continue
         if key not in keys:
             keys.append(key)
@@ -199,8 +205,8 @@ class A365SpanProcessor(BaseSpanProcessor):
         except Exception:
             baggage_map = {}
 
-        is_genai_span = _is_genai_span(span, existing)
         operation_name = existing.get(GEN_AI_OPERATION_NAME_KEY)
+        is_genai_span = _is_gen_ai_span(span, existing, baggage_map)
         is_invoke_agent = False
         if operation_name == INVOKE_AGENT_OPERATION_NAME:
             is_invoke_agent = True

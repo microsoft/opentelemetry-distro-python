@@ -272,7 +272,11 @@ with (
 
 `set_pairs()` only sets baggage. It does not opt arbitrary baggage keys into
 span attributes; use `custom_attribute()` for any custom key that should appear
-on GenAI spans.
+on recognized Agent365 GenAI spans. Baggage propagation never overwrites
+attributes already present on the current span. Baggage-propagated values are
+applied when the span starts, so they precede later `record_attributes()` calls
+when duplicate-key protection is also present; direct/current span attributes
+remain authoritative.
 
 ### From TurnContext (Hosting Framework)
 

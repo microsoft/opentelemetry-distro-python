@@ -7,12 +7,28 @@ Span operation names and OpenTelemetry semantic-convention attribute keys
 shared across the Agent365 core scopes and exporters.
 """
 
+from microsoft.opentelemetry.a365.core.inference_operation_type import InferenceOperationType
+
 # --- Span operation names ---
 INVOKE_AGENT_OPERATION_NAME = "invoke_agent"
 EXECUTE_TOOL_OPERATION_NAME = "execute_tool"
 OUTPUT_MESSAGES_OPERATION_NAME = "output_messages"
 CHAT_OPERATION_NAME = "chat"
 APPLY_GUARDRAIL_OPERATION_NAME = "apply_guardrail"
+
+GEN_AI_PROCESSOR_OPERATION_NAMES: frozenset[str] = frozenset(
+    {
+        INVOKE_AGENT_OPERATION_NAME,
+        EXECUTE_TOOL_OPERATION_NAME,
+        OUTPUT_MESSAGES_OPERATION_NAME,
+        CHAT_OPERATION_NAME,
+        APPLY_GUARDRAIL_OPERATION_NAME,
+    }
+    | {operation.value for operation in InferenceOperationType}
+)
+
+# --- Baggage metadata ---
+CUSTOM_KEYS_BAGGAGE_KEY = "_internal.custom_keys"
 
 # --- OpenTelemetry semantic conventions ---
 ERROR_TYPE_KEY = "error.type"
