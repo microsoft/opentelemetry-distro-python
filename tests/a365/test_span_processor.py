@@ -32,6 +32,8 @@ from microsoft.opentelemetry.a365.core.exporters.span_processor import (
 
 LANGCHAIN_SCOPE = "microsoft.opentelemetry._genai._langchain._tracer_instrumentor"
 OPENAI_AGENTS_SCOPE = "microsoft.opentelemetry._genai._openai_agents._trace_instrumentor"
+UPSTREAM_OPENAI_AGENTS_SCOPE = "opentelemetry.instrumentation.openai_agents"
+OPENAI_V2_SCOPE = "opentelemetry.instrumentation.openai_v2"
 SEMANTIC_KERNEL_SCOPE = "semantic_kernel.utils.telemetry.model_diagnostics.decorators"
 AGENT_FRAMEWORK_SCOPE = "agent_framework"
 
@@ -425,6 +427,111 @@ class TestA365SpanProcessorGenAiInstrumentationSignals(unittest.TestCase):
 
         processor.on_start(span, parent_context=ctx)
 
+        for call in span.set_attribute.call_args_list:
+            self.assertNotEqual(call[0][0], "microsoft.a365.caller.agent.id")
+
+    # -- explicit but unrecognized operation names --
+
+    def test_openai_agents_scope_with_explicit_chain_operation_is_enriched(self):
+        """OpenAI Agents emits ``chain`` spans this processor does not model."""
+        processor = A365SpanProcessor()
+        span = _mock_span(
+            "chain RunnableSequence",
+            {GEN_AI_OPERATION_NAME_KEY: "chain"},
+            scope_name=OPENAI_AGENTS_SCOPE,
+        )
+
+        processor.on_start(span, parent_context=self._baggage_context())
+
+        self._assert_enriched(span)
+
+    def test_agent_framework_scope_with_explicit_embeddings_operation_is_enriched(self):
+        processor = A365SpanProcessor()
+        span = _mock_span(
+            "embeddings text-embedding-3-small",
+            {GEN_AI_OPERATION_NAME_KEY: "embeddings"},
+            scope_name=AGENT_FRAMEWORK_SCOPE,
+        )
+
+        processor.on_start(span, parent_context=self._baggage_context())
+
+        self._assert_enriched(span)
+
+    def test_openai_v2_scope_with_explicit_text_completion_operation_is_enriched(self):
+        processor = A365SpanProcessor()
+        span = _mock_span(
+            "text_completion gpt-4o",
+            {GEN_AI_OPERATION_NAME_KEY: "text_completion"},
+            scope_name=OPENAI_V2_SCOPE,
+        )
+
+        processor.on_start(span, parent_context=self._baggage_context())
+
+        self._assert_enriched(span)
+
+    def test_supported_scopes_with_other_unrecognized_operations_are_enriched(self):
+        for scope_name, operation_name in (
+            (UPSTREAM_OPENAI_AGENTS_SCOPE, "create_agent"),
+            (LANGCHAIN_SCOPE, "generate_content"),
+            (SEMANTIC_KERNEL_SCOPE, "embeddings"),
+        ):
+            with self.subTest(scope_name=scope_name, operation_name=operation_name):
+                processor = A365SpanProcessor()
+                span = _mock_span(
+                    f"{operation_name} target",
+                    {GEN_AI_OPERATION_NAME_KEY: operation_name},
+                    scope_name=scope_name,
+                )
+
+                processor.on_start(span, parent_context=self._baggage_context())
+
+                self._assert_enriched(span)
+
+    def test_unrecognized_explicit_operation_on_unrelated_scope_is_untouched(self):
+        processor = A365SpanProcessor(tenant_id="tenant", agent_id="agent")
+        span = _mock_span(
+            "POST /v1/chain",
+            {GEN_AI_OPERATION_NAME_KEY: "chain"},
+            scope_name="opentelemetry.instrumentation.requests",
+        )
+
+        processor.on_start(span, parent_context=self._baggage_context())
+
+        span.set_attribute.assert_not_called()
+
+    def test_unrecognized_explicit_operation_with_invoke_agent_span_name_is_not_invoke_agent(self):
+        """An unrecognized operation stays unknown, so invoke-only keys are withheld."""
+        processor = A365SpanProcessor()
+        span = _mock_span(
+            "invoke_agent Travel_Assistant",
+            {GEN_AI_OPERATION_NAME_KEY: "create_agent"},
+            scope_name=OPENAI_AGENTS_SCOPE,
+        )
+
+        ctx = baggage.set_baggage("microsoft.a365.caller.agent.id", "caller-1", self._baggage_context())
+        ctx = baggage.set_baggage("server.address", "agent.contoso.com", ctx)
+
+        processor.on_start(span, parent_context=ctx)
+
+        self._assert_enriched(span)
+        for call in span.set_attribute.call_args_list:
+            self.assertNotIn(call[0][0], ("microsoft.a365.caller.agent.id", "server.address"))
+
+    def test_unrecognized_explicit_operation_ignores_invoke_agent_baggage_operation(self):
+        """Baggage inference is skipped once an explicit operation is present."""
+        processor = A365SpanProcessor()
+        span = _mock_span(
+            "chain RunnableSequence",
+            {GEN_AI_OPERATION_NAME_KEY: "chain"},
+            scope_name=LANGCHAIN_SCOPE,
+        )
+
+        ctx = baggage.set_baggage(GEN_AI_OPERATION_NAME_KEY, INVOKE_AGENT_OPERATION_NAME, self._baggage_context())
+        ctx = baggage.set_baggage("microsoft.a365.caller.agent.id", "caller-1", ctx)
+
+        processor.on_start(span, parent_context=ctx)
+
+        self._assert_enriched(span)
         for call in span.set_attribute.call_args_list:
             self.assertNotEqual(call[0][0], "microsoft.a365.caller.agent.id")
 

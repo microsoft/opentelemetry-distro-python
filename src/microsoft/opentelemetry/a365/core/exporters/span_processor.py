@@ -13,29 +13,36 @@ For every recognized GenAI span:
     attribute, add it via span.set_attribute
   * Never overwrites existing attributes
 
-A span is recognized as GenAI when any of the following signals fires at
+A span is recognized as GenAI by evaluating these signals in order at
 ``on_start``:
 
   1. An explicit ``gen_ai.operation.name`` attribute holding a recognized
-     operation. An explicit *unrecognized* value is authoritative and
-     suppresses the two inference signals below.
-  2. A recognized ``gen_ai.operation.name`` baggage entry.
-  3. A span name that is (or starts with) a recognized operation name.
-  4. A span name a supported instrumentation is known to use before it renames
-     the span (Semantic Kernel ``chat.completions <model>``).
+     operation: GenAI with a known operation.
+  2. An explicit but *unrecognized* ``gen_ai.operation.name`` attribute: the
+     attribute is authoritative, so the baggage and span-name inference of
+     signals 3 and 4 is skipped. The span is still GenAI when a supported
+     instrumentation emitted it (signal 5), with an unknown operation.
+  3. A recognized ``gen_ai.operation.name`` baggage entry.
+  4. A span name that is (or starts with) a recognized operation name, or a
+     name a supported instrumentation is known to use before it renames the
+     span (Semantic Kernel ``chat.completions <model>``).
   5. The instrumentation scope (source) name of a supported GenAI
-     instrumentation.
+     instrumentation: GenAI with an unknown operation.
 
 Signals 4 and 5 exist because most GenAI instrumentations apply
 ``gen_ai.operation.name`` *after* the span starts: LangChain chat spans start
 as ``ChatOpenAI`` and the OpenAI Agents processor starts workflow spans as
-``Agent workflow``. Only signals 1-3 identify *which* operation a span
-represents, which is what gates the invoke_agent-only attributes.
+``Agent workflow``. Signal 5 also keeps spans whose operation this processor
+does not model (``chain``, ``embeddings``, ``text_completion``,
+``generate_content``, ``create_agent``) from being dropped. Only signals 1, 3
+and 4 identify *which* operation a span represents, which is what gates the
+invoke_agent-only attributes.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from opentelemetry import baggage, context
@@ -124,6 +131,14 @@ INVOKE_AGENT_ATTRIBUTES = [
 ]
 
 
+@dataclass(frozen=True)
+class _GenAISpanClassification:
+    """Whether a span is GenAI and, when identifiable, the operation it represents."""
+
+    is_gen_ai_span: bool
+    operation_name: str | None = None
+
+
 def _recognized_operation_name(value: object | None) -> str | None:
     return value if isinstance(value, str) and value in GEN_AI_PROCESSOR_OPERATION_NAMES else None
 
@@ -175,31 +190,33 @@ def _is_supported_gen_ai_scope(span: Any) -> bool:
     return any(scope_name == root or scope_name.startswith(f"{root}.") for root in GEN_AI_INSTRUMENTATION_SCOPE_ROOTS)
 
 
-def _classify_gen_ai_operation(
+def _classify_gen_ai_span(
     span: Any,
     existing_attributes: Mapping[str, object],
     baggage_map: Mapping[str, object],
-) -> str | None:
-    """Resolve the GenAI operation a span represents, or ``None`` if unknown."""
+) -> _GenAISpanClassification:
+    """Resolve whether a span is GenAI and which operation it represents.
+
+    An explicit ``gen_ai.operation.name`` attribute is authoritative over the
+    baggage and span-name inference signals, including when it holds a value
+    this processor does not model (``chain``, ``embeddings``,
+    ``text_completion``, ``generate_content``, ``create_agent``). Such a span is
+    still GenAI when a supported instrumentation emitted it, but its operation
+    stays unknown so invoke_agent-only attributes are withheld.
+    """
     if GEN_AI_OPERATION_NAME_KEY in existing_attributes:
-        return _recognized_operation_name(existing_attributes.get(GEN_AI_OPERATION_NAME_KEY))
+        explicit_operation_name = _recognized_operation_name(existing_attributes.get(GEN_AI_OPERATION_NAME_KEY))
+        if explicit_operation_name is not None:
+            return _GenAISpanClassification(True, explicit_operation_name)
+        return _GenAISpanClassification(_is_supported_gen_ai_scope(span))
 
-    baggage_operation_name = _recognized_operation_name(baggage_map.get(GEN_AI_OPERATION_NAME_KEY))
-    if baggage_operation_name is not None:
-        return baggage_operation_name
+    operation_name = _recognized_operation_name(baggage_map.get(GEN_AI_OPERATION_NAME_KEY))
+    if operation_name is None:
+        operation_name = _operation_name_from_span_name(span)
+    if operation_name is not None:
+        return _GenAISpanClassification(True, operation_name)
 
-    return _operation_name_from_span_name(span)
-
-
-def _is_gen_ai_span(span: Any, existing_attributes: Mapping[str, object], baggage_map: Mapping[str, object]) -> bool:
-    if _classify_gen_ai_operation(span, existing_attributes, baggage_map) is not None:
-        return True
-
-    if GEN_AI_OPERATION_NAME_KEY in existing_attributes:
-        # The span declared an operation this processor does not handle.
-        return False
-
-    return _has_known_initial_span_name(span) or _is_supported_gen_ai_scope(span)
+    return _GenAISpanClassification(_has_known_initial_span_name(span) or _is_supported_gen_ai_scope(span))
 
 
 # pylint: disable=broad-exception-caught, too-many-branches, useless-parent-delegation
@@ -238,7 +255,8 @@ class A365SpanProcessor(BaseSpanProcessor):
             except Exception:
                 baggage_map = {}
 
-        if not _is_gen_ai_span(span, existing, baggage_map):
+        classification = _classify_gen_ai_span(span, existing, baggage_map)
+        if not classification.is_gen_ai_span:
             return super().on_start(span, parent_context)
 
         if self._tenant_id and TENANT_ID_KEY not in existing:
@@ -258,9 +276,8 @@ class A365SpanProcessor(BaseSpanProcessor):
         except Exception:
             existing = {}
 
-        is_invoke_agent = _classify_gen_ai_operation(span, existing, baggage_map) == INVOKE_AGENT_OPERATION_NAME
         target_keys = list(COMMON_ATTRIBUTES)
-        if is_invoke_agent:
+        if classification.operation_name == INVOKE_AGENT_OPERATION_NAME:
             for k in INVOKE_AGENT_ATTRIBUTES:
                 if k not in target_keys:
                     target_keys.append(k)
