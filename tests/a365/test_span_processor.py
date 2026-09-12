@@ -16,6 +16,22 @@ from microsoft.opentelemetry.a365.core.exporters.span_processor import (
 from microsoft.opentelemetry.a365.core.middleware.baggage_builder import BaggageBuilder
 from microsoft.opentelemetry.a365.core.constants import GEN_AI_OPERATION_NAME_KEY
 
+LANGCHAIN_SCOPE = "microsoft.opentelemetry._genai._langchain._tracer_instrumentor"
+OPENAI_AGENTS_SCOPE = "microsoft.opentelemetry._genai._openai_agents._trace_instrumentor"
+UPSTREAM_OPENAI_AGENTS_SCOPE = "opentelemetry.instrumentation.openai_agents"
+OPENAI_V2_SCOPE = "opentelemetry.instrumentation.openai_v2"
+SEMANTIC_KERNEL_SCOPE = "semantic_kernel.utils.telemetry.model_diagnostics.decorators"
+AGENT_FRAMEWORK_SCOPE = "agent_framework"
+
+
+def _mock_span(name, attributes=None, scope_name=None):
+    """Build a mock ReadWriteSpan with a controllable instrumentation scope."""
+    span = MagicMock()
+    span.name = name
+    span.attributes = dict(attributes or {})
+    span.instrumentation_scope = SimpleNamespace(name=scope_name, version=None) if scope_name else None
+    return span
+
 
 class TestA365SpanProcessor(unittest.TestCase):
     # -- identity auto-stamping from constructor --
@@ -290,6 +306,124 @@ class TestA365SpanProcessor(unittest.TestCase):
 
         for call in span.set_attribute.call_args_list:
             self.assertNotEqual(call[0][0], "customer.tier")
+
+    # -- explicit but unrecognized operation names --
+
+    def test_custom_baggage_propagated_for_explicit_chain_operation_on_openai_agents_scope(self):
+        """OpenAI Agents emits ``chain`` spans this processor does not model."""
+        processor = A365SpanProcessor()
+        span = _mock_span(
+            "chain RunnableSequence",
+            {GEN_AI_OPERATION_NAME_KEY: "chain"},
+            scope_name=OPENAI_AGENTS_SCOPE,
+        )
+
+        with BaggageBuilder().custom_attribute("customer.tier", "gold").build():
+            processor.on_start(span, parent_context=context.get_current())
+
+        span.set_attribute.assert_any_call("customer.tier", "gold")
+
+    def test_custom_baggage_propagated_for_explicit_embeddings_operation_on_agent_framework_scope(self):
+        processor = A365SpanProcessor()
+        span = _mock_span(
+            "embeddings text-embedding-3-small",
+            {GEN_AI_OPERATION_NAME_KEY: "embeddings"},
+            scope_name=AGENT_FRAMEWORK_SCOPE,
+        )
+
+        with BaggageBuilder().custom_attribute("customer.tier", "gold").build():
+            processor.on_start(span, parent_context=context.get_current())
+
+        span.set_attribute.assert_any_call("customer.tier", "gold")
+
+    def test_custom_baggage_propagated_for_explicit_text_completion_operation_on_openai_v2_scope(self):
+        processor = A365SpanProcessor()
+        span = _mock_span(
+            "text_completion gpt-4o",
+            {GEN_AI_OPERATION_NAME_KEY: "text_completion"},
+            scope_name=OPENAI_V2_SCOPE,
+        )
+
+        with BaggageBuilder().custom_attribute("customer.tier", "gold").build():
+            processor.on_start(span, parent_context=context.get_current())
+
+        span.set_attribute.assert_any_call("customer.tier", "gold")
+
+    def test_custom_baggage_propagated_for_other_unrecognized_operations_on_supported_scopes(self):
+        for scope_name, operation_name in (
+            (UPSTREAM_OPENAI_AGENTS_SCOPE, "create_agent"),
+            (LANGCHAIN_SCOPE, "generate_content"),
+            (SEMANTIC_KERNEL_SCOPE, "embeddings"),
+        ):
+            with self.subTest(scope_name=scope_name, operation_name=operation_name):
+                processor = A365SpanProcessor()
+                span = _mock_span(
+                    f"{operation_name} target",
+                    {GEN_AI_OPERATION_NAME_KEY: operation_name},
+                    scope_name=scope_name,
+                )
+
+                with BaggageBuilder().custom_attribute("customer.tier", "gold").build():
+                    processor.on_start(span, parent_context=context.get_current())
+
+                span.set_attribute.assert_any_call("customer.tier", "gold")
+
+    def test_custom_baggage_ignored_for_unrecognized_explicit_operation_on_unrelated_scope(self):
+        processor = A365SpanProcessor()
+        span = _mock_span(
+            "POST /v1/chain",
+            {GEN_AI_OPERATION_NAME_KEY: "chain"},
+            scope_name="opentelemetry.instrumentation.requests",
+        )
+
+        with BaggageBuilder().custom_attribute("customer.tier", "gold").build():
+            processor.on_start(span, parent_context=context.get_current())
+
+        for call in span.set_attribute.call_args_list:
+            self.assertNotEqual(call[0][0], "customer.tier")
+
+    def test_unrecognized_explicit_operation_with_invoke_agent_span_name_is_not_invoke_agent(self):
+        """An unrecognized operation stays unknown, so invoke-only keys are withheld."""
+        processor = A365SpanProcessor()
+        span = _mock_span(
+            "invoke_agent Travel_Assistant",
+            {GEN_AI_OPERATION_NAME_KEY: "create_agent"},
+            scope_name=OPENAI_AGENTS_SCOPE,
+        )
+
+        with (
+            BaggageBuilder()
+            .set_pairs(
+                {
+                    "microsoft.a365.caller.agent.id": "caller-1",
+                    "server.address": "agent.contoso.com",
+                }
+            )
+            .custom_attribute("customer.tier", "gold")
+            .build()
+        ):
+            processor.on_start(span, parent_context=context.get_current())
+
+        span.set_attribute.assert_any_call("customer.tier", "gold")
+        for call in span.set_attribute.call_args_list:
+            self.assertNotIn(call[0][0], ("microsoft.a365.caller.agent.id", "server.address"))
+
+    def test_unrecognized_explicit_operation_ignores_invoke_agent_baggage_operation(self):
+        """Baggage inference is skipped once an explicit operation is present."""
+        processor = A365SpanProcessor()
+        span = _mock_span(
+            "chain RunnableSequence",
+            {GEN_AI_OPERATION_NAME_KEY: "chain"},
+            scope_name=LANGCHAIN_SCOPE,
+        )
+
+        ctx = baggage.set_baggage(GEN_AI_OPERATION_NAME_KEY, "invoke_agent", context.get_current())
+        ctx = baggage.set_baggage("microsoft.a365.caller.agent.id", "caller-1", ctx)
+
+        processor.on_start(span, parent_context=ctx)
+
+        for call in span.set_attribute.call_args_list:
+            self.assertNotEqual(call[0][0], "microsoft.a365.caller.agent.id")
 
     def test_invoke_agent_attributes_use_recognized_baggage_operation_name(self):
         processor = A365SpanProcessor()

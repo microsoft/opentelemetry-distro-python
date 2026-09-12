@@ -6,6 +6,11 @@
   attributes.
 - Recognize Agent365 and inference operation names when deciding whether
   opted-in custom baggage applies to a span.
+- Keep spans that declare an operation the processor does not model (`chain`,
+  `embeddings`, `text_completion`, `generate_content`, `create_agent`) eligible
+  for custom baggage when a supported GenAI instrumentation scope emitted them.
+  Such spans stay operation-unknown, so `invoke_agent`-only attributes are still
+  withheld.
 
 # 1.3.9 (2026-09-09)
 ### Features Added

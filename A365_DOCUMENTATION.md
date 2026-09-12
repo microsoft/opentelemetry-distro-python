@@ -278,6 +278,21 @@ applied when the span starts, so they precede later `record_attributes()` calls
 when duplicate-key protection is also present; direct/current span attributes
 remain authoritative.
 
+A span is recognized as GenAI at span start by evaluating these signals in
+order: a supported `gen_ai.operation.name` attribute; if that attribute is
+present but unrecognized (`chain`, `embeddings`, `text_completion`,
+`generate_content`, `create_agent`, ...) it is authoritative, so baggage and
+span-name inference are skipped and only the instrumentation scope can still
+classify the span; otherwise a recognized `gen_ai.operation.name` baggage entry,
+then a span name matching a supported operation (`invoke_agent ...`,
+`chat ...`, ...) or a known pre-rename name (`chat.completions ...`), then a
+supported GenAI instrumentation scope (`Agent365Sdk`, `semantic_kernel.*`,
+`agent_framework`, `microsoft.opentelemetry._genai.*`,
+`opentelemetry.instrumentation.openai_v2`,
+`opentelemetry.instrumentation.openai_agents`). Spans classified only by
+instrumentation scope are GenAI with an unknown operation: opted-in custom
+baggage applies to them, but `invoke_agent`-only attributes never do.
+
 ### From TurnContext (Hosting Framework)
 
 ```python
