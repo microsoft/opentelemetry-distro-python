@@ -63,6 +63,9 @@ MAX_SPAN_SIZE_BYTES = 250 * 1024
 # Operation names that identify a span as eligible for export to the Agent 365
 # observability ingest service. Only spans whose gen_ai.operation.name matches
 # one of these values are included; all other spans are filtered out.
+# Deliberately narrower than the processor recognition set: baggage enrichment
+# may run on additional GenAI spans (recognized by instrumentation scope or
+# pre-rename span name) that are not exported to A365 ingest.
 GEN_AI_OPERATION_NAMES: frozenset[str] = frozenset(
     {
         INVOKE_AGENT_OPERATION_NAME,
