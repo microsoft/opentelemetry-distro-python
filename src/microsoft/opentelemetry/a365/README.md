@@ -63,6 +63,7 @@ Data models for messages, agents, callers, and responses.
 |------|-------------|
 | `caller_details.py` | `CallerDetails` dataclass — groups caller identity for agent-to-agent (A2A) scenarios (human user and calling agent). |
 | `messages.py` | OTel gen-ai message types: enums (`MessageRole`, `FinishReason`, `Modality`), message parts (`TextPart`, `BlobPart`, `FilePart`, `UriPart`), `ChatMessage`, `OutputMessage`, and wrapper types. |
+| `tool_call_schema.py` | Typed execute-tool argument/result schema models and non-throwing JSON serializer for Agent365 payloads. |
 | `response.py` | `Response` dataclass — output messages (strings, `OutputMessages`, or tool result dicts). |
 | `service_endpoint.py` | `ServiceEndpoint` dataclass — hostname and optional port. |
 | `user_details.py` | `UserDetails` dataclass — human user info (ID, email, name, client IP). |

@@ -386,6 +386,112 @@ with ExecuteToolScope.start(
     scope.record_response(result)
 ```
 
+`ToolCallDetails.arguments` and `ExecuteToolScope.record_response()` also accept typed execute-tool schema models.
+Typed top-level arguments and results serialize to the Agent365 JSON contract with `schema_version: "1.0"`,
+while raw dictionaries and strings remain supported and keep their existing behavior.
+
+```python
+from microsoft.opentelemetry.a365.core import (
+    ExecuteToolCallArguments,
+    ExecuteToolCallResult,
+    ExecuteToolScope,
+    ToolCallAction,
+    ToolCallDetails,
+    ToolCallOutcomeStatus,
+    ToolCallResource,
+    ToolCallResultOutcome,
+    ToolCallResultPagination,
+    Request,
+)
+
+arguments = ExecuteToolCallArguments(
+    action=ToolCallAction.READ,
+    resources=[
+        ToolCallResource(
+            resource_id="file-1",
+            uri="https://contoso.example/files/1",
+            name="Forecast",
+            resource_type="file",
+            provider="sharepoint",
+        )
+    ],
+    parameters={"city": "Seattle"},
+    extension_data={"provider_operation": "weather.lookup"},
+)
+
+with ExecuteToolScope.start(
+    request=Request(content="What's the weather?"),
+    details=ToolCallDetails(tool_name="get_weather", tool_call_id="call_1", arguments=arguments),
+    agent_details=agent,
+) as scope:
+    scope.record_response(
+        ExecuteToolCallResult(
+            outcome=ToolCallResultOutcome(status=ToolCallOutcomeStatus.SUCCESS),
+            data={"temperature_f": 68},
+            pagination=ToolCallResultPagination(has_more=False, total_count=1),
+        )
+    )
+```
+
+The typed arguments above generate a JSON payload shaped like:
+
+```json
+{
+  "schema_version": "1.0",
+  "action": "read",
+  "resources": [
+    {
+      "id": "file-1",
+      "uri": "https://contoso.example/files/1",
+      "name": "Forecast",
+      "type": "file",
+      "provider": "sharepoint"
+    }
+  ],
+  "parameters": {"city": "Seattle"},
+  "provider_operation": "weather.lookup"
+}
+```
+
+#### Schema enums
+
+`action`, `outcome.status`, and `policy.decision` are constrained to the same tokens as the .NET distro:
+
+| Field | Enum | Tokens |
+| --- | --- | --- |
+| `ExecuteToolCallArguments.action` | `ToolCallAction` | `create`, `read`, `update`, `delete` |
+| `ToolCallResultOutcome.status` | `ToolCallOutcomeStatus` | `success`, `failure` |
+| `ToolCallResultPolicy.decision` | `ToolPolicyDecision` | `allow`, `deny` |
+
+The exact lowercase strings are accepted as well, so `action="read"` and `action=ToolCallAction.READ` are
+equivalent. Any other value — a different casing, an undefined token, a number, a boolean, or a member of a
+different enum — is rejected instead of emitting schema-invalid telemetry.
+
+#### Null handling and extension data
+
+Model properties that are `None` are omitted. `False`, zero, empty strings, empty dictionaries, and empty
+lists are preserved. `None` inside a dictionary or list you supply (for example `parameters`, `data`, or
+`extension_data`) is preserved as JSON `null`, matching the .NET contract.
+
+`extension_data` is merged into the same JSON object as the model it belongs to. It may supply a key whose
+model property was left `None`, but it cannot overwrite a property that is actually serialized.
+
+#### Serialization failures
+
+Typed payload serialization never raises and never leaves a span orphaned. If any value cannot be
+represented — an unsupported type, a reference cycle, `NaN`/`Infinity`, an undefined enum token, or an
+extension-data collision — the whole attribute value is replaced by the diagnostic payload and a warning is
+logged:
+
+```json
+{"serialization_error": "Failed to serialize execute tool payload."}
+```
+
+`bytes` and `bytearray` are emitted as base64 strings, `datetime`/`date`/`time` as ISO-8601 strings, `UUID`
+as its canonical string, `Decimal` as a JSON number, any `Enum` as its value, and lists, tuples, sets, and
+other sized collections as JSON arrays. Raw dictionary arguments and results keep their existing
+serialization but also fall back to the same diagnostic payload instead of raising.
+
 ### InferenceScope
 
 ```python

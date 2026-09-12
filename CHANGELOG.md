@@ -1,4 +1,12 @@
 # Release History
+# Unreleased
+### Features Added
+- Add typed Agent365 execute-tool argument and result schema models with `schema_version: "1.0"` serialization,
+  `ToolCallAction`/`ToolCallOutcomeStatus`/`ToolPolicyDecision` enums, extension data collision checks, public
+  exports, and `ExecuteToolScope` support while preserving raw dict/string payloads. Execute-tool payload
+  serialization is non-throwing: unserializable payloads record
+  `{"serialization_error": "Failed to serialize execute tool payload."}` instead of failing the span.
+
 # 1.3.9 (2026-09-09)
 ### Features Added
 - Update OpenTelemetry dependencies to latest versions, bump `langchain-core` minimum version to address S360, and support the new `httpx2` entry point exposed by `opentelemetry-instrumentation-httpx`.
