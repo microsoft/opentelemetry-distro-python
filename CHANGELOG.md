@@ -1,4 +1,17 @@
 # Release History
+# Unreleased
+### Features Added
+- Add explicit `BaggageBuilder.custom_attribute()` and `custom_attributes()`
+  APIs for opting application-specific baggage keys into Agent365 GenAI span
+  attributes.
+- Recognize Agent365 and inference operation names when deciding whether
+  opted-in custom baggage applies to a span.
+- Keep spans that declare an operation the processor does not model (`chain`,
+  `embeddings`, `text_completion`, `generate_content`, `create_agent`) eligible
+  for custom baggage when a supported GenAI instrumentation scope emitted them.
+  Such spans stay operation-unknown, so `invoke_agent`-only attributes are still
+  withheld.
+
 # 1.3.9 (2026-09-09)
 ### Features Added
 - Update OpenTelemetry dependencies to latest versions, bump `langchain-core` minimum version to address S360, and support the new `httpx2` entry point exposed by `opentelemetry-instrumentation-httpx`.

@@ -20,7 +20,7 @@ Core tracing primitives — scopes, configuration, data models, and internal uti
 | `__init__.py` | Public API surface. Re-exports scope classes, data models, enums, and related core types. |
 | `agent_details.py` | `AgentDetails` dataclass — metadata about an AI agent (ID, name, description, blueprint/platform IDs, tenant, version). |
 | `channel.py` | `Channel` dataclass — channel context (name, link) for agent execution. |
-| `constants.py` | Core-level constants for span operations, OTel conventions, feature switches, and error types. |
+| `constants.py` | Core-level constants for span operations, GenAI processor operation names, baggage metadata, OTel conventions, feature switches, and error types. |
 | `execute_tool_scope.py` | `ExecuteToolScope` — tracing scope for AI tool executions. Records tool name, arguments, call ID, type, and endpoint. |
 | `inference_call_details.py` | `InferenceCallDetails` dataclass — LLM call metadata (model, provider, token counts, finish reasons, endpoint). |
 | `inference_operation_type.py` | `InferenceOperationType` enum — Chat, TextCompletion, GenerateContent. |
@@ -45,7 +45,7 @@ Span export pipeline — processors and exporters for Agent365 and Spectra backe
 | `agent365_exporter_options.py` | `Agent365ExporterOptions` — configuration for the Agent365 exporter (cluster category, token resolver, endpoint flags, batch settings). |
 | `enriched_span.py` | `EnrichedReadableSpan` — wrapper allowing extra attributes on immutable `ReadableSpan` objects. |
 | `enriching_span_processor.py` | Span enrichment support with registration for platform instrumentors (LangChain, Semantic Kernel, OpenAI Agents). `_EnrichingBatchSpanProcessor` applies enrichers before batching. |
-| `span_processor.py` | `A365SpanProcessor` — propagates OpenTelemetry baggage entries onto spans as attributes, with special handling for invoke_agent spans. |
+| `span_processor.py` | `A365SpanProcessor` — propagates documented OpenTelemetry baggage entries onto spans, keeps invoke_agent-specific handling, and copies only opted-in custom baggage keys onto recognized GenAI spans. |
 | `spectra_exporter_options.py` | `SpectraExporterOptions` — configuration for OTLP export to a Spectra Collector sidecar (gRPC or HTTP, tuned for Kubernetes). |
 | `utils.py` | Exporter utilities: hex encoding for trace/span IDs, span size truncation, span partitioning, environment variable handling, payload building helpers. |
 
@@ -53,7 +53,7 @@ Span export pipeline — processors and exporters for Agent365 and Spectra backe
 
 | File | Description |
 |------|-------------|
-| `baggage_builder.py` | `BaggageBuilder` — fluent API for setting per-request baggage values (tenant ID, agent ID, caller/user details, session/conversation IDs, channel, endpoints). Provides context manager for baggage scope. |
+| `baggage_builder.py` | `BaggageBuilder` — fluent API for setting per-request baggage values (tenant ID, agent ID, caller/user details, session/conversation IDs, channel, endpoints) plus `custom_attribute()` / `custom_attributes()` opt-in for custom GenAI span attributes. Provides context manager for baggage scope. |
 
 ### `core/models/`
 
@@ -148,7 +148,7 @@ below are available via `from microsoft.opentelemetry.a365.core import ...`.
 
 | Symbol | Kind | Description |
 |--------|------|-------------|
-| `BaggageBuilder` | class | Fluent API for setting per-request baggage (tenant, agent, user, channel, session, conversation). Call `.build()` to get a context manager. |
+| `BaggageBuilder` | class | Fluent API for setting per-request baggage (tenant, agent, user, channel, session, conversation) and opting custom baggage keys into recognized GenAI span attributes. Call `.build()` to get a context manager. |
 
 #### Data Classes
 

@@ -12,16 +12,46 @@ For every new span:
   * For each documented key with a truthy value not already present as a span
     attribute, add it via span.set_attribute
   * Never overwrites existing attributes
+
+Custom baggage is propagated only to recognized GenAI spans. A span is
+recognized as GenAI by evaluating these signals in order at ``on_start``:
+
+  1. An explicit ``gen_ai.operation.name`` attribute holding a recognized
+     operation: GenAI with a known operation.
+  2. An explicit but *unrecognized* ``gen_ai.operation.name`` attribute: the
+     attribute is authoritative, so the baggage and span-name inference of
+     signals 3 and 4 is skipped. The span is still GenAI when a supported
+     instrumentation emitted it (signal 5), with an unknown operation.
+  3. A recognized ``gen_ai.operation.name`` baggage entry.
+  4. A span name that is (or starts with) a recognized operation name, or a
+     name a supported instrumentation is known to use before it renames the
+     span (Semantic Kernel ``chat.completions <model>``).
+  5. The instrumentation scope (source) name of a supported GenAI
+     instrumentation: GenAI with an unknown operation.
+
+Signals 4 and 5 exist because most GenAI instrumentations apply
+``gen_ai.operation.name`` *after* the span starts: LangChain chat spans start
+as ``ChatOpenAI`` and the OpenAI Agents processor starts workflow spans as
+``Agent workflow``. Signal 5 also keeps spans whose operation this processor
+does not model (``chain``, ``embeddings``, ``text_completion``,
+``generate_content``, ``create_agent``) from being dropped. Only signals 1, 3
+and 4 identify *which* operation a span represents, which is what gates the
+invoke_agent-only attributes.
 """
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+from dataclasses import dataclass
+from typing import Any
+
 from opentelemetry import baggage, context
 from opentelemetry.sdk.trace import SpanProcessor as BaseSpanProcessor
 
-from microsoft.opentelemetry.a365.constants import (
+from microsoft.opentelemetry.a365.core.constants import (
     CHANNEL_LINK_KEY,
     CHANNEL_NAME_KEY,
+    CUSTOM_KEYS_BAGGAGE_KEY,
     CUSTOM_PARENT_SPAN_ID_KEY,
     CUSTOM_SPAN_NAME_KEY,
     GEN_AI_AGENT_AUID_KEY,
@@ -42,7 +72,10 @@ from microsoft.opentelemetry.a365.constants import (
     GEN_AI_CALLER_CLIENT_IP_KEY,
     GEN_AI_CONVERSATION_ID_KEY,
     GEN_AI_CONVERSATION_ITEM_LINK_KEY,
+    GEN_AI_INITIAL_SPAN_NAMES,
+    GEN_AI_INSTRUMENTATION_SCOPE_ROOTS,
     GEN_AI_OPERATION_NAME_KEY,
+    GEN_AI_PROCESSOR_OPERATION_NAMES,
     INVOKE_AGENT_OPERATION_NAME,
     SERVER_ADDRESS_KEY,
     SERVER_PORT_KEY,
@@ -98,6 +131,109 @@ INVOKE_AGENT_ATTRIBUTES = [
 ]
 
 
+@dataclass(frozen=True)
+class _GenAISpanClassification:
+    """Whether a span is GenAI and, when identifiable, the operation it represents."""
+
+    is_gen_ai_span: bool
+    operation_name: str | None = None
+
+
+def _recognized_operation_name(value: object | None) -> str | None:
+    return value if isinstance(value, str) and value in GEN_AI_PROCESSOR_OPERATION_NAMES else None
+
+
+def _span_name(span: Any) -> str | None:
+    span_name = getattr(span, "name", None)
+    return span_name if isinstance(span_name, str) else None
+
+
+def _operation_name_from_span_name(span: Any) -> str | None:
+    span_name = _span_name(span)
+    if span_name is None:
+        return None
+
+    for operation_name in GEN_AI_PROCESSOR_OPERATION_NAMES:
+        if span_name == operation_name or span_name.startswith(f"{operation_name} "):
+            return operation_name
+    return None
+
+
+def _has_known_initial_span_name(span: Any) -> bool:
+    """Match span names supported instrumentations use before renaming the span."""
+    span_name = _span_name(span)
+    if span_name is None:
+        return False
+
+    return any(span_name == known or span_name.startswith(f"{known} ") for known in GEN_AI_INITIAL_SPAN_NAMES)
+
+
+def _instrumentation_scope_name(span: Any) -> str | None:
+    """Read the tracer (source) name recorded on a ReadWriteSpan."""
+    # pylint: disable=broad-exception-caught
+    for attribute_name in ("instrumentation_scope", "instrumentation_info"):
+        try:
+            scope = getattr(span, attribute_name, None)
+            scope_name = getattr(scope, "name", None) if scope is not None else None
+        except Exception:
+            continue
+        if isinstance(scope_name, str) and scope_name:
+            return scope_name
+    return None
+
+
+def _is_supported_gen_ai_scope(span: Any) -> bool:
+    scope_name = _instrumentation_scope_name(span)
+    if scope_name is None:
+        return False
+
+    return any(scope_name == root or scope_name.startswith(f"{root}.") for root in GEN_AI_INSTRUMENTATION_SCOPE_ROOTS)
+
+
+def _classify_gen_ai_span(
+    span: Any,
+    existing_attributes: Mapping[str, object],
+    baggage_map: Mapping[str, object],
+) -> _GenAISpanClassification:
+    """Resolve whether a span is GenAI and which operation it represents.
+
+    An explicit ``gen_ai.operation.name`` attribute is authoritative over the
+    baggage and span-name inference signals, including when it holds a value
+    this processor does not model (``chain``, ``embeddings``,
+    ``text_completion``, ``generate_content``, ``create_agent``). Such a span is
+    still GenAI when a supported instrumentation emitted it, but its operation
+    stays unknown so invoke_agent-only attributes are withheld.
+    """
+    if GEN_AI_OPERATION_NAME_KEY in existing_attributes:
+        explicit_operation_name = _recognized_operation_name(existing_attributes.get(GEN_AI_OPERATION_NAME_KEY))
+        if explicit_operation_name is not None:
+            return _GenAISpanClassification(True, explicit_operation_name)
+        return _GenAISpanClassification(_is_supported_gen_ai_scope(span))
+
+    operation_name = _recognized_operation_name(baggage_map.get(GEN_AI_OPERATION_NAME_KEY))
+    if operation_name is None:
+        operation_name = _operation_name_from_span_name(span)
+    if operation_name is not None:
+        return _GenAISpanClassification(True, operation_name)
+
+    return _GenAISpanClassification(_has_known_initial_span_name(span) or _is_supported_gen_ai_scope(span))
+
+
+def _custom_baggage_keys(baggage_map) -> list[str]:
+    metadata = baggage_map.get(CUSTOM_KEYS_BAGGAGE_KEY)
+    if not metadata:
+        return []
+
+    keys: list[str] = []
+    for raw_key in str(metadata).split(","):
+        key = raw_key.strip()
+        if not key or key == CUSTOM_KEYS_BAGGAGE_KEY:
+            continue
+        if key not in keys:
+            keys.append(key)
+    return keys
+
+
 # pylint: disable=broad-exception-caught, too-many-branches, useless-parent-delegation
 # pylint: disable=global-statement
 class A365SpanProcessor(BaseSpanProcessor):
@@ -151,16 +287,15 @@ class A365SpanProcessor(BaseSpanProcessor):
         except Exception:
             baggage_map = {}
 
-        operation_name = existing.get(GEN_AI_OPERATION_NAME_KEY)
-        is_invoke_agent = False
-        if operation_name == INVOKE_AGENT_OPERATION_NAME:
-            is_invoke_agent = True
-        elif isinstance(getattr(span, "name", None), str) and span.name.startswith(INVOKE_AGENT_OPERATION_NAME):
-            is_invoke_agent = True
+        classification = _classify_gen_ai_span(span, existing, baggage_map)
 
         target_keys = list(COMMON_ATTRIBUTES)
-        if is_invoke_agent:
+        if classification.operation_name == INVOKE_AGENT_OPERATION_NAME:
             for k in INVOKE_AGENT_ATTRIBUTES:
+                if k not in target_keys:
+                    target_keys.append(k)
+        if classification.is_gen_ai_span:
+            for k in _custom_baggage_keys(baggage_map):
                 if k not in target_keys:
                     target_keys.append(k)
 

@@ -7,6 +7,8 @@ Span operation names and OpenTelemetry semantic-convention attribute keys
 shared across the Agent365 core scopes and exporters.
 """
 
+from microsoft.opentelemetry.a365.core.inference_operation_type import InferenceOperationType
+
 # --- Span operation names ---
 INVOKE_AGENT_OPERATION_NAME = "invoke_agent"
 EXECUTE_TOOL_OPERATION_NAME = "execute_tool"
@@ -14,12 +16,67 @@ OUTPUT_MESSAGES_OPERATION_NAME = "output_messages"
 CHAT_OPERATION_NAME = "chat"
 APPLY_GUARDRAIL_OPERATION_NAME = "apply_guardrail"
 
+GEN_AI_PROCESSOR_OPERATION_NAMES: frozenset[str] = frozenset(
+    {
+        INVOKE_AGENT_OPERATION_NAME,
+        EXECUTE_TOOL_OPERATION_NAME,
+        OUTPUT_MESSAGES_OPERATION_NAME,
+        CHAT_OPERATION_NAME,
+        APPLY_GUARDRAIL_OPERATION_NAME,
+    }
+    | {operation.value for operation in InferenceOperationType}
+)
+
+# --- Baggage metadata ---
+CUSTOM_KEYS_BAGGAGE_KEY = "_internal.custom_keys"
+
 # --- OpenTelemetry semantic conventions ---
 ERROR_TYPE_KEY = "error.type"
 ERROR_MESSAGE_KEY = "error.message"
 AZ_NAMESPACE_KEY = "az.namespace"
 AZURE_RP_NAMESPACE_VALUE = "Microsoft.CognitiveServices"
 SOURCE_NAME = "Agent365Sdk"
+
+# --- GenAI instrumentation recognition (span-start signals) ---
+# ``gen_ai.operation.name`` is frequently applied *after* a span starts:
+# LangChain and the OpenAI Agents processor set it (and rename the span) when
+# the run finishes, and Semantic Kernel / Agent Framework call
+# ``span.set_attributes`` on the line following ``start_span``. A span
+# processor's ``on_start`` hook therefore cannot rely on that attribute alone.
+#
+# ``ReadWriteSpan.instrumentation_scope`` *is* populated at ``on_start``, so the
+# tracer (source) name of a supported GenAI instrumentation is used as an
+# additional positive signal. A scope matches when it equals a root exactly or
+# is a dotted child of it, which keeps unrelated instrumentations (HTTP, DB,
+# web frameworks) and lookalike names such as ``semantic_kernel_helpers`` out.
+GEN_AI_INSTRUMENTATION_SCOPE_ROOTS: tuple[str, ...] = (
+    # Agent365 SDK scopes (``OpenTelemetryScope``).
+    SOURCE_NAME,
+    # Microsoft Agent Framework SDK (``get_tracer("agent_framework")``).
+    "agent_framework",
+    # Semantic Kernel SDK (model/agent/function diagnostics use ``__name__``).
+    "semantic_kernel",
+    # In-distro LangChain and OpenAI Agents tracers.
+    "microsoft.opentelemetry._genai",
+    # Upstream OpenAI instrumentations supported by this distro.
+    "opentelemetry.instrumentation.openai_v2",
+    "opentelemetry.instrumentation.openai_agents",
+)
+
+# Span names emitted by supported GenAI instrumentations before they rename the
+# span. Semantic Kernel <= 1.37 starts inference spans as
+# ``chat.completions <model>`` / ``text.completions <model>`` and >= 1.38 as
+# ``text_completions <model>``; matching is exact or up to a trailing space so
+# nearby names such as ``chat.completions.retry`` are not claimed.
+GEN_AI_INITIAL_SPAN_NAMES: frozenset[str] = frozenset(
+    {
+        "chat.completions",
+        "chat.streaming_completions",
+        "text.completions",
+        "text.streaming_completions",
+        "text_completions",
+    }
+)
 
 # --- Feature switches ---
 ENABLE_OPENTELEMETRY_SWITCH = "Azure.Experimental.EnableActivitySource"
