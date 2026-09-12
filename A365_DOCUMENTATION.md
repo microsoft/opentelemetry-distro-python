@@ -349,6 +349,10 @@ When no `a365_token_resolver` is provided, Microsoft OpenTelemetry tries FIC usi
 ## Manual Instrumentation
 
 Use scope classes when auto-instrumentation isn't available or you need fine-grained control.
+`record_attributes()` accepts dictionaries or iterable key/value pairs for custom
+dimensions, but it never overwrites span attributes that were already set by scope
+construction, by attributes propagated from baggage through `A365SpanProcessor`,
+or by earlier `record_attributes()` calls. Blank keys are skipped.
 
 ### InvokeAgentScope
 

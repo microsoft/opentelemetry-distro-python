@@ -1,4 +1,8 @@
 # Release History
+# Unreleased
+### Bugs Fixed
+- Prevent `OpenTelemetryScope.record_attributes()` from overwriting span attributes that were already set by scope construction, by baggage propagated through `A365SpanProcessor`, or by earlier custom attributes, while preserving dictionary and iterable inputs.
+
 # 1.3.9 (2026-09-09)
 ### Features Added
 - Update OpenTelemetry dependencies to latest versions, bump `langchain-core` minimum version to address S360, and support the new `httpx2` entry point exposed by `opentelemetry-instrumentation-httpx`.
@@ -7,7 +11,6 @@
   ([#259](https://github.com/microsoft/opentelemetry-distro-python/pull/259))
 - Update NOTICE to include the license declarations for external packages flagged in MPL review.
   ([#255](https://github.com/microsoft/opentelemetry-distro-python/pull/255))
-
 # 1.3.8 (2026-08-20)
 ### Features Added
 - Add support for agent identity propagation for compiled agents in nested graph
