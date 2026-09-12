@@ -3,6 +3,7 @@
 # pylint: disable=no-member
 
 import unittest
+from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 from opentelemetry import baggage, context
@@ -250,6 +251,75 @@ class TestA365SpanProcessor(unittest.TestCase):
             processor.on_start(span, parent_context=context.get_current())
 
         span.set_attribute.assert_any_call("customer.tier", "gold")
+
+    def test_custom_baggage_attribute_propagated_to_known_initial_span_name(self):
+        processor = A365SpanProcessor()
+
+        span = MagicMock()
+        span.name = "chat.completions gpt-4o"
+        span.attributes = {}
+
+        with BaggageBuilder().custom_attribute("customer.tier", "gold").build():
+            processor.on_start(span, parent_context=context.get_current())
+
+        span.set_attribute.assert_any_call("customer.tier", "gold")
+
+    def test_custom_baggage_attribute_propagated_to_supported_scope_child(self):
+        processor = A365SpanProcessor()
+
+        span = MagicMock()
+        span.name = "ChatOpenAI"
+        span.attributes = {}
+        span.instrumentation_scope = SimpleNamespace(name="microsoft.opentelemetry._genai._langchain")
+
+        with BaggageBuilder().custom_attribute("customer.tier", "gold").build():
+            processor.on_start(span, parent_context=context.get_current())
+
+        span.set_attribute.assert_any_call("customer.tier", "gold")
+
+    def test_custom_baggage_attribute_ignored_for_scope_prefix_without_boundary(self):
+        processor = A365SpanProcessor()
+
+        span = MagicMock()
+        span.name = "helper span"
+        span.attributes = {}
+        span.instrumentation_scope = SimpleNamespace(name="semantic_kernel_helpers")
+
+        with BaggageBuilder().custom_attribute("customer.tier", "gold").build():
+            processor.on_start(span, parent_context=context.get_current())
+
+        for call in span.set_attribute.call_args_list:
+            self.assertNotEqual(call[0][0], "customer.tier")
+
+    def test_invoke_agent_attributes_use_recognized_baggage_operation_name(self):
+        processor = A365SpanProcessor()
+
+        span = MagicMock()
+        span.name = "http request"
+        span.attributes = {}
+
+        ctx = context.get_current()
+        ctx = baggage.set_baggage(GEN_AI_OPERATION_NAME_KEY, "invoke_agent", ctx)
+        ctx = baggage.set_baggage("microsoft.a365.caller.agent.id", "caller-1", ctx)
+
+        processor.on_start(span, parent_context=ctx)
+
+        span.set_attribute.assert_any_call("microsoft.a365.caller.agent.id", "caller-1")
+
+    def test_invoke_agent_attributes_ignored_for_raw_prefix_without_boundary(self):
+        processor = A365SpanProcessor()
+
+        span = MagicMock()
+        span.name = "invoke_agent.debug"
+        span.attributes = {}
+
+        ctx = context.get_current()
+        ctx = baggage.set_baggage("microsoft.a365.caller.agent.id", "caller-1", ctx)
+
+        processor.on_start(span, parent_context=ctx)
+
+        for call in span.set_attribute.call_args_list:
+            self.assertNotEqual(call[0][0], "microsoft.a365.caller.agent.id")
 
     def test_empty_baggage(self):
         processor = A365SpanProcessor()
