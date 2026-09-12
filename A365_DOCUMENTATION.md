@@ -233,6 +233,8 @@ ObservabilityHostingManager.configure(
 
 Baggage sets per-request context (tenant, agent, user) that flows to recognized GenAI spans only. **Without `tenant_id` and `agent_id`, the exporter silently drops spans.**
 
+A span is recognized as GenAI at span start when any of these hold: it carries a supported `gen_ai.operation.name` attribute, a recognized `gen_ai.operation.name` baggage entry, a span name matching a supported operation (`invoke_agent ...`, `chat ...`, ...) or a known pre-rename name (`chat.completions ...`), or it originates from a supported GenAI instrumentation scope (`Agent365Sdk`, `semantic_kernel.*`, `agent_framework`, `microsoft.opentelemetry._genai.*`, `opentelemetry.instrumentation.openai_v2`, `opentelemetry.instrumentation.openai_agents`). The scope signal matters because LangChain, Semantic Kernel, Agent Framework, and OpenAI Agents all set `gen_ai.operation.name` *after* the span starts — a LangChain chat span begins life named `ChatOpenAI`, and a Semantic Kernel one as `chat.completions gpt-4o`.
+
 ### BaggageBuilder
 
 ```python

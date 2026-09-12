@@ -2,6 +2,7 @@
 # Unreleased
 ### Bugs Fixed
 - Stop adding A365 baggage and configured identity attributes to unrelated application spans, matching the .NET PR #99 GenAI-only processing behavior.
+- Recognize supported GenAI instrumentation scopes and pre-rename span names at span start so LangChain (`ChatOpenAI`) and Semantic Kernel (`chat.completions <model>`) spans keep their identity and baggage attributes and are no longer dropped by the exporter.
 
 # 1.3.9 (2026-09-09)
 ### Features Added

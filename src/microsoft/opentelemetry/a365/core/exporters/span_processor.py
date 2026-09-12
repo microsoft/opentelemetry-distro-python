@@ -12,6 +12,25 @@ For every recognized GenAI span:
   * For each documented key with a truthy value not already present as a span
     attribute, add it via span.set_attribute
   * Never overwrites existing attributes
+
+A span is recognized as GenAI when any of the following signals fires at
+``on_start``:
+
+  1. An explicit ``gen_ai.operation.name`` attribute holding a recognized
+     operation. An explicit *unrecognized* value is authoritative and
+     suppresses the two inference signals below.
+  2. A recognized ``gen_ai.operation.name`` baggage entry.
+  3. A span name that is (or starts with) a recognized operation name.
+  4. A span name a supported instrumentation is known to use before it renames
+     the span (Semantic Kernel ``chat.completions <model>``).
+  5. The instrumentation scope (source) name of a supported GenAI
+     instrumentation.
+
+Signals 4 and 5 exist because most GenAI instrumentations apply
+``gen_ai.operation.name`` *after* the span starts: LangChain chat spans start
+as ``ChatOpenAI`` and the OpenAI Agents processor starts workflow spans as
+``Agent workflow``. Only signals 1-3 identify *which* operation a span
+represents, which is what gates the invoke_agent-only attributes.
 """
 
 from __future__ import annotations
@@ -45,6 +64,8 @@ from microsoft.opentelemetry.a365.core.constants import (
     GEN_AI_CALLER_CLIENT_IP_KEY,
     GEN_AI_CONVERSATION_ID_KEY,
     GEN_AI_CONVERSATION_ITEM_LINK_KEY,
+    GEN_AI_INITIAL_SPAN_NAMES,
+    GEN_AI_INSTRUMENTATION_SCOPE_ROOTS,
     GEN_AI_OPERATION_NAME_KEY,
     GEN_AI_PROCESSOR_OPERATION_NAMES,
     INVOKE_AGENT_OPERATION_NAME,
@@ -107,9 +128,14 @@ def _recognized_operation_name(value: object | None) -> str | None:
     return value if isinstance(value, str) and value in GEN_AI_PROCESSOR_OPERATION_NAMES else None
 
 
-def _operation_name_from_span_name(span: Any) -> str | None:
+def _span_name(span: Any) -> str | None:
     span_name = getattr(span, "name", None)
-    if not isinstance(span_name, str):
+    return span_name if isinstance(span_name, str) else None
+
+
+def _operation_name_from_span_name(span: Any) -> str | None:
+    span_name = _span_name(span)
+    if span_name is None:
         return None
 
     for operation_name in GEN_AI_PROCESSOR_OPERATION_NAMES:
@@ -118,11 +144,43 @@ def _operation_name_from_span_name(span: Any) -> str | None:
     return None
 
 
+def _has_known_initial_span_name(span: Any) -> bool:
+    """Match span names supported instrumentations use before renaming the span."""
+    span_name = _span_name(span)
+    if span_name is None:
+        return False
+
+    return any(span_name == known or span_name.startswith(f"{known} ") for known in GEN_AI_INITIAL_SPAN_NAMES)
+
+
+def _instrumentation_scope_name(span: Any) -> str | None:
+    """Read the tracer (source) name recorded on a ReadWriteSpan."""
+    # pylint: disable=broad-exception-caught
+    for attribute_name in ("instrumentation_scope", "instrumentation_info"):
+        try:
+            scope = getattr(span, attribute_name, None)
+            scope_name = getattr(scope, "name", None) if scope is not None else None
+        except Exception:
+            continue
+        if isinstance(scope_name, str) and scope_name:
+            return scope_name
+    return None
+
+
+def _is_supported_gen_ai_scope(span: Any) -> bool:
+    scope_name = _instrumentation_scope_name(span)
+    if scope_name is None:
+        return False
+
+    return any(scope_name == root or scope_name.startswith(f"{root}.") for root in GEN_AI_INSTRUMENTATION_SCOPE_ROOTS)
+
+
 def _classify_gen_ai_operation(
     span: Any,
     existing_attributes: Mapping[str, object],
     baggage_map: Mapping[str, object],
 ) -> str | None:
+    """Resolve the GenAI operation a span represents, or ``None`` if unknown."""
     if GEN_AI_OPERATION_NAME_KEY in existing_attributes:
         return _recognized_operation_name(existing_attributes.get(GEN_AI_OPERATION_NAME_KEY))
 
@@ -134,7 +192,14 @@ def _classify_gen_ai_operation(
 
 
 def _is_gen_ai_span(span: Any, existing_attributes: Mapping[str, object], baggage_map: Mapping[str, object]) -> bool:
-    return _classify_gen_ai_operation(span, existing_attributes, baggage_map) is not None
+    if _classify_gen_ai_operation(span, existing_attributes, baggage_map) is not None:
+        return True
+
+    if GEN_AI_OPERATION_NAME_KEY in existing_attributes:
+        # The span declared an operation this processor does not handle.
+        return False
+
+    return _has_known_initial_span_name(span) or _is_supported_gen_ai_scope(span)
 
 
 # pylint: disable=broad-exception-caught, too-many-branches, useless-parent-delegation
