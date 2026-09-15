@@ -21,8 +21,8 @@ Core tracing primitives — scopes, configuration, data models, and internal uti
 | `agent_details.py` | `AgentDetails` dataclass — metadata about an AI agent (ID, name, description, blueprint/platform IDs, tenant, version). |
 | `channel.py` | `Channel` dataclass — channel context (name, link) for agent execution. |
 | `constants.py` | Core-level constants for span operations, OTel conventions, feature switches, and error types. |
-| `gen_ai_request_parameters.py` | Gen-AI request parameter models for structured input message payloads. |
-| `gen_ai_response_parameters.py` | Gen-AI response parameter models for structured output message payloads. |
+| `gen_ai_request_parameters.py` | GenAI request parameter models for generation settings and related semantic attributes. |
+| `gen_ai_response_parameters.py` | GenAI response parameter models for finish reasons and token usage attributes. |
 | `execute_tool_scope.py` | `ExecuteToolScope` — tracing scope for AI tool executions. Records tool name, arguments, call ID, type, and endpoint. |
 | `inference_call_details.py` | `InferenceCallDetails` dataclass — LLM call metadata (model, provider, token counts, finish reasons, endpoint). |
 | `inference_operation_type.py` | `InferenceOperationType` enum — Chat, TextCompletion, GenerateContent. |

@@ -127,14 +127,23 @@ See the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/bl
 Manual `InvokeAgentScope` instrumentation accepts Python-native request and response parameter models:
 
 ```python
-from microsoft.opentelemetry.a365.core import GenAiRequestParameters, GenAiResponseParameters, InvokeAgentScopeDetails
+from microsoft.opentelemetry.a365.core import (
+    AgentDetails,
+    GenAiRequestParameters,
+    GenAiResponseParameters,
+    InvokeAgentScope,
+    InvokeAgentScopeDetails,
+    Request,
+)
 
+request = Request(content="Hello")
+agent_details = AgentDetails(agent_id="agent-001")
 details = InvokeAgentScopeDetails(
     request_parameters=GenAiRequestParameters(model="gpt-4o", max_tokens=256, stop_sequences=["END"])
 )
 
 with InvokeAgentScope.start(request, details, agent_details) as scope:
-    response = call_agent(request)
+    # Invoke your agent here.
     scope.record_response_parameters(GenAiResponseParameters(finish_reasons=["stop"], output_tokens=18))
 ```
 
