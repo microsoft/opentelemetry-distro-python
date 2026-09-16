@@ -6,6 +6,8 @@
 from dataclasses import dataclass
 from typing import Sequence
 
+from microsoft.opentelemetry.a365.core.models.messages import TextPart
+
 
 @dataclass
 class GenAiRequestParameters:
@@ -22,4 +24,4 @@ class GenAiRequestParameters:
     top_p: float | None = None
     data_source_id: str | None = None
     output_type: str | None = None
-    system_instructions: str | None = None
+    system_instructions: Sequence[TextPart] | None = None

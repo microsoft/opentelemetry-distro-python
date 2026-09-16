@@ -54,6 +54,7 @@ from microsoft.opentelemetry.a365.core.message_utils import (
     normalize_input_messages,
     normalize_output_messages,
     serialize_messages,
+    serialize_system_instructions,
 )
 from microsoft.opentelemetry.a365.core.models.caller_details import CallerDetails
 from microsoft.opentelemetry.a365.core.models.messages import InputMessagesParam, OutputMessagesParam
@@ -249,7 +250,11 @@ class InvokeAgentScope(OpenTelemetryScope):
         self.set_tag_maybe(GEN_AI_REQUEST_TOP_P_KEY, parameters.top_p)
         self.set_tag_maybe(GEN_AI_DATA_SOURCE_ID_KEY, parameters.data_source_id)
         self.set_tag_maybe(GEN_AI_OUTPUT_TYPE_KEY, parameters.output_type)
-        self.set_tag_maybe(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, parameters.system_instructions)
+        if parameters.system_instructions is not None:
+            self.set_tag_maybe(
+                GEN_AI_SYSTEM_INSTRUCTIONS_KEY,
+                serialize_system_instructions(parameters.system_instructions),
+            )
 
     def _record_response_parameters(self, parameters: GenAiResponseParameters) -> None:
         self.set_tag_maybe(

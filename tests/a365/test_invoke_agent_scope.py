@@ -1,6 +1,9 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
+import json
+from typing import Any, cast
+
 from microsoft.opentelemetry.a365.core import (
     AgentDetails,
     GenAiRequestParameters,
@@ -8,13 +11,14 @@ from microsoft.opentelemetry.a365.core import (
     InvokeAgentScope,
     InvokeAgentScopeDetails,
     Request,
+    TextPart,
 )
 from microsoft.opentelemetry.a365.core.constants import SOURCE_NAME
 from microsoft.opentelemetry.a365.core.opentelemetry_scope import OpenTelemetryScope
 from opentelemetry.sdk.trace import TracerProvider
 
 
-def _start_invoke_agent_scope(scope_details: InvokeAgentScopeDetails):
+def _start_invoke_agent_scope(scope_details: InvokeAgentScopeDetails) -> InvokeAgentScope:
     return InvokeAgentScope.start(
         request=Request(),
         scope_details=scope_details,
@@ -22,7 +26,19 @@ def _start_invoke_agent_scope(scope_details: InvokeAgentScopeDetails):
     )
 
 
-def setup_function():
+def _span_attributes(scope: InvokeAgentScope) -> dict[str, object]:
+    assert scope._span is not None
+    span = cast(Any, scope._span)
+    return dict(span.attributes)
+
+
+def _string_attribute(attrs: dict[str, object], key: str) -> str:
+    value = attrs[key]
+    assert isinstance(value, str)
+    return value
+
+
+def setup_function() -> None:
     import os
 
     os.environ["ENABLE_OBSERVABILITY"] = "true"
@@ -31,7 +47,7 @@ def setup_function():
     setup_function.provider = provider  # type: ignore[attr-defined]
 
 
-def teardown_function():
+def teardown_function() -> None:
     import os
 
     provider = getattr(setup_function, "provider", None)
@@ -41,7 +57,7 @@ def teardown_function():
     os.environ.pop("ENABLE_OBSERVABILITY", None)
 
 
-def test_invoke_agent_details_accepts_semantic_parameters():
+def test_invoke_agent_details_accepts_semantic_parameters() -> None:
     request = GenAiRequestParameters(model="gpt-4o", max_tokens=128)
     response = GenAiResponseParameters(input_tokens=10, output_tokens=4)
     details = InvokeAgentScopeDetails(
@@ -52,7 +68,7 @@ def test_invoke_agent_details_accepts_semantic_parameters():
     assert details.response_parameters is response
 
 
-def test_invoke_agent_scope_records_request_parameters():
+def test_invoke_agent_scope_records_request_parameters() -> None:
     parameters = GenAiRequestParameters(
         model="gpt-4o",
         seed=42,
@@ -65,11 +81,14 @@ def test_invoke_agent_scope_records_request_parameters():
         top_p=0.9,
         data_source_id="data-source-1",
         output_type="json",
-        system_instructions="Be concise.",
+        system_instructions=[
+            TextPart(content="Be concise."),
+            TextPart(content="Return JSON."),
+        ],
     )
     scope = _start_invoke_agent_scope(InvokeAgentScopeDetails(request_parameters=parameters))
     try:
-        attrs = dict(scope._span.attributes)
+        attrs = _span_attributes(scope)
         assert attrs["gen_ai.request.model"] == "gpt-4o"
         assert attrs["gen_ai.request.seed"] == 42
         assert attrs["gen_ai.request.choice.count"] == 2
@@ -81,12 +100,15 @@ def test_invoke_agent_scope_records_request_parameters():
         assert attrs["gen_ai.request.top_p"] == 0.9
         assert attrs["gen_ai.data_source.id"] == "data-source-1"
         assert attrs["gen_ai.output.type"] == "json"
-        assert attrs["gen_ai.system_instructions"] == "Be concise."
+        assert json.loads(_string_attribute(attrs, "gen_ai.system_instructions")) == [
+            {"content": "Be concise.", "type": "text"},
+            {"content": "Return JSON.", "type": "text"},
+        ]
     finally:
         scope.dispose()
 
 
-def test_invoke_agent_scope_records_response_parameters_after_completion():
+def test_invoke_agent_scope_records_response_parameters_after_completion() -> None:
     scope = _start_invoke_agent_scope(InvokeAgentScopeDetails())
     try:
         scope.record_response_parameters(
@@ -98,7 +120,7 @@ def test_invoke_agent_scope_records_response_parameters_after_completion():
                 cache_read_input_tokens=1,
             )
         )
-        attrs = dict(scope._span.attributes)
+        attrs = _span_attributes(scope)
         assert attrs["gen_ai.response.finish_reasons"] == ("stop",)
         assert attrs["gen_ai.usage.input_tokens"] == 10
         assert attrs["gen_ai.usage.output_tokens"] == 4
@@ -109,7 +131,7 @@ def test_invoke_agent_scope_records_response_parameters_after_completion():
         scope.dispose()
 
 
-def test_invoke_agent_scope_omits_none_semantic_parameters():
+def test_invoke_agent_scope_omits_none_semantic_parameters() -> None:
     scope = _start_invoke_agent_scope(
         InvokeAgentScopeDetails(
             request_parameters=GenAiRequestParameters(model="gpt-4o"),
@@ -117,7 +139,7 @@ def test_invoke_agent_scope_omits_none_semantic_parameters():
         )
     )
     try:
-        attrs = dict(scope._span.attributes)
+        attrs = _span_attributes(scope)
         assert attrs["gen_ai.request.model"] == "gpt-4o"
         assert attrs["gen_ai.usage.input_tokens"] == 10
         assert "gen_ai.request.seed" not in attrs
@@ -127,5 +149,24 @@ def test_invoke_agent_scope_omits_none_semantic_parameters():
         assert "gen_ai.usage.cache_write.input_tokens" not in attrs
         assert "gen_ai.usage.cache_creation.input_tokens" not in attrs
         assert "gen_ai.usage.cache_read.input_tokens" not in attrs
+        assert "gen_ai.system_instructions" not in attrs
+    finally:
+        scope.dispose()
+
+
+def test_invoke_agent_scope_system_instructions_serialization_is_non_throwing() -> None:
+    parameters = GenAiRequestParameters(
+        system_instructions=[object()],  # type: ignore[list-item]
+    )
+
+    scope = _start_invoke_agent_scope(InvokeAgentScopeDetails(request_parameters=parameters))
+    try:
+        attrs = _span_attributes(scope)
+        assert json.loads(_string_attribute(attrs, "gen_ai.system_instructions")) == [
+            {
+                "content": "[serialization failed: 1 instruction part]",
+                "type": "text",
+            }
+        ]
     finally:
         scope.dispose()
