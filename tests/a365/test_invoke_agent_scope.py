@@ -103,6 +103,7 @@ def test_invoke_agent_scope_records_response_parameters_after_completion():
         assert attrs["gen_ai.usage.input_tokens"] == 10
         assert attrs["gen_ai.usage.output_tokens"] == 4
         assert attrs["gen_ai.usage.cache_write.input_tokens"] == 2
+        assert "gen_ai.usage.cache_creation.input_tokens" not in attrs
         assert attrs["gen_ai.usage.cache_read.input_tokens"] == 1
     finally:
         scope.dispose()
