@@ -38,6 +38,9 @@ def _string_attribute(attrs: dict[str, object], key: str) -> str:
     return value
 
 
+LEGACY_CACHE_CREATION_INPUT_TOKENS_KEY = ".".join(("gen_ai", "usage", "cache_creation", "input_tokens"))
+
+
 def setup_function() -> None:
     import os
 
@@ -125,7 +128,7 @@ def test_invoke_agent_scope_records_response_parameters_after_completion() -> No
         assert attrs["gen_ai.usage.input_tokens"] == 10
         assert attrs["gen_ai.usage.output_tokens"] == 4
         assert attrs["gen_ai.usage.cache_write.input_tokens"] == 2
-        assert "gen_ai.usage.cache_creation.input_tokens" not in attrs
+        assert LEGACY_CACHE_CREATION_INPUT_TOKENS_KEY not in attrs
         assert attrs["gen_ai.usage.cache_read.input_tokens"] == 1
     finally:
         scope.dispose()
@@ -147,7 +150,7 @@ def test_invoke_agent_scope_omits_none_semantic_parameters() -> None:
         assert "gen_ai.response.finish_reasons" not in attrs
         assert "gen_ai.usage.output_tokens" not in attrs
         assert "gen_ai.usage.cache_write.input_tokens" not in attrs
-        assert "gen_ai.usage.cache_creation.input_tokens" not in attrs
+        assert LEGACY_CACHE_CREATION_INPUT_TOKENS_KEY not in attrs
         assert "gen_ai.usage.cache_read.input_tokens" not in attrs
         assert "gen_ai.system_instructions" not in attrs
     finally:

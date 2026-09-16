@@ -1,7 +1,10 @@
 # Release History
 # Unreleased
 ### Features Added
-- Add Python-native `InvokeAgentScope` request and response parameter models that emit GenAI semantic attributes introduced by .NET PR #120.
+- Add Python-native `InvokeAgentScope` request and response parameter models
+  that emit OpenTelemetry GenAI semantic attributes, including structured
+  system instructions and cache read/write token counts, introduced by .NET
+  PR #120.
 
 # 1.3.9 (2026-09-09)
 ### Features Added

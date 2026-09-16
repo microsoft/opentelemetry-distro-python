@@ -358,7 +358,7 @@ Top-level agent invocation — wraps the entire request/response cycle:
 from microsoft.opentelemetry.a365.core import (
     AgentDetails, CallerDetails, Channel, GenAiRequestParameters,
     GenAiResponseParameters, InvokeAgentScope, InvokeAgentScopeDetails,
-    Request, ServiceEndpoint, UserDetails,
+    Request, ServiceEndpoint, TextPart, UserDetails,
 )
 
 agent = AgentDetails(agent_id="agent-001", agent_name="My Agent", tenant_id="t1")
@@ -373,6 +373,7 @@ with InvokeAgentScope.start(
             temperature=0.2,
             stop_sequences=["END"],
             output_type="text",
+            system_instructions=[TextPart(content="Be concise.")],
         ),
     ),
     agent_details=agent,
@@ -380,7 +381,12 @@ with InvokeAgentScope.start(
 ) as scope:
     # ... do work ...
     scope.record_response_parameters(
-        GenAiResponseParameters(finish_reasons=["stop"], input_tokens=42, output_tokens=18)
+        GenAiResponseParameters(
+            finish_reasons=["stop"],
+            input_tokens=42,
+            output_tokens=18,
+            cache_write_input_tokens=4,
+        )
     )
     scope.record_response("Here is the answer.")
 ```
@@ -400,7 +406,7 @@ Supported semantic attributes:
   `gen_ai.request.top_p`, `gen_ai.data_source.id`, `gen_ai.output.type`,
   `gen_ai.system_instructions`
 - Response: `gen_ai.response.finish_reasons`, `gen_ai.usage.input_tokens`,
-  `gen_ai.usage.output_tokens`, `gen_ai.usage.cache_creation.input_tokens`,
+  `gen_ai.usage.output_tokens`, `gen_ai.usage.cache_write.input_tokens`,
   `gen_ai.usage.cache_read.input_tokens`
 
 ### ExecuteToolScope

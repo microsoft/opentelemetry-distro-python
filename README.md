@@ -134,17 +134,29 @@ from microsoft.opentelemetry.a365.core import (
     InvokeAgentScope,
     InvokeAgentScopeDetails,
     Request,
+    TextPart,
 )
 
 request = Request(content="Hello")
 agent_details = AgentDetails(agent_id="agent-001")
 details = InvokeAgentScopeDetails(
-    request_parameters=GenAiRequestParameters(model="gpt-4o", max_tokens=256, stop_sequences=["END"])
+    request_parameters=GenAiRequestParameters(
+        model="gpt-4o",
+        max_tokens=256,
+        stop_sequences=["END"],
+        system_instructions=[TextPart(content="Be concise.")],
+    )
 )
 
 with InvokeAgentScope.start(request, details, agent_details) as scope:
     # Invoke your agent here.
-    scope.record_response_parameters(GenAiResponseParameters(finish_reasons=["stop"], output_tokens=18))
+    scope.record_response_parameters(
+        GenAiResponseParameters(
+            finish_reasons=["stop"],
+            output_tokens=18,
+            cache_write_input_tokens=4,
+        )
+    )
 ```
 
 Unset fields are omitted. Supported attributes include `gen_ai.request.*`,
