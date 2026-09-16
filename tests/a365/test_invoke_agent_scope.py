@@ -94,7 +94,7 @@ def test_invoke_agent_scope_records_response_parameters_after_completion():
                 finish_reasons=["stop"],
                 input_tokens=10,
                 output_tokens=4,
-                cache_creation_input_tokens=2,
+                cache_write_input_tokens=2,
                 cache_read_input_tokens=1,
             )
         )
@@ -102,7 +102,7 @@ def test_invoke_agent_scope_records_response_parameters_after_completion():
         assert attrs["gen_ai.response.finish_reasons"] == ("stop",)
         assert attrs["gen_ai.usage.input_tokens"] == 10
         assert attrs["gen_ai.usage.output_tokens"] == 4
-        assert attrs["gen_ai.usage.cache_creation.input_tokens"] == 2
+        assert attrs["gen_ai.usage.cache_write.input_tokens"] == 2
         assert attrs["gen_ai.usage.cache_read.input_tokens"] == 1
     finally:
         scope.dispose()
@@ -123,6 +123,7 @@ def test_invoke_agent_scope_omits_none_semantic_parameters():
         assert "gen_ai.request.stop_sequences" not in attrs
         assert "gen_ai.response.finish_reasons" not in attrs
         assert "gen_ai.usage.output_tokens" not in attrs
+        assert "gen_ai.usage.cache_write.input_tokens" not in attrs
         assert "gen_ai.usage.cache_creation.input_tokens" not in attrs
         assert "gen_ai.usage.cache_read.input_tokens" not in attrs
     finally:

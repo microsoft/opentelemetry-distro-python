@@ -35,8 +35,8 @@ from microsoft.opentelemetry.a365.core.constants import (
     GEN_AI_REQUEST_TOP_P_KEY,
     GEN_AI_RESPONSE_FINISH_REASONS_KEY,
     GEN_AI_SYSTEM_INSTRUCTIONS_KEY,
-    GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_KEY,
     GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_KEY,
+    GEN_AI_USAGE_CACHE_WRITE_INPUT_TOKENS_KEY,
     GEN_AI_USAGE_INPUT_TOKENS_KEY,
     GEN_AI_USAGE_OUTPUT_TOKENS_KEY,
     INVOKE_AGENT_OPERATION_NAME,
@@ -259,8 +259,8 @@ class InvokeAgentScope(OpenTelemetryScope):
         self.set_tag_maybe(GEN_AI_USAGE_INPUT_TOKENS_KEY, parameters.input_tokens)
         self.set_tag_maybe(GEN_AI_USAGE_OUTPUT_TOKENS_KEY, parameters.output_tokens)
         self.set_tag_maybe(
-            GEN_AI_USAGE_CACHE_CREATION_INPUT_TOKENS_KEY,
-            parameters.cache_creation_input_tokens,
+            GEN_AI_USAGE_CACHE_WRITE_INPUT_TOKENS_KEY,
+            parameters.cache_write_input_tokens,
         )
         self.set_tag_maybe(
             GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_KEY,

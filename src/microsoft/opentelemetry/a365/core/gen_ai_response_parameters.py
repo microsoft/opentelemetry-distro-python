@@ -14,5 +14,5 @@ class GenAiResponseParameters:
     finish_reasons: Sequence[str] | None = None
     input_tokens: int | None = None
     output_tokens: int | None = None
-    cache_creation_input_tokens: int | None = None
+    cache_write_input_tokens: int | None = None
     cache_read_input_tokens: int | None = None
