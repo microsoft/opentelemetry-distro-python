@@ -238,7 +238,10 @@ class BaggageBuilder:
         for k, v in iterator:
             if v is None:
                 continue
-            self._set(str(k), str(v))
+            key = str(k)
+            if key == CUSTOM_KEYS_BAGGAGE_KEY:
+                continue
+            self._set(key, str(v))
         return self
 
     def custom_attribute(self, key: str, value: str | None) -> "BaggageBuilder":
@@ -324,6 +327,11 @@ class BaggageScope:
         new_context = self._previous_context
         for key, value in self._pairs.items():
             if value and value.strip():
+                if key == CUSTOM_KEYS_BAGGAGE_KEY:
+                    inherited_value = baggage.get_baggage(key, context=new_context)
+                    inherited_keys = str(inherited_value).split(",") if inherited_value else []
+                    current_keys = value.split(",")
+                    value = ",".join(dict.fromkeys(inherited_keys + current_keys))
                 new_context = baggage.set_baggage(key, value, context=new_context)
 
         # Attach the new context

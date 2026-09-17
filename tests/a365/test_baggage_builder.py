@@ -47,6 +47,35 @@ def test_set_pairs_does_not_mark_custom_metadata():
         assert baggage.get_baggage(CUSTOM_KEYS_BAGGAGE_KEY) is None
 
 
+def test_set_pairs_does_not_accept_custom_metadata():
+    pairs = {
+        "customer.tier": "gold",
+        CUSTOM_KEYS_BAGGAGE_KEY: "customer.tier",
+    }
+
+    with BaggageBuilder().set_pairs(pairs).build():
+        assert baggage.get_baggage("customer.tier") == "gold"
+        assert baggage.get_baggage(CUSTOM_KEYS_BAGGAGE_KEY) is None
+
+
+def test_nested_custom_attributes_preserve_outer_metadata():
+    outer_attributes = {
+        "customer.tier": "gold",
+        "customer.region": "west",
+    }
+    inner_attributes = {
+        "customer.region": "east",
+        "customer.segment": "enterprise",
+    }
+
+    with BaggageBuilder().custom_attributes(outer_attributes).build():
+        with BaggageBuilder().custom_attributes(inner_attributes).build():
+            assert baggage.get_baggage("customer.tier") == "gold"
+            assert baggage.get_baggage("customer.region") == "east"
+            assert baggage.get_baggage("customer.segment") == "enterprise"
+            assert baggage.get_baggage(CUSTOM_KEYS_BAGGAGE_KEY) == "customer.tier,customer.region,customer.segment"
+
+
 def test_baggage_scope_restores_previous_context():
     token = context.attach(baggage.set_baggage("customer.tier", "silver"))
     try:
