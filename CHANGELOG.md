@@ -11,6 +11,10 @@
   for custom baggage when a supported GenAI instrumentation scope emitted them.
   Such spans stay operation-unknown, so `invoke_agent`-only attributes are still
   withheld.
+- Add Python-native `InvokeAgentScope` request and response parameter models
+  that emit OpenTelemetry GenAI semantic attributes, including structured
+  system instructions and cache read/write token counts, introduced by .NET
+  PR #120.
 
 # 1.3.9 (2026-09-09)
 ### Features Added
