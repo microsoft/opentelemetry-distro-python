@@ -153,9 +153,7 @@ def main():  # pylint: disable=too-many-statements
     print(f"\n{'='*60}")
     print("RESPONSES-API FAKE SPAN CHECKS")
     print(f"{'='*60}")
-    responses_spans = [
-        s for s in llm_spans if s.attributes.get("gen_ai.response.id") == "resp_abc123"
-    ]
+    responses_spans = [s for s in llm_spans if s.attributes.get("gen_ai.response.id") == "resp_abc123"]
     check("Responses-API fake LLM span found", len(responses_spans) == 1, f"found {len(responses_spans)}")
     if responses_spans:
         attrs = responses_spans[0].attributes

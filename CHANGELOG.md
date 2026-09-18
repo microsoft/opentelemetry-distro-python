@@ -1,6 +1,7 @@
 # Release History
 # Unreleased
 ### Features Added
+- Add explicit custom baggage APIs and propagate opted-in attributes to supported GenAI spans, including unmodeled operations. ([#264](https://github.com/microsoft/opentelemetry-distro-python/pull/264))
 - Add Python-native `InvokeAgentScope` request and response parameter models
   that emit OpenTelemetry GenAI semantic attributes, including structured
   system instructions and cache read/write token counts, introduced by .NET

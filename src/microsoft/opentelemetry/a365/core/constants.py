@@ -7,6 +7,8 @@ Span operation names and OpenTelemetry semantic-convention attribute keys
 shared across the Agent365 core scopes and exporters.
 """
 
+from microsoft.opentelemetry.a365.core.inference_operation_type import InferenceOperationType
+
 # --- Span operation names ---
 INVOKE_AGENT_OPERATION_NAME = "invoke_agent"
 EXECUTE_TOOL_OPERATION_NAME = "execute_tool"
@@ -14,12 +16,48 @@ OUTPUT_MESSAGES_OPERATION_NAME = "output_messages"
 CHAT_OPERATION_NAME = "chat"
 APPLY_GUARDRAIL_OPERATION_NAME = "apply_guardrail"
 
+GEN_AI_PROCESSOR_OPERATION_NAMES: frozenset[str] = frozenset(
+    {
+        INVOKE_AGENT_OPERATION_NAME,
+        EXECUTE_TOOL_OPERATION_NAME,
+        OUTPUT_MESSAGES_OPERATION_NAME,
+        CHAT_OPERATION_NAME,
+        APPLY_GUARDRAIL_OPERATION_NAME,
+    }
+    | {operation.value for operation in InferenceOperationType}
+)
+
+# --- Baggage metadata ---
+CUSTOM_KEYS_BAGGAGE_KEY = "_internal.custom_keys"
+
 # --- OpenTelemetry semantic conventions ---
 ERROR_TYPE_KEY = "error.type"
 ERROR_MESSAGE_KEY = "error.message"
 AZ_NAMESPACE_KEY = "az.namespace"
 AZURE_RP_NAMESPACE_VALUE = "Microsoft.CognitiveServices"
 SOURCE_NAME = "Agent365Sdk"
+
+# Identify GenAI spans before instrumentations set ``gen_ai.operation.name``.
+# Scope matching accepts an exact root or dotted child.
+GEN_AI_INSTRUMENTATION_SCOPE_ROOTS: tuple[str, ...] = (
+    SOURCE_NAME,
+    "agent_framework",
+    "semantic_kernel",
+    "microsoft.opentelemetry._genai",
+    "opentelemetry.instrumentation.openai_v2",
+    "opentelemetry.instrumentation.openai_agents",
+)
+
+# Initial names used by supported GenAI instrumentations before span renaming.
+GEN_AI_INITIAL_SPAN_NAMES: frozenset[str] = frozenset(
+    {
+        "chat.completions",
+        "chat.streaming_completions",
+        "text.completions",
+        "text.streaming_completions",
+        "text_completions",
+    }
+)
 
 # --- Feature switches ---
 ENABLE_OPENTELEMETRY_SWITCH = "Azure.Experimental.EnableActivitySource"
