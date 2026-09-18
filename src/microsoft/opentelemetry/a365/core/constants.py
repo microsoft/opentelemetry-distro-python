@@ -60,6 +60,8 @@ GEN_AI_INSTRUMENTATION_SCOPE_ROOTS: tuple[str, ...] = (
     "microsoft.opentelemetry._genai",
     # Upstream OpenAI instrumentations supported by this distro.
     "opentelemetry.instrumentation.openai_v2",
+    # The ``opentelemetry-instrumentation-openai-agents-v2`` distribution emits
+    # this scope without the distribution's ``-v2`` suffix.
     "opentelemetry.instrumentation.openai_agents",
 )
 
