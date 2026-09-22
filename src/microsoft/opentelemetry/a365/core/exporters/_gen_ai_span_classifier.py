@@ -87,6 +87,9 @@ def _classify_gen_ai_span(
     ``text_completion``, ``generate_content``, ``create_agent``). Such a span is
     still GenAI when a supported instrumentation emitted it, but its operation
     stays unknown so invoke_agent-only attributes are withheld.
+
+    Without an explicit operation attribute, a recognized span-name operation
+    takes precedence over inherited operation baggage.
     """
     if GEN_AI_OPERATION_NAME_KEY in existing_attributes:
         explicit_operation_name = _recognized_operation_name(existing_attributes.get(GEN_AI_OPERATION_NAME_KEY))
@@ -94,9 +97,9 @@ def _classify_gen_ai_span(
             return _GenAISpanClassification(True, explicit_operation_name)
         return _GenAISpanClassification(_is_supported_gen_ai_scope(span))
 
-    operation_name = _recognized_operation_name(baggage_map.get(GEN_AI_OPERATION_NAME_KEY))
+    operation_name = _operation_name_from_span_name(span)
     if operation_name is None:
-        operation_name = _operation_name_from_span_name(span)
+        operation_name = _recognized_operation_name(baggage_map.get(GEN_AI_OPERATION_NAME_KEY))
     if operation_name is not None:
         return _GenAISpanClassification(True, operation_name)
 

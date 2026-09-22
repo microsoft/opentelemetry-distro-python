@@ -440,6 +440,28 @@ class TestA365SpanProcessor(unittest.TestCase):
 
         span.set_attribute.assert_any_call("microsoft.a365.caller.agent.id", "caller-1")
 
+    def test_span_name_operation_takes_precedence_over_inherited_baggage_operation(self):
+        processor = A365SpanProcessor()
+        span = _mock_span("execute_tool get_weather")
+
+        with (
+            BaggageBuilder()
+            .set_pairs(
+                {
+                    GEN_AI_OPERATION_NAME_KEY: "invoke_agent",
+                    "microsoft.a365.caller.agent.id": "caller-1",
+                    "server.address": "agent.contoso.com",
+                }
+            )
+            .custom_attribute("customer.tier", "gold")
+            .build()
+        ):
+            processor.on_start(span, parent_context=context.get_current())
+
+        span.set_attribute.assert_any_call("customer.tier", "gold")
+        for call in span.set_attribute.call_args_list:
+            self.assertNotIn(call[0][0], ("microsoft.a365.caller.agent.id", "server.address"))
+
     def test_invoke_agent_attributes_ignored_for_raw_prefix_without_boundary(self):
         processor = A365SpanProcessor()
 
