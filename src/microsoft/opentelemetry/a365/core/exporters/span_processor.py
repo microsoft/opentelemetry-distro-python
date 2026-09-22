@@ -12,6 +12,31 @@ For every new span:
   * For each documented key with a truthy value not already present as a span
     attribute, add it via span.set_attribute
   * Never overwrites existing attributes
+
+Custom baggage is propagated only to recognized GenAI spans. A span is
+recognized as GenAI by evaluating these signals in order at ``on_start``:
+
+  1. An explicit ``gen_ai.operation.name`` attribute holding a recognized
+     operation: GenAI with a known operation.
+  2. An explicit but *unrecognized* ``gen_ai.operation.name`` attribute: the
+     attribute is authoritative, so the baggage and span-name inference of
+     signals 3 and 4 is skipped. The span is still GenAI when a supported
+     instrumentation emitted it (signal 5), with an unknown operation.
+  3. A recognized ``gen_ai.operation.name`` baggage entry.
+  4. A span name that is (or starts with) a recognized operation name, or a
+     name a supported instrumentation is known to use before it renames the
+     span (Semantic Kernel ``chat.completions <model>``).
+  5. The instrumentation scope (source) name of a supported GenAI
+     instrumentation: GenAI with an unknown operation.
+
+Signals 4 and 5 exist because most GenAI instrumentations apply
+``gen_ai.operation.name`` *after* the span starts: LangChain chat spans start
+as ``ChatOpenAI`` and the OpenAI Agents processor starts workflow spans as
+``Agent workflow``. Signal 5 also keeps spans whose operation this processor
+does not model (``chain``, ``embeddings``, ``text_completion``,
+``generate_content``, ``create_agent``) from being dropped. Only signals 1, 3
+and 4 identify *which* operation a span represents, which is what gates the
+invoke_agent-only attributes.
 """
 
 from __future__ import annotations
@@ -19,9 +44,11 @@ from __future__ import annotations
 from opentelemetry import baggage, context
 from opentelemetry.sdk.trace import SpanProcessor as BaseSpanProcessor
 
-from microsoft.opentelemetry.a365.constants import (
+from microsoft.opentelemetry.a365.core.exporters._gen_ai_span_classifier import _classify_gen_ai_span
+from microsoft.opentelemetry.a365.core.constants import (
     CHANNEL_LINK_KEY,
     CHANNEL_NAME_KEY,
+    CUSTOM_KEYS_BAGGAGE_KEY,
     CUSTOM_PARENT_SPAN_ID_KEY,
     CUSTOM_SPAN_NAME_KEY,
     GEN_AI_AGENT_AUID_KEY,
@@ -98,6 +125,21 @@ INVOKE_AGENT_ATTRIBUTES = [
 ]
 
 
+def _custom_baggage_keys(baggage_map) -> list[str]:
+    metadata = baggage_map.get(CUSTOM_KEYS_BAGGAGE_KEY)
+    if not metadata:
+        return []
+
+    keys: list[str] = []
+    for raw_key in str(metadata).split(","):
+        key = raw_key.strip()
+        if not key or key == CUSTOM_KEYS_BAGGAGE_KEY:
+            continue
+        if key not in keys:
+            keys.append(key)
+    return keys
+
+
 # pylint: disable=broad-exception-caught, too-many-branches, useless-parent-delegation
 # pylint: disable=global-statement
 class A365SpanProcessor(BaseSpanProcessor):
@@ -151,16 +193,15 @@ class A365SpanProcessor(BaseSpanProcessor):
         except Exception:
             baggage_map = {}
 
-        operation_name = existing.get(GEN_AI_OPERATION_NAME_KEY)
-        is_invoke_agent = False
-        if operation_name == INVOKE_AGENT_OPERATION_NAME:
-            is_invoke_agent = True
-        elif isinstance(getattr(span, "name", None), str) and span.name.startswith(INVOKE_AGENT_OPERATION_NAME):
-            is_invoke_agent = True
+        classification = _classify_gen_ai_span(span, existing, baggage_map)
 
         target_keys = list(COMMON_ATTRIBUTES)
-        if is_invoke_agent:
+        if classification.operation_name == INVOKE_AGENT_OPERATION_NAME:
             for k in INVOKE_AGENT_ATTRIBUTES:
+                if k not in target_keys:
+                    target_keys.append(k)
+        if classification.is_gen_ai_span:
+            for k in _custom_baggage_keys(baggage_map):
                 if k not in target_keys:
                     target_keys.append(k)
 
