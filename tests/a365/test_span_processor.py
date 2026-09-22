@@ -430,6 +430,19 @@ class TestA365SpanProcessorGenAiInstrumentationSignals(unittest.TestCase):
         for call in span.set_attribute.call_args_list:
             self.assertNotEqual(call[0][0], "microsoft.a365.caller.agent.id")
 
+    def test_span_name_operation_takes_precedence_over_inherited_baggage_operation(self):
+        processor = A365SpanProcessor()
+        span = _mock_span("execute_tool get_weather")
+
+        ctx = baggage.set_baggage(GEN_AI_OPERATION_NAME_KEY, "invoke_agent", context.get_current())
+        ctx = baggage.set_baggage("microsoft.a365.caller.agent.id", "caller-1", ctx)
+        ctx = baggage.set_baggage("server.address", "agent.contoso.com", ctx)
+
+        processor.on_start(span, parent_context=ctx)
+
+        for call in span.set_attribute.call_args_list:
+            self.assertNotIn(call[0][0], ("microsoft.a365.caller.agent.id", "server.address"))
+
     # -- explicit but unrecognized operation names --
 
     def test_openai_agents_scope_with_explicit_chain_operation_is_enriched(self):
