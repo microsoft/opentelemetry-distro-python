@@ -258,6 +258,45 @@ with (
         ...
 ```
 
+To copy an application-specific baggage value onto Agent365 GenAI spans,
+explicitly opt in each key with `custom_attribute()` or `custom_attributes()`:
+
+```python
+with (
+    BaggageBuilder()
+    .tenant_id("contoso-tenant")
+    .agent_id("weather-agent-001")
+    .custom_attribute("customer.tier", "gold")
+    .custom_attributes({"customer.region": "west"})
+    .build()
+):
+    with InvokeAgentScope.start(...) as scope:
+        ...
+```
+
+`set_pairs()` only sets baggage. It does not opt arbitrary baggage keys into
+span attributes; use `custom_attribute()` for any custom key that should appear
+on recognized Agent365 GenAI spans. Baggage propagation never overwrites
+attributes already present on the current span. Baggage-propagated values are
+applied when the span starts, so they precede later `record_attributes()` calls
+when duplicate-key protection is also present; direct/current span attributes
+remain authoritative.
+
+A span is recognized as GenAI at span start by evaluating these signals in
+order: a supported `gen_ai.operation.name` attribute; if that attribute is
+present but unrecognized (`chain`, `embeddings`, `text_completion`,
+`generate_content`, `create_agent`, ...) it is authoritative, so baggage and
+span-name inference are skipped and only the instrumentation scope can still
+classify the span; otherwise a recognized `gen_ai.operation.name` baggage entry,
+then a span name matching a supported operation (`invoke_agent ...`,
+`chat ...`, ...) or a known pre-rename name (`chat.completions ...`), then a
+supported GenAI instrumentation scope (`Agent365Sdk`, `semantic_kernel.*`,
+`agent_framework`, `microsoft.opentelemetry._genai.*`,
+`opentelemetry.instrumentation.openai_v2`,
+`opentelemetry.instrumentation.openai_agents`). Spans classified only by
+instrumentation scope are GenAI with an unknown operation: opted-in custom
+baggage applies to them, but `invoke_agent`-only attributes never do.
+
 ### From TurnContext (Hosting Framework)
 
 ```python
@@ -360,21 +399,58 @@ Top-level agent invocation — wraps the entire request/response cycle:
 
 ```python
 from microsoft.opentelemetry.a365.core import (
-    AgentDetails, CallerDetails, Channel, InvokeAgentScope,
-    InvokeAgentScopeDetails, Request, ServiceEndpoint, UserDetails,
+    AgentDetails, CallerDetails, Channel, GenAiRequestParameters,
+    GenAiResponseParameters, InvokeAgentScope, InvokeAgentScopeDetails,
+    Request, ServiceEndpoint, TextPart, UserDetails,
 )
 
 agent = AgentDetails(agent_id="agent-001", agent_name="My Agent", tenant_id="t1")
 
 with InvokeAgentScope.start(
     request=Request(content="Hello", session_id="s1", conversation_id="c1", channel=Channel(name="msteams")),
-    scope_details=InvokeAgentScopeDetails(endpoint=ServiceEndpoint(hostname="agent.contoso.com")),
+    scope_details=InvokeAgentScopeDetails(
+        endpoint=ServiceEndpoint(hostname="agent.contoso.com"),
+        request_parameters=GenAiRequestParameters(
+            model="gpt-4o",
+            max_tokens=256,
+            temperature=0.2,
+            stop_sequences=["END"],
+            output_type="text",
+            system_instructions=[TextPart(content="Be concise.")],
+        ),
+    ),
     agent_details=agent,
     caller_details=CallerDetails(user_details=UserDetails(user_id="u1", user_email="u@contoso.com")),
 ) as scope:
     # ... do work ...
+    scope.record_response_parameters(
+        GenAiResponseParameters(
+            finish_reasons=["stop"],
+            input_tokens=42,
+            output_tokens=18,
+            cache_write_input_tokens=4,
+        )
+    )
     scope.record_response("Here is the answer.")
 ```
+
+`GenAiRequestParameters` values are recorded when the scope starts. Use
+`scope.record_response_parameters()` for response values that are only known
+after completion. Fields left as `None` are omitted from the span. Sequence
+fields such as `stop_sequences` and `finish_reasons` are emitted as
+OpenTelemetry string arrays.
+
+Supported semantic attributes:
+
+- Request: `gen_ai.request.model`, `gen_ai.request.seed`,
+  `gen_ai.request.choice.count`, `gen_ai.request.frequency_penalty`,
+  `gen_ai.request.max_tokens`, `gen_ai.request.presence_penalty`,
+  `gen_ai.request.stop_sequences`, `gen_ai.request.temperature`,
+  `gen_ai.request.top_p`, `gen_ai.data_source.id`, `gen_ai.output.type`,
+  `gen_ai.system_instructions`
+- Response: `gen_ai.response.finish_reasons`, `gen_ai.usage.input_tokens`,
+  `gen_ai.usage.output_tokens`, `gen_ai.usage.cache_write.input_tokens`,
+  `gen_ai.usage.cache_read.input_tokens`
 
 ### ExecuteToolScope
 

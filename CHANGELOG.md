@@ -1,5 +1,14 @@
 # Release History
 # Unreleased
+### Features Added
+- Add explicit custom baggage APIs and propagate opted-in attributes to supported GenAI spans, including unmodeled operations. ([#264](https://github.com/microsoft/opentelemetry-distro-python/pull/264))
+- Add Python-native `InvokeAgentScope` request and response parameter models
+  that emit OpenTelemetry GenAI semantic attributes, including structured
+  system instructions and cache read/write token counts, introduced by .NET
+  PR #120.
+- Remove optional dependency for langchain-core and document guidance for installation
+  ([#269](https://github.com/microsoft/opentelemetry-distro-python/pull/269))
+
 ### Bugs Fixed
 - Stop adding A365 baggage and configured identity attributes to unrelated application spans, matching the .NET PR #99 GenAI-only processing behavior.
 - Recognize supported GenAI instrumentation scopes and pre-rename span names at span start so LangChain (`ChatOpenAI`) and Semantic Kernel (`chat.completions <model>`) spans keep their identity and baggage attributes and are no longer dropped by the exporter.

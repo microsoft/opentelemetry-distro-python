@@ -20,12 +20,14 @@ Core tracing primitives — scopes, configuration, data models, and internal uti
 | `__init__.py` | Public API surface. Re-exports scope classes, data models, enums, and related core types. |
 | `agent_details.py` | `AgentDetails` dataclass — metadata about an AI agent (ID, name, description, blueprint/platform IDs, tenant, version). |
 | `channel.py` | `Channel` dataclass — channel context (name, link) for agent execution. |
-| `constants.py` | Core-level constants for span operations, OTel conventions, feature switches, and error types. |
+| `constants.py` | Core-level constants for span operations, GenAI processor operation names, baggage metadata, OTel conventions, feature switches, and error types. |
+| `gen_ai_request_parameters.py` | GenAI request parameter models for generation settings and related semantic attributes. |
+| `gen_ai_response_parameters.py` | GenAI response parameter models for finish reasons and token usage attributes. |
 | `execute_tool_scope.py` | `ExecuteToolScope` — tracing scope for AI tool executions. Records tool name, arguments, call ID, type, and endpoint. |
 | `inference_call_details.py` | `InferenceCallDetails` dataclass — LLM call metadata (model, provider, token counts, finish reasons, endpoint). |
 | `inference_operation_type.py` | `InferenceOperationType` enum — Chat, TextCompletion, GenerateContent. |
 | `inference_scope.py` | `InferenceScope` — tracing scope for LLM/AI inference operations. Records input/output messages, model details, token usage, and user info. |
-| `invoke_agent_details.py` | `InvokeAgentScopeDetails` dataclass — configuration for agent invocation tracing (endpoint). |
+| `invoke_agent_details.py` | `InvokeAgentScopeDetails` dataclass — configuration for agent invocation tracing (endpoint, optional request parameters, optional response parameters). |
 | `invoke_agent_scope.py` | `InvokeAgentScope` — tracing scope for agent invocations. Records request/response, caller details (human and agent-to-agent), channel, and endpoint info. |
 | `message_utils.py` | Conversion and serialization helpers for OTel gen-ai message format. Normalizes strings/lists to structured `InputMessages`/`OutputMessages`. |
 | `opentelemetry_scope.py` | `OpenTelemetryScope` — base class for all tracing scopes. Manages span creation, attribute setting, context management, and baggage building. |
@@ -45,7 +47,7 @@ Span export pipeline — processors and exporters for Agent365 and Spectra backe
 | `agent365_exporter_options.py` | `Agent365ExporterOptions` — configuration for the Agent365 exporter (cluster category, token resolver, endpoint flags, batch settings). |
 | `enriched_span.py` | `EnrichedReadableSpan` — wrapper allowing extra attributes on immutable `ReadableSpan` objects. |
 | `enriching_span_processor.py` | Span enrichment support with registration for platform instrumentors (LangChain, Semantic Kernel, OpenAI Agents). `_EnrichingBatchSpanProcessor` applies enrichers before batching. |
-| `span_processor.py` | `A365SpanProcessor` — propagates OpenTelemetry baggage entries onto recognized GenAI spans only (operation attribute, operation baggage, span name, or supported GenAI instrumentation scope), with special handling for invoke_agent spans. |
+| `span_processor.py` | `A365SpanProcessor` — propagates documented and opted-in custom baggage entries onto recognized GenAI spans only (operation attribute, span name, operation baggage, or supported GenAI instrumentation scope), with special handling for invoke_agent spans. |
 | `spectra_exporter_options.py` | `SpectraExporterOptions` — configuration for OTLP export to a Spectra Collector sidecar (gRPC or HTTP, tuned for Kubernetes). |
 | `utils.py` | Exporter utilities: hex encoding for trace/span IDs, span size truncation, span partitioning, environment variable handling, payload building helpers. |
 
@@ -53,7 +55,7 @@ Span export pipeline — processors and exporters for Agent365 and Spectra backe
 
 | File | Description |
 |------|-------------|
-| `baggage_builder.py` | `BaggageBuilder` — fluent API for setting per-request baggage values (tenant ID, agent ID, caller/user details, session/conversation IDs, channel, endpoints). Provides context manager for baggage scope. |
+| `baggage_builder.py` | `BaggageBuilder` — fluent API for setting per-request baggage values (tenant ID, agent ID, caller/user details, session/conversation IDs, channel, endpoints) plus `custom_attribute()` / `custom_attributes()` opt-in for custom GenAI span attributes. Provides context manager for baggage scope. |
 
 ### `core/models/`
 
@@ -148,7 +150,7 @@ below are available via `from microsoft.opentelemetry.a365.core import ...`.
 
 | Symbol | Kind | Description |
 |--------|------|-------------|
-| `BaggageBuilder` | class | Fluent API for setting per-request baggage (tenant, agent, user, channel, session, conversation). Call `.build()` to get a context manager. |
+| `BaggageBuilder` | class | Fluent API for setting per-request baggage (tenant, agent, user, channel, session, conversation) and opting custom baggage keys into recognized GenAI span attributes. Call `.build()` to get a context manager. |
 
 #### Data Classes
 
