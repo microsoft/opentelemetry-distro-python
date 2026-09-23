@@ -47,7 +47,7 @@ Span export pipeline — processors and exporters for Agent365 and Spectra backe
 | `agent365_exporter_options.py` | `Agent365ExporterOptions` — configuration for the Agent365 exporter (cluster category, token resolver, endpoint flags, batch settings). |
 | `enriched_span.py` | `EnrichedReadableSpan` — wrapper allowing extra attributes on immutable `ReadableSpan` objects. |
 | `enriching_span_processor.py` | Span enrichment support with registration for platform instrumentors (LangChain, Semantic Kernel, OpenAI Agents). `_EnrichingBatchSpanProcessor` applies enrichers before batching. |
-| `span_processor.py` | `A365SpanProcessor` — propagates documented OpenTelemetry baggage entries onto spans, keeps invoke_agent-specific handling, and copies only opted-in custom baggage keys onto recognized GenAI spans. |
+| `span_processor.py` | `A365SpanProcessor` — propagates documented and opted-in custom baggage entries onto recognized GenAI spans only (operation attribute, span name, operation baggage, or supported GenAI instrumentation scope), with special handling for invoke_agent spans. |
 | `spectra_exporter_options.py` | `SpectraExporterOptions` — configuration for OTLP export to a Spectra Collector sidecar (gRPC or HTTP, tuned for Kubernetes). |
 | `utils.py` | Exporter utilities: hex encoding for trace/span IDs, span size truncation, span partitioning, environment variable handling, payload building helpers. |
 
