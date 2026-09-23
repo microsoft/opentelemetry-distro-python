@@ -171,7 +171,6 @@ class TestA365SpanProcessor(unittest.TestCase):
 
         processor.on_start(span, parent_context=ctx)
 
-        # Should not have called set_attribute for tenant since it exists
         for call in span.set_attribute.call_args_list:
             self.assertNotEqual(call[0][0], "microsoft.tenant.id")
 
@@ -204,10 +203,8 @@ class TestA365SpanProcessor(unittest.TestCase):
 
         processor.on_start(span, parent_context=ctx)
 
-        # Tenant should be propagated (common)
         span.set_attribute.assert_any_call("microsoft.tenant.id", "my-tenant")
 
-        # Caller agent should NOT be propagated (invoke-agent only)
         for call in span.set_attribute.call_args_list:
             self.assertNotEqual(call[0][0], "microsoft.a365.caller.agent.id")
 
@@ -614,7 +611,6 @@ class TestA365SpanProcessor(unittest.TestCase):
         span.name = "invoke_agent Test"
         span.attributes = {GEN_AI_OPERATION_NAME_KEY: INVOKE_AGENT_OPERATION_NAME}
 
-        # Should not raise
         processor.on_start(span, parent_context=None)
 
     def test_on_end_does_not_raise(self):
@@ -635,12 +631,7 @@ class TestA365SpanProcessor(unittest.TestCase):
 
 
 class TestA365SpanProcessorGenAiInstrumentationSignals(unittest.TestCase):
-    """Spans that only become identifiable as GenAI *after* ``on_start``.
-
-    LangChain and Semantic Kernel set ``gen_ai.operation.name`` (and rename the
-    span) once the call completes, so ``on_start`` sees only the raw span name.
-    The instrumentation scope is the signal that is already available.
-    """
+    """Cover GenAI signals available at span start."""
 
     def _baggage_context(self):
         ctx = baggage.set_baggage("microsoft.tenant.id", "baggage-tenant", context.get_current())
@@ -674,7 +665,6 @@ class TestA365SpanProcessorGenAiInstrumentationSignals(unittest.TestCase):
     # -- positive cases --
 
     def test_langchain_chat_model_span_is_enriched(self):
-        """The initial LangChain chat-model span is named after the model class."""
         processor = A365SpanProcessor()
         span = _mock_span("ChatOpenAI", scope_name=LANGCHAIN_SCOPE)
 
@@ -699,7 +689,6 @@ class TestA365SpanProcessorGenAiInstrumentationSignals(unittest.TestCase):
         self._assert_enriched(span)
 
     def test_semantic_kernel_chat_completions_span_is_enriched(self):
-        """Semantic Kernel starts chat spans as ``chat.completions <model>``."""
         processor = A365SpanProcessor()
         span = _mock_span("chat.completions gpt-4o", scope_name=SEMANTIC_KERNEL_SCOPE)
 
@@ -708,7 +697,6 @@ class TestA365SpanProcessorGenAiInstrumentationSignals(unittest.TestCase):
         self._assert_enriched(span)
 
     def test_semantic_kernel_chat_completions_span_enriched_without_scope(self):
-        """The known initial span name alone is enough, independent of scope."""
         processor = A365SpanProcessor()
         span = _mock_span("chat.completions gpt-4o")
 
@@ -877,13 +865,7 @@ class TestA365SpanProcessorGenAiInstrumentationSignals(unittest.TestCase):
 
 
 class TestA365SpanProcessorWithTracerProvider(unittest.TestCase):
-    """End-to-end checks against a real SDK ``TracerProvider``.
-
-    Mirrors the distro's registration order: ``A365SpanProcessor`` is attached
-    when the provider is built, platform processors are attached later by the
-    instrumentors. ``A365SpanProcessor.on_start`` therefore runs *before* the
-    Semantic Kernel processor renames the span and sets its operation name.
-    """
+    """Verify span-start behavior with a real TracerProvider."""
 
     def setUp(self):
         self.provider = TracerProvider()

@@ -4,40 +4,9 @@
 # license information.
 # --------------------------------------------------------------------------
 
-"""Span processor for propagating OpenTelemetry baggage entries onto spans.
+"""Propagate A365 identity and baggage to recognized GenAI spans.
 
-For every recognized GenAI span:
-  * Retrieve the current (or parent) context
-  * Obtain all baggage entries
-  * For each documented key with a truthy value not already present as a span
-    attribute, add it via span.set_attribute
-  * Never overwrites existing attributes
-
-Documented and opted-in custom baggage is propagated only to recognized GenAI
-spans. A span is recognized as GenAI by evaluating these signals in order at
-``on_start``:
-
-  1. An explicit ``gen_ai.operation.name`` attribute holding a recognized
-     operation: GenAI with a known operation.
-  2. An explicit but *unrecognized* ``gen_ai.operation.name`` attribute: the
-     attribute is authoritative, so the baggage and span-name inference of
-     signals 3 and 4 is skipped. The span is still GenAI when a supported
-     instrumentation emitted it (signal 5), with an unknown operation.
-  3. A span name that is (or starts with) a recognized operation name, or a
-     name a supported instrumentation is known to use before it renames the
-     span (Semantic Kernel ``chat.completions <model>``).
-  4. A recognized ``gen_ai.operation.name`` baggage entry.
-  5. The instrumentation scope (source) name of a supported GenAI
-     instrumentation: GenAI with an unknown operation.
-
-Signals 3 and 5 exist because most GenAI instrumentations apply
-``gen_ai.operation.name`` *after* the span starts: LangChain chat spans start
-as ``ChatOpenAI`` and the OpenAI Agents processor starts workflow spans as
-``Agent workflow``. Signal 5 also keeps spans whose operation this processor
-does not model (``chain``, ``embeddings``, ``text_completion``,
-``generate_content``, ``create_agent``) from being dropped. Only signals 1, 3
-and 4 identify *which* operation a span represents, which is what gates the
-invoke_agent-only attributes.
+Existing span attributes are never overwritten.
 """
 
 from __future__ import annotations
@@ -86,7 +55,7 @@ from microsoft.opentelemetry.a365.core.constants import (
 # mypy: disable-error-code="no-untyped-def"
 
 
-# Generic / common tracing attributes propagated from baggage to qualifying GenAI spans
+# Baggage attributes for all recognized GenAI spans.
 COMMON_ATTRIBUTES = [
     TENANT_ID_KEY,
     CUSTOM_PARENT_SPAN_ID_KEY,
@@ -113,7 +82,7 @@ COMMON_ATTRIBUTES = [
     SERVICE_NAME_KEY,
 ]
 
-# Invoke Agent-specific attributes (only propagated to invoke_agent spans)
+# Additional baggage attributes for invoke_agent spans.
 INVOKE_AGENT_ATTRIBUTES = [
     GEN_AI_CALLER_AGENT_ID_KEY,
     GEN_AI_CALLER_AGENT_NAME_KEY,
@@ -164,7 +133,6 @@ class A365SpanProcessor(BaseSpanProcessor):
     def on_start(self, span, parent_context=None):  # type: ignore[override]
         ctx = parent_context or context.get_current()
 
-        # Stamp static identity from configuration (never overwrite existing)
         try:
             existing = getattr(span, "attributes", {}) or {}
         except Exception:
@@ -193,7 +161,6 @@ class A365SpanProcessor(BaseSpanProcessor):
             except Exception:
                 pass
 
-        # Refresh existing after stamping identity
         try:
             existing = getattr(span, "attributes", {}) or {}
         except Exception:
