@@ -10,9 +10,7 @@
   ([#269](https://github.com/microsoft/opentelemetry-distro-python/pull/269))
 
 ### Bugs Fixed
-- Stop adding A365 baggage and configured identity attributes to unrelated application spans, matching the .NET PR #99 GenAI-only processing behavior.
-- Recognize supported GenAI instrumentation scopes and pre-rename span names at span start so LangChain (`ChatOpenAI`) and Semantic Kernel (`chat.completions <model>`) spans keep their identity and baggage attributes and are no longer dropped by the exporter.
-- Keep GenAI spans that declare an operation the processor does not model (`chain`, `embeddings`, `text_completion`, `generate_content`, `create_agent`) when a supported instrumentation scope emitted them, instead of treating an unrecognized `gen_ai.operation.name` attribute as non-GenAI. Such spans stay operation-unknown, so `invoke_agent`-only attributes are still withheld.
+- Restrict A365 identity and baggage enrichment to recognized GenAI spans while preserving supported span-start signals. ([#265](https://github.com/microsoft/opentelemetry-distro-python/pull/265))
 
 # 1.3.9 (2026-09-09)
 ### Features Added
