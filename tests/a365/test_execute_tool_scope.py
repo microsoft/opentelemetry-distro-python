@@ -50,7 +50,13 @@ class TestExecuteToolScope(unittest.TestCase):
                 tool_name="read_file",
                 arguments=ExecuteToolCallArguments(
                     action=ToolCallAction.READ,
-                    resources=[ToolCallResource(resource_id="file-1")],
+                    resources=[
+                        ToolCallResource(
+                            resource_id="file-1",
+                            extension_data={"tenant_id": "tenant-123"},
+                        )
+                    ],
+                    extension_data={"provider_trace_id": "trace-789"},
                 ),
             ),
             self._make_agent_details(),
@@ -61,7 +67,11 @@ class TestExecuteToolScope(unittest.TestCase):
 
             self.assertEqual(payload["schema_version"], "1.0")
             self.assertEqual(payload["action"], "read")
-            self.assertEqual(payload["resources"], [{"id": "file-1"}])
+            self.assertEqual(payload["metadata"], {"provider_trace_id": "trace-789"})
+            self.assertEqual(
+                payload["resources"],
+                [{"id": "file-1", "metadata": {"tenant_id": "tenant-123"}}],
+            )
         finally:
             scope.dispose()
 
@@ -74,15 +84,26 @@ class TestExecuteToolScope(unittest.TestCase):
         try:
             scope.record_response(
                 ExecuteToolCallResult(
-                    outcome=ToolCallResultOutcome(status=ToolCallOutcomeStatus.SUCCESS),
+                    outcome=ToolCallResultOutcome(
+                        status=ToolCallOutcomeStatus.SUCCESS,
+                        extension_data={"provider_status": "accepted"},
+                    ),
                     data={"count": 0},
+                    extension_data={"provider_trace_id": "trace-789"},
                 )
             )
             attrs = dict(scope._span.attributes)
             payload = json.loads(attrs[GEN_AI_TOOL_CALL_RESULT_KEY])
 
             self.assertEqual(payload["schema_version"], "1.0")
-            self.assertEqual(payload["outcome"], {"status": "success"})
+            self.assertEqual(payload["metadata"], {"provider_trace_id": "trace-789"})
+            self.assertEqual(
+                payload["outcome"],
+                {
+                    "status": "success",
+                    "metadata": {"provider_status": "accepted"},
+                },
+            )
             self.assertEqual(payload["data"], {"count": 0})
         finally:
             scope.dispose()
