@@ -81,15 +81,24 @@ def test_execute_tool_arguments_serialize_with_schema_names():
                 name="report",
                 resource_type="file",
                 provider="sharepoint",
-                identifiers=[ToolCallIdentifier(identifier_type="drive_id", value="d1")],
+                identifiers=[
+                    ToolCallIdentifier(
+                        identifier_type="drive_id",
+                        value="d1",
+                        extension_data={"identifier_scope": "tenant"},
+                    )
+                ],
                 container=ToolCallContainer(
                     container_id="site-1",
                     uri="https://example",
                     container_type="site",
+                    extension_data={"site_collection_id": "site-456"},
                 ),
+                extension_data={"tenant_id": "tenant-123"},
             )
         ],
         parameters={"page": 1},
+        extension_data={"provider_trace_id": "trace-789"},
     )
 
     assert json.loads(serialize_tool_call_payload(payload)) == {
@@ -102,11 +111,24 @@ def test_execute_tool_arguments_serialize_with_schema_names():
                 "name": "report",
                 "type": "file",
                 "provider": "sharepoint",
-                "identifiers": [{"type": "drive_id", "value": "d1"}],
-                "container": {"id": "site-1", "uri": "https://example", "type": "site"},
+                "identifiers": [
+                    {
+                        "type": "drive_id",
+                        "value": "d1",
+                        "metadata": {"identifier_scope": "tenant"},
+                    }
+                ],
+                "container": {
+                    "id": "site-1",
+                    "uri": "https://example",
+                    "type": "site",
+                    "metadata": {"site_collection_id": "site-456"},
+                },
+                "metadata": {"tenant_id": "tenant-123"},
             }
         ],
         "parameters": {"page": 1},
+        "metadata": {"provider_trace_id": "trace-789"},
     }
 
 
@@ -117,6 +139,7 @@ def test_execute_tool_result_serializes_with_schema_names():
             code="ok",
             provider_code="sharepoint_ok",
             message="Read completed",
+            extension_data={"outcome_detail": "accepted"},
         ),
         resources=[
             ToolCallResultResource(
@@ -125,21 +148,39 @@ def test_execute_tool_result_serializes_with_schema_names():
                 name="report",
                 resource_type="file",
                 provider="sharepoint",
-                identifiers=[ToolCallIdentifier(identifier_type="drive_id", value="d1")],
+                identifiers=[
+                    ToolCallIdentifier(
+                        identifier_type="drive_id",
+                        value="d1",
+                        extension_data={"identifier_scope": "tenant"},
+                    )
+                ],
                 container=ToolCallContainer(
                     container_id="site-1",
                     uri="https://example",
                     container_type="site",
+                    extension_data={"site_collection_id": "site-456"},
                 ),
-                outcome=ToolCallResultOutcome(status=ToolCallOutcomeStatus.SUCCESS),
-                sensitivity=ToolCallResultSensitivity(label_id="confidential"),
+                outcome=ToolCallResultOutcome(
+                    status=ToolCallOutcomeStatus.SUCCESS,
+                    extension_data={"resource_outcome": "accepted"},
+                ),
+                sensitivity=ToolCallResultSensitivity(
+                    label_id="confidential",
+                    extension_data={"label_source": "provider"},
+                ),
                 policy=ToolCallResultPolicy(
                     decision=ToolPolicyDecision.ALLOW,
                     policy_id="policy-1",
                     name="Sharing policy",
+                    extension_data={"policy_version": "2"},
                 ),
-                security=ToolCallResultSecurity(xpia_detected=False),
+                security=ToolCallResultSecurity(
+                    xpia_detected=False,
+                    extension_data={"scanner": "provider"},
+                ),
                 data={"bytes": 0},
+                extension_data={"resource_region": "westus"},
             )
         ],
         data={"content": ""},
@@ -147,36 +188,24 @@ def test_execute_tool_result_serializes_with_schema_names():
             has_more=False,
             next_cursor="cursor-2",
             total_count=0,
+            extension_data={"page_source": "cache"},
         ),
+        extension_data={"provider_trace_id": "trace-789"},
     )
 
-    assert json.loads(serialize_tool_call_payload(payload)) == {
-        "schema_version": "1.0",
-        "outcome": {
-            "status": "success",
-            "code": "ok",
-            "provider_code": "sharepoint_ok",
-            "message": "Read completed",
-        },
-        "resources": [
-            {
-                "id": "file-1",
-                "uri": "https://example/file",
-                "name": "report",
-                "type": "file",
-                "provider": "sharepoint",
-                "identifiers": [{"type": "drive_id", "value": "d1"}],
-                "container": {"id": "site-1", "uri": "https://example", "type": "site"},
-                "outcome": {"status": "success"},
-                "sensitivity": {"label_id": "confidential"},
-                "policy": {"decision": "allow", "id": "policy-1", "name": "Sharing policy"},
-                "security": {"xpia_detected": False},
-                "data": {"bytes": 0},
-            }
-        ],
-        "data": {"content": ""},
-        "pagination": {"has_more": False, "next_cursor": "cursor-2", "total_count": 0},
-    }
+    serialized = json.loads(serialize_tool_call_payload(payload))
+
+    assert serialized["metadata"] == {"provider_trace_id": "trace-789"}
+    assert serialized["outcome"]["metadata"] == {"outcome_detail": "accepted"}
+    resource = serialized["resources"][0]
+    assert resource["metadata"] == {"resource_region": "westus"}
+    assert resource["identifiers"][0]["metadata"] == {"identifier_scope": "tenant"}
+    assert resource["container"]["metadata"] == {"site_collection_id": "site-456"}
+    assert resource["outcome"]["metadata"] == {"resource_outcome": "accepted"}
+    assert resource["sensitivity"]["metadata"] == {"label_source": "provider"}
+    assert resource["policy"]["metadata"] == {"policy_version": "2"}
+    assert resource["security"]["metadata"] == {"scanner": "provider"}
+    assert serialized["pagination"]["metadata"] == {"page_source": "cache"}
 
 
 def test_execute_tool_arguments_omit_none_properties_and_preserve_empty_or_false_values():
@@ -200,7 +229,7 @@ def test_execute_tool_arguments_omit_none_properties_and_preserve_empty_or_false
             "filters": {},
             "tags": [],
         },
-        "provider_options": {},
+        "metadata": {"provider_options": {}},
     }
 
 
@@ -217,40 +246,53 @@ def test_none_is_omitted_for_model_properties_but_preserved_inside_mappings_and_
 
     assert json.loads(serialize_tool_call_payload(payload)) == {
         "schema_version": "1.0",
-        "outcome": {"status": "success", "provider_outcome": None, "attempts": 0},
+        "outcome": {
+            "status": "success",
+            "metadata": {"provider_outcome": None, "attempts": 0},
+        },
         "data": {"content": None, "matches": [None, 1]},
-        "provider_result": None,
-        "cached": False,
+        "metadata": {"provider_result": None, "cached": False},
     }
 
 
-def test_extension_data_may_supply_a_key_whose_model_property_is_none():
-    payload = ExecuteToolCallArguments(extension_data={"action": "write"})
+def test_extension_data_keys_matching_declared_fields_remain_inside_metadata():
+    payload = ExecuteToolCallArguments(
+        action=ToolCallAction.READ,
+        extension_data={
+            "action": "write",
+            "schema_version": "9.9",
+        },
+    )
 
     assert json.loads(serialize_tool_call_payload(payload)) == {
         "schema_version": "1.0",
-        "action": "write",
+        "action": "read",
+        "metadata": {
+            "action": "write",
+            "schema_version": "9.9",
+        },
     }
 
 
-def test_extension_data_cannot_overwrite_a_serialized_model_property():
-    payload = ExecuteToolCallArguments(action=ToolCallAction.READ, extension_data={"action": "write"})
-
-    assert serialize_tool_call_payload(payload) == DOTNET_SERIALIZATION_ERROR
-
-
-def test_extension_data_cannot_overwrite_schema_version():
-    payload = ExecuteToolCallResult(extension_data={"schema_version": "9.9"})
-
-    assert serialize_tool_call_payload(payload) == DOTNET_SERIALIZATION_ERROR
-
-
-def test_extension_data_collision_is_detected_on_nested_models():
+def test_nested_extension_data_keys_matching_declared_fields_remain_inside_metadata():
     payload = ExecuteToolCallResult(
-        outcome=ToolCallResultOutcome(code="ok", extension_data={"code": "overwrite"}),
+        outcome=ToolCallResultOutcome(
+            code="ok",
+            extension_data={"code": "provider-code"},
+        ),
     )
 
-    assert serialize_tool_call_payload(payload) == DOTNET_SERIALIZATION_ERROR
+    assert json.loads(serialize_tool_call_payload(payload)) == {
+        "schema_version": "1.0",
+        "outcome": {
+            "code": "ok",
+            "metadata": {"code": "provider-code"},
+        },
+    }
+
+
+def test_empty_extension_data_omits_metadata():
+    assert json.loads(serialize_tool_call_payload(ExecuteToolCallArguments())) == {"schema_version": "1.0"}
 
 
 def test_serialize_none_payload_returns_none():

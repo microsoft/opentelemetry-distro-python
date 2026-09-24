@@ -34,6 +34,7 @@ TOOL_CALL_SERIALIZATION_ERROR_JSON = '{"serialization_error":"Failed to serializ
 _JSON_NAME = "json_name"
 _ENUM_TYPE = "enum_type"
 _EXTENSION_DATA_FIELD = "extension_data"
+_EXTENSION_DATA_JSON_NAME = "metadata"
 
 
 class ToolCallAction(str, Enum):
@@ -220,8 +221,8 @@ def serialize_tool_call_payload(value: ToolCallPayload | None) -> str | None:
 
     The call never raises. When any value in the payload cannot be represented in the
     schema — an unsupported type, a reference cycle, a non-finite float, an undefined
-    enum value, or extension data colliding with a serialized model property — the whole
-    payload is replaced by :data:`TOOL_CALL_SERIALIZATION_ERROR_JSON`.
+    enum value, or invalid extension data — the whole payload is replaced by
+    :data:`TOOL_CALL_SERIALIZATION_ERROR_JSON`.
 
     Args:
         value: The typed payload to serialize, or ``None``.
@@ -268,7 +269,7 @@ def _enter(value: Any, stack: set[int]) -> int:
 
 
 def _dataclass_to_json_value(value: Any, stack: set[int]) -> dict[str, Any]:
-    """Serialize a schema model, omitting ``None`` properties and merging extension data."""
+    """Serialize a schema model, omitting ``None`` properties and wrapping extension data."""
     marker = _enter(value, stack)
     try:
         serialized: dict[str, Any] = {}
@@ -289,12 +290,8 @@ def _dataclass_to_json_value(value: Any, stack: set[int]) -> dict[str, Any]:
 
         if not isinstance(extension_data, Mapping):
             raise TypeError(f"Extension data must be a mapping; got {type(extension_data).__name__}.")
-
-        for key, item_value in extension_data.items():
-            json_key = _json_object_key(key)
-            if json_key in serialized:
-                raise ValueError(f"Extension data cannot overwrite execute tool payload property '{json_key}'.")
-            serialized[json_key] = _to_json_value(item_value, stack)
+        if extension_data:
+            serialized[_EXTENSION_DATA_JSON_NAME] = _mapping_to_json_value(extension_data, stack)
         return serialized
     finally:
         stack.discard(marker)
