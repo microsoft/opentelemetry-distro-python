@@ -193,19 +193,66 @@ def test_execute_tool_result_serializes_with_schema_names():
         extension_data={"provider_trace_id": "trace-789"},
     )
 
-    serialized = json.loads(serialize_tool_call_payload(payload))
-
-    assert serialized["metadata"] == {"provider_trace_id": "trace-789"}
-    assert serialized["outcome"]["metadata"] == {"outcome_detail": "accepted"}
-    resource = serialized["resources"][0]
-    assert resource["metadata"] == {"resource_region": "westus"}
-    assert resource["identifiers"][0]["metadata"] == {"identifier_scope": "tenant"}
-    assert resource["container"]["metadata"] == {"site_collection_id": "site-456"}
-    assert resource["outcome"]["metadata"] == {"resource_outcome": "accepted"}
-    assert resource["sensitivity"]["metadata"] == {"label_source": "provider"}
-    assert resource["policy"]["metadata"] == {"policy_version": "2"}
-    assert resource["security"]["metadata"] == {"scanner": "provider"}
-    assert serialized["pagination"]["metadata"] == {"page_source": "cache"}
+    assert json.loads(serialize_tool_call_payload(payload)) == {
+        "schema_version": "1.0",
+        "outcome": {
+            "status": "success",
+            "code": "ok",
+            "provider_code": "sharepoint_ok",
+            "message": "Read completed",
+            "metadata": {"outcome_detail": "accepted"},
+        },
+        "resources": [
+            {
+                "id": "file-1",
+                "uri": "https://example/file",
+                "name": "report",
+                "type": "file",
+                "provider": "sharepoint",
+                "identifiers": [
+                    {
+                        "type": "drive_id",
+                        "value": "d1",
+                        "metadata": {"identifier_scope": "tenant"},
+                    }
+                ],
+                "container": {
+                    "id": "site-1",
+                    "uri": "https://example",
+                    "type": "site",
+                    "metadata": {"site_collection_id": "site-456"},
+                },
+                "outcome": {
+                    "status": "success",
+                    "metadata": {"resource_outcome": "accepted"},
+                },
+                "sensitivity": {
+                    "label_id": "confidential",
+                    "metadata": {"label_source": "provider"},
+                },
+                "policy": {
+                    "decision": "allow",
+                    "id": "policy-1",
+                    "name": "Sharing policy",
+                    "metadata": {"policy_version": "2"},
+                },
+                "security": {
+                    "xpia_detected": False,
+                    "metadata": {"scanner": "provider"},
+                },
+                "data": {"bytes": 0},
+                "metadata": {"resource_region": "westus"},
+            }
+        ],
+        "data": {"content": ""},
+        "pagination": {
+            "has_more": False,
+            "next_cursor": "cursor-2",
+            "total_count": 0,
+            "metadata": {"page_source": "cache"},
+        },
+        "metadata": {"provider_trace_id": "trace-789"},
+    }
 
 
 def test_execute_tool_arguments_omit_none_properties_and_preserve_empty_or_false_values():
