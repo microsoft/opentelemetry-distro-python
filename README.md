@@ -84,6 +84,9 @@ arguments = ExecuteToolCallArguments(
 )
 ```
 
+The Python `extension_data` dictionary is emitted as a non-empty `metadata` object in the JSON payload,
+preventing provider-specific keys from colliding with declared schema fields.
+
 Typed arguments and results emit `schema_version: "1.0"` and serialize with schema field names such as
 `id`, `type`, `provider_code`, and `has_more`. Serialization never raises: an unserializable payload is
 replaced by `{"serialization_error": "Failed to serialize execute tool payload."}`. Raw dictionary and

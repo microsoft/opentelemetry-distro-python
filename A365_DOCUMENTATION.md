@@ -449,7 +449,9 @@ The typed arguments above generate a JSON payload shaped like:
     }
   ],
   "parameters": {"city": "Seattle"},
-  "provider_operation": "weather.lookup"
+  "metadata": {
+    "provider_operation": "weather.lookup"
+  }
 }
 ```
 
@@ -473,15 +475,19 @@ Model properties that are `None` are omitted. `False`, zero, empty strings, empt
 lists are preserved. `None` inside a dictionary or list you supply (for example `parameters`, `data`, or
 `extension_data`) is preserved as JSON `null`, matching the .NET contract.
 
-`extension_data` is merged into the same JSON object as the model it belongs to. It may supply a key whose
-model property was left `None`, but it cannot overwrite a property that is actually serialized.
+`extension_data` is serialized under a `metadata` property on the same model. The public Python field name
+remains `extension_data`, while the JSON wire contract consistently uses `metadata`. Empty extension
+dictionaries omit `metadata`.
+
+Each extensible nested model owns its own metadata object. Extension keys therefore cannot replace declared
+properties such as `action`, `schema_version`, `outcome.status`, or `policy.decision`; a matching extension key
+remains inside `metadata`.
 
 #### Serialization failures
 
 Typed payload serialization never raises and never leaves a span orphaned. If any value cannot be
-represented — an unsupported type, a reference cycle, `NaN`/`Infinity`, an undefined enum token, or an
-extension-data collision — the whole attribute value is replaced by the diagnostic payload and a warning is
-logged:
+represented — an unsupported type, a reference cycle, `NaN`/`Infinity`, or an undefined enum token — the
+whole attribute value is replaced by the diagnostic payload and a warning is logged:
 
 ```json
 {"serialization_error": "Failed to serialize execute tool payload."}
