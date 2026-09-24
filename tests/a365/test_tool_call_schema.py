@@ -437,12 +437,22 @@ def test_well_known_scalar_types_serialize_as_strings_or_numbers():
     )
 
     assert json.loads(serialize_tool_call_payload(payload))["data"] == {
-        "timestamp": "2026-01-02T03:04:05+00:00",
+        "timestamp": "2026-01-02T03:04:05Z",
         "day": "2026-01-02",
         "time": "03:04:05",
         "id": "12345678-1234-5678-1234-567812345678",
         "amount": 1.5,
     }
+
+
+def test_decimal_serialization_preserves_precision():
+    amount = Decimal("12345678901234567890.1234")
+    payload = ExecuteToolCallResult(data={"amount": amount})
+
+    serialized = serialize_tool_call_payload(payload)
+
+    assert serialized is not None
+    assert json.loads(serialized, parse_float=Decimal)["data"]["amount"] == amount
 
 
 def test_enum_values_inside_mappings_serialize_to_their_values():

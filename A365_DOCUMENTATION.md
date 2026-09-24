@@ -573,9 +573,10 @@ whole attribute value is replaced by the diagnostic payload and a warning is log
 {"serialization_error": "Failed to serialize execute tool payload."}
 ```
 
-`bytes` and `bytearray` are emitted as base64 strings, `datetime`/`date`/`time` as ISO-8601 strings, `UUID`
-as its canonical string, `Decimal` as a JSON number, any `Enum` as its value, and lists, tuples, sets, and
-other sized collections as JSON arrays. Raw dictionary arguments and results keep their existing
+`bytes` and `bytearray` are emitted as base64 strings, `datetime`/`date`/`time` as ISO-8601 strings (using
+the `Z` designator for UTC), `UUID` as its canonical string, and `Decimal` as a precision-preserving JSON
+number. Any `Enum` is emitted as its value, and lists, tuples, sets, and other sized collections as JSON
+arrays. Raw dictionary arguments and results keep their existing
 serialization but also fall back to the same diagnostic payload instead of raising.
 
 ### InferenceScope

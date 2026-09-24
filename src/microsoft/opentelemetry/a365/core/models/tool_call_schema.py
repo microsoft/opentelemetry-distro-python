@@ -200,7 +200,13 @@ def _to_base64(value: bytes | bytearray | memoryview) -> str:
 
 def _to_isoformat(value: datetime.datetime | datetime.date | datetime.time) -> str:
     """Return the ISO-8601 text for a date/time value."""
-    return value.isoformat()
+    text = value.isoformat()
+    return f"{text[:-6]}Z" if text.endswith("+00:00") else text
+
+
+def _preserve_decimal(value: Decimal) -> Decimal:
+    """Keep a decimal value intact until JSON-number encoding."""
+    return value
 
 
 # Ordered scalar conversions; ``bool`` must precede ``int`` and ``str`` must precede ``Collection``.
@@ -212,8 +218,35 @@ _SCALAR_CONVERTERS: tuple[tuple[type | tuple[type, ...], Callable[[Any], Any]], 
     ((bytes, bytearray, memoryview), _to_base64),
     ((datetime.datetime, datetime.date, datetime.time), _to_isoformat),
     (uuid.UUID, str),
-    (Decimal, float),
+    (Decimal, _preserve_decimal),
 )
+
+
+def _encode_json_value(value: Any) -> str:  # pylint: disable=too-many-return-statements
+    """Encode a normalized payload value, preserving decimal JSON numbers."""
+    if value is None:
+        return "null"
+    if isinstance(value, str):
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, int):
+        return str(value)
+    if isinstance(value, float):
+        return json.dumps(value, allow_nan=False)
+    if isinstance(value, Decimal):
+        if not value.is_finite():
+            raise ValueError("Out of range Decimal values are not JSON compliant.")
+        return str(value)
+    if isinstance(value, list):
+        return f"[{', '.join(_encode_json_value(item) for item in value)}]"
+    if isinstance(value, dict):
+        items = (
+            f"{json.dumps(key, ensure_ascii=False)}: {_encode_json_value(item_value)}"
+            for key, item_value in value.items()
+        )
+        return f"{{{', '.join(items)}}}"
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable.")
 
 
 def serialize_tool_call_payload(value: ToolCallPayload | None) -> str | None:
@@ -235,7 +268,7 @@ def serialize_tool_call_payload(value: ToolCallPayload | None) -> str | None:
         return None
 
     try:
-        return json.dumps(_to_json_value(value, set()), ensure_ascii=False, allow_nan=False)
+        return _encode_json_value(_to_json_value(value, set()))
     except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.warning("Failed to serialize execute tool payload: %r", exc)
         return TOOL_CALL_SERIALIZATION_ERROR_JSON
