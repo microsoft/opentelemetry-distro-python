@@ -13,8 +13,8 @@
   PR #120.
 - Remove optional dependency for langchain-core and document guidance for installation
   ([#269](https://github.com/microsoft/opentelemetry-distro-python/pull/269))
+
 ### Bugs Fixed
-- Restrict A365 identity and baggage enrichment to recognized GenAI spans while preserving supported span-start signals. ([#265](https://github.com/microsoft/opentelemetry-distro-python/pull/265))
 - Restrict A365 identity and baggage enrichment to recognized GenAI spans while preserving supported span-start signals. ([#265](https://github.com/microsoft/opentelemetry-distro-python/pull/265))
 
 # 1.3.9 (2026-09-09)
