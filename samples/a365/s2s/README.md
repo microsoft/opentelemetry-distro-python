@@ -39,7 +39,7 @@ to `true` once you have real credentials to export to A365.
 ## Run
 
 ```bash
-uv run --with msal python samples\a365\s2s\s2s_exporter.py
+uv run --with msal python samples/a365/s2s/s2s_exporter.py
 ```
 
 The sample enables DEBUG logging for the A365 exporter, so when

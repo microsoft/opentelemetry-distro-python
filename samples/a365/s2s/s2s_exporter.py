@@ -117,7 +117,7 @@ def build_s2s_token_resolver():
     except ImportError as exc:
         raise SystemExit(
             "msal is required for the S2S sample. Run `uv run --with msal python "
-            "samples\\a365\\s2s\\s2s_exporter.py` from the repository root as described "
+            "samples/a365/s2s/s2s_exporter.py` from the repository root as described "
             "in samples/a365/s2s/README.md."
         ) from exc
 
