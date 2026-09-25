@@ -33,6 +33,7 @@ _SUPPORTED_INSTRUMENTED_LIBRARIES = (
     "fastapi",
     "flask",
     "httpx",
+    "httpx2",
     "psycopg2",
     "requests",
     "urllib",
@@ -52,6 +53,7 @@ _A365_DISABLED_INSTRUMENTATIONS = (
     "fastapi",
     "flask",
     "httpx",
+    "httpx2",
     "psycopg2",
     "requests",
     "urllib",
@@ -113,6 +115,8 @@ A365_MAX_QUEUE_SIZE_ARG = "a365_max_queue_size"
 A365_SCHEDULED_DELAY_MS_ARG = "a365_scheduled_delay_ms"
 A365_EXPORTER_TIMEOUT_MS_ARG = "a365_exporter_timeout_ms"
 A365_MAX_EXPORT_BATCH_SIZE_ARG = "a365_max_export_batch_size"
+A365_EXPORTER_DISABLE_OFFLINE_STORAGE_ARG = "a365_exporter_disable_offline_storage"
+A365_EXPORTER_STORAGE_DIRECTORY_ARG = "a365_exporter_storage_directory"
 
 # --- GenAI Main Agent Constants ---
 
@@ -124,6 +128,14 @@ GEN_AI_MAIN_AGENT_ID_KEY = "microsoft.gen_ai.main_agent.id"
 GEN_AI_MAIN_AGENT_VERSION_KEY = "microsoft.gen_ai.main_agent.version"
 GEN_AI_MAIN_AGENT_CONVERSATION_ID_KEY = "microsoft.gen_ai.main_agent.conversation_id"
 GEN_AI_MAIN_AGENT_ATTRIBUTE_PREFIX = "microsoft.gen_ai.main_agent."
+
+# --- GenAI Project Constants ---
+GEN_AI_AZURE_AI_PROJECT_ID_KEY = "gen_ai.azure_ai_project.id"
+GEN_AI_FOUNDRY_PROJECT_ID_KEY = "microsoft.foundry.project.id"
+GEN_AI_PROJECT_ID_KEYS = (
+    GEN_AI_AZURE_AI_PROJECT_ID_KEY,
+    GEN_AI_FOUNDRY_PROJECT_ID_KEY,
+)
 
 # --- Version propagation to the exporter ---
 MICROSOFT_OPENTELEMETRY_VERSION_ENV = "MICROSOFT_OPENTELEMETRY_VERSION"

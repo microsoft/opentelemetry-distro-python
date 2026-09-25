@@ -29,7 +29,6 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     GEN_AI_REQUEST_CHOICE_COUNT_KEY,
     GEN_AI_REQUEST_MODEL_KEY,
     GEN_AI_REQUEST_TOP_K_KEY,
-    GEN_AI_SYSTEM_INSTRUCTIONS_KEY,
     GEN_AI_TOOL_ARGS_KEY,
     GEN_AI_TOOL_CALL_ID_KEY,
     GEN_AI_TOOL_CALL_RESULT_KEY,
@@ -58,13 +57,15 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     llm_provider,
     metadata,
     model_name,
+    output_has_modern_tool_calls,
     output_messages,
-    prompts,
     safe_json_dumps,
     stop_on_exception,
     token_counts,
     _extract_agent_input_messages,
     _extract_agent_output_messages,
+    _extract_system_instruction,
+    _served_model_from_outputs,
     tools,
 )
 
@@ -200,19 +201,6 @@ class TestDictWithLock(TestCase):
 
 
 # ---- Data extractors ---------------------------------------------------------
-
-
-class TestPrompts(TestCase):
-    def test_extracts_prompts(self):
-        inputs = {"prompts": ["System prompt here"]}
-        result = list(prompts(inputs))
-        self.assertEqual(result, [(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, ["System prompt here"])])
-
-    def test_returns_empty_on_none(self):
-        self.assertEqual(list(prompts(None)), [])
-
-    def test_returns_empty_on_no_prompts(self):
-        self.assertEqual(list(prompts({"other": "data"})), [])
 
 
 class TestInputMessages(TestCase):
@@ -482,6 +470,45 @@ class TestTokenCounts(TestCase):
         self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 6)
         self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 8)
 
+    def test_generation_info_does_not_shadow_message_usage_metadata(self):
+        # Regression: ChatGoogleGenerativeAI emits ``generation_info`` with only
+        # finish_reason/model_name/safety_ratings (no token keys) while the real
+        # counts live on ``message.usage_metadata``. A prior blind
+        # ``usage = generation_info`` fallback returned the token-less mapping
+        # first and dropped all token attributes.
+        from langchain_core.messages import AIMessage
+
+        message = AIMessage(
+            content="The capital of France is Paris.",
+            usage_metadata={
+                "input_tokens": 14,
+                "output_tokens": 65,
+                "total_tokens": 79,
+                "input_token_details": {"cache_read": 0},
+                "output_token_details": {"reasoning": 57},
+            },
+        )
+        outputs = {
+            "generations": [
+                [
+                    {
+                        "message": message,
+                        "generation_info": {
+                            "finish_reason": "STOP",
+                            "model_name": "gemini-3.6-flash",
+                            "safety_ratings": [],
+                            "model_provider": "google_genai",
+                        },
+                    }
+                ]
+            ],
+        }
+        result = dict(token_counts(outputs))
+        self.assertEqual(result[GEN_AI_USAGE_INPUT_TOKENS_KEY], 14)
+        self.assertEqual(result[GEN_AI_USAGE_OUTPUT_TOKENS_KEY], 65)
+        self.assertEqual(result[GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_KEY], 0)
+        self.assertEqual(result[GEN_AI_USAGE_REASONING_OUTPUT_TOKENS_KEY], 57)
+
 
 class TestTokenCountsCache(TestCase):
     def test_extracts_cache_read_and_creation_from_input_token_details(self):
@@ -624,7 +651,8 @@ class TestInvocationParameters(TestCase):
             run_type="llm",
             extra={"invocation_params": {"tools": [{"name": "get_weather"}]}},
         )
-        result = dict(invocation_parameters(run))
+        # Tool definitions are gated content; opt in via enable_sensitive_data.
+        result = dict(invocation_parameters(run, enable_sensitive_data=True))
         self.assertEqual(len(result), 1)
         self.assertIn("get_weather", result[GEN_AI_TOOL_DEFINITIONS_KEY])
 
@@ -633,8 +661,30 @@ class TestInvocationParameters(TestCase):
             run_type="chat_model",
             extra={"invocation_params": {"functions": [{"name": "get_weather"}]}},
         )
-        result = dict(invocation_parameters(run))
+        result = dict(invocation_parameters(run, enable_sensitive_data=True))
         self.assertEqual(len(result), 1)
+        self.assertIn("get_weather", result[GEN_AI_TOOL_DEFINITIONS_KEY])
+
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=False)
+    def test_omits_tool_definitions_when_content_capture_disabled(self, _mock_capture):
+        run = _make_run(
+            run_type="llm",
+            extra={"invocation_params": {"tools": [{"name": "get_weather"}]}},
+        )
+        # enable_sensitive_data defaults to False and content capture is off, so
+        # developer-authored tool definitions must not leak onto the span.
+        result = dict(invocation_parameters(run))
+        self.assertNotIn(GEN_AI_TOOL_DEFINITIONS_KEY, result)
+
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=True)
+    def test_emits_tool_definitions_when_env_content_capture_enabled(self, _mock_capture):
+        run = _make_run(
+            run_type="llm",
+            extra={"invocation_params": {"tools": [{"name": "get_weather"}]}},
+        )
+        # Even without the flag, the upstream env-var/experimental content-capture
+        # check opting in should surface the attribute.
+        result = dict(invocation_parameters(run))
         self.assertIn("get_weather", result[GEN_AI_TOOL_DEFINITIONS_KEY])
 
     def test_skips_non_llm(self):
@@ -783,8 +833,182 @@ class TestFunctionCalls(TestCase):
         self.assertEqual(result[GEN_AI_TOOL_ARGS_KEY], '{"city":"NYC"}')
         self.assertEqual(result[GEN_AI_TOOL_CALL_RESULT_KEY], '{"temperature":"72F"}')
 
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=False)
+    def test_omits_description_when_content_capture_disabled(self, _mock_capture):
+        outputs = {
+            "generations": [
+                [
+                    {
+                        "message": {
+                            "kwargs": {
+                                "additional_kwargs": {
+                                    "function_call": {
+                                        "name": "get_weather",
+                                        "description": "Fetches current weather",
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            ]
+        }
+        result = dict(function_calls(outputs))
+        self.assertEqual(result[GEN_AI_TOOL_NAME_KEY], "get_weather")
+        # Developer-authored tool description must not leak when capture is off.
+        self.assertNotIn(GEN_AI_TOOL_DESCRIPTION_KEY, result)
+
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=True)
+    def test_emits_description_when_content_capture_enabled(self, _mock_capture):
+        outputs = {
+            "generations": [
+                [
+                    {
+                        "message": {
+                            "kwargs": {
+                                "additional_kwargs": {
+                                    "function_call": {
+                                        "name": "get_weather",
+                                        "description": "Fetches current weather",
+                                    }
+                                }
+                            }
+                        }
+                    }
+                ]
+            ]
+        }
+        result = dict(function_calls(outputs))
+        self.assertEqual(result[GEN_AI_TOOL_DESCRIPTION_KEY], "Fetches current weather")
+
     def test_returns_empty_on_none(self):
         self.assertEqual(list(function_calls(None)), [])
+
+
+class TestOutputHasModernToolCalls(TestCase):
+    """Guard that decides whether the legacy ``function_call`` field is emitted."""
+
+    @staticmethod
+    def _outputs(message_kwargs):
+        return {"generations": [[{"message": {"kwargs": message_kwargs}}]]}
+
+    def test_modern_tool_calls_present_returns_true(self):
+        outputs = self._outputs(
+            {
+                "content": "",
+                "tool_calls": [{"name": "get_population", "args": {"city": "Paris"}, "id": "call_1"}],
+            }
+        )
+        self.assertTrue(output_has_modern_tool_calls(outputs))
+
+    def test_modern_tool_calls_in_additional_kwargs_returns_true(self):
+        outputs = self._outputs(
+            {
+                "content": "",
+                "additional_kwargs": {"tool_calls": [{"id": "call_1", "function": {"name": "get_population"}}]},
+            }
+        )
+        self.assertTrue(output_has_modern_tool_calls(outputs))
+
+    def test_legacy_function_call_only_returns_false(self):
+        # Legacy-only shape (deprecated OpenAI ``functions=`` API): singular
+        # ``function_call`` with no modern ``tool_calls``.
+        outputs = self._outputs(
+            {
+                "content": "",
+                "additional_kwargs": {
+                    "function_call": {
+                        "name": "get_population",
+                        "arguments": '{"city":"Paris"}',
+                    }
+                },
+            }
+        )
+        self.assertFalse(output_has_modern_tool_calls(outputs))
+
+    def test_no_tool_calls_returns_false(self):
+        outputs = self._outputs({"content": "The capital of France is Paris."})
+        self.assertFalse(output_has_modern_tool_calls(outputs))
+
+    def test_empty_tool_calls_list_returns_false(self):
+        outputs = self._outputs({"content": "", "tool_calls": []})
+        self.assertFalse(output_has_modern_tool_calls(outputs))
+
+    def test_returns_false_on_none(self):
+        self.assertFalse(output_has_modern_tool_calls(None))
+
+    def test_returns_false_on_non_mapping(self):
+        self.assertFalse(output_has_modern_tool_calls("not-a-mapping"))
+
+    def test_returns_false_on_malformed_generations(self):
+        self.assertFalse(output_has_modern_tool_calls({"generations": []}))
+
+
+class TestFunctionCallsGuardInteraction(TestCase):
+    """End-to-end of the guard + ``function_calls`` combination on the chat span.
+
+    Reproduces the three provider scenarios that reach the LLM/chat branch of
+    the tracer, asserting that ``gen_ai.tool.*`` attributes only reach the chat
+    span for the legacy-only case.
+    """
+
+    @staticmethod
+    def _outputs(message_kwargs):
+        return {"generations": [[{"message": {"kwargs": message_kwargs}}]]}
+
+    @staticmethod
+    def _emitted(outputs):
+        # Mirror the tracer guard: emit legacy function_calls only when there is
+        # no modern tool_calls representation.
+        if output_has_modern_tool_calls(outputs):
+            return {}
+        return dict(function_calls(outputs, enable_sensitive_data=True))
+
+    def test_gemini_style_both_fields_suppresses_leak(self):
+        # Gemini populates both modern tool_calls AND legacy function_call.
+        outputs = self._outputs(
+            {
+                "content": "",
+                "tool_calls": [{"name": "get_famous_landmark", "args": {"city": "Paris"}, "id": "call_1"}],
+                "additional_kwargs": {
+                    "function_call": {
+                        "name": "get_famous_landmark",
+                        "arguments": '{"city":"Paris"}',
+                    }
+                },
+            }
+        )
+        # No gen_ai.tool.* attributes leak onto the chat span.
+        self.assertEqual(self._emitted(outputs), {})
+
+    def test_modern_only_openai_style_emits_nothing(self):
+        # OpenAI/Anthropic set only modern tool_calls, never the legacy field.
+        outputs = self._outputs(
+            {
+                "content": "",
+                "tool_calls": [{"name": "get_population", "args": {"city": "Paris"}, "id": "call_1"}],
+            }
+        )
+        self.assertEqual(self._emitted(outputs), {})
+
+    def test_legacy_only_still_emits_tool_attributes(self):
+        # Deprecated OpenAI functions= API: legacy field is the only capture, so
+        # it must still be emitted on the chat span.
+        outputs = self._outputs(
+            {
+                "content": "",
+                "additional_kwargs": {
+                    "function_call": {
+                        "name": "get_population",
+                        "arguments": '{"city":"Paris"}',
+                    }
+                },
+            }
+        )
+        emitted = self._emitted(outputs)
+        self.assertEqual(emitted[GEN_AI_TOOL_NAME_KEY], "get_population")
+        self.assertEqual(emitted[GEN_AI_TOOL_TYPE_KEY], "function")
+        self.assertEqual(emitted[GEN_AI_TOOL_ARGS_KEY], '{"city":"Paris"}')
 
 
 class TestTools(TestCase):
@@ -799,7 +1023,8 @@ class TestTools(TestCase):
         )
         result = dict(tools(run))
         self.assertEqual(result[GEN_AI_TOOL_NAME_KEY], "calculator")
-        self.assertEqual(result[GEN_AI_TOOL_DESCRIPTION_KEY], "Does math")
+        # Description is developer-authored content and must be gated.
+        self.assertNotIn(GEN_AI_TOOL_DESCRIPTION_KEY, result)
         self.assertEqual(result[GEN_AI_TOOL_TYPE_KEY], "function")
         self.assertNotIn(GEN_AI_TOOL_ARGS_KEY, result)
         self.assertNotIn(GEN_AI_TOOL_CALL_RESULT_KEY, result)
@@ -816,8 +1041,18 @@ class TestTools(TestCase):
         )
         result = dict(tools(run))
         self.assertEqual(result[GEN_AI_TOOL_TYPE_KEY], "function")
+        self.assertEqual(result[GEN_AI_TOOL_DESCRIPTION_KEY], "Does math")
         self.assertEqual(result[GEN_AI_TOOL_ARGS_KEY], "2+2")
         self.assertEqual(result[GEN_AI_TOOL_CALL_RESULT_KEY], "4")
+
+    @patch("microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans", return_value=True)
+    def test_emits_tool_description_via_enable_sensitive_data_flag(self, _mock_capture):
+        run = _make_run(
+            run_type="tool",
+            serialized={"name": "calculator", "description": "Does math"},
+        )
+        result = dict(tools(run, enable_sensitive_data=True))
+        self.assertEqual(result[GEN_AI_TOOL_DESCRIPTION_KEY], "Does math")
 
     def test_skips_non_tool(self):
         run = _make_run(run_type="llm", serialized={"name": "calc"})
@@ -1300,6 +1535,305 @@ class TestBuildLlmInvocation(TestCase):
         self.assertEqual(inv.response_model_name, "gpt-4o-2024-11-20")
         self.assertEqual(inv.response_id, "chatcmpl-kwargs")
 
+    def test_sets_system_instruction_from_messages(self):
+        from langchain_core.messages import HumanMessage, SystemMessage
+        from opentelemetry.util.genai.types import Text
+
+        run = _make_run(
+            run_type="chat_model",
+            outputs={"llm_output": {"model_name": "gpt-4o"}, "generations": []},
+            extra=None,
+            inputs={
+                "messages": [
+                    [
+                        SystemMessage(content="You are a helpful assistant."),
+                        HumanMessage(content="hi"),
+                    ]
+                ]
+            },
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(len(inv.system_instruction), 1)
+        self.assertIsInstance(inv.system_instruction[0], Text)
+        self.assertEqual(inv.system_instruction[0].content, "You are a helpful assistant.")
+
+    def test_system_instruction_empty_without_system_message(self):
+        from langchain_core.messages import HumanMessage
+
+        run = _make_run(
+            run_type="chat_model",
+            outputs={"llm_output": {"model_name": "gpt-4o"}, "generations": []},
+            extra=None,
+            inputs={"messages": [[HumanMessage(content="hi")]]},
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(inv.system_instruction, [])
+
+
+# ---- System instruction extraction -------------------------------------------
+
+
+class TestExtractSystemInstruction(TestCase):
+    """``_extract_system_instruction`` sources the system/developer prompt as
+    a flat list of ``Text`` parts (no role), matching the OTel GenAI
+    ``gen_ai.system_instructions`` shape."""
+
+    def test_returns_empty_on_none(self):
+        self.assertEqual(_extract_system_instruction(None), [])
+
+    def test_returns_empty_on_non_mapping(self):
+        self.assertEqual(_extract_system_instruction(["not", "a", "mapping"]), [])
+
+    def test_extracts_from_prompts_list(self):
+        from opentelemetry.util.genai.types import Text
+
+        result = _extract_system_instruction({"prompts": ["System prompt here"]})
+        self.assertEqual(result, [Text(content="System prompt here")])
+
+    def test_extracts_from_prompts_string(self):
+        from opentelemetry.util.genai.types import Text
+
+        result = _extract_system_instruction({"prompts": "Single prompt"})
+        self.assertEqual(result, [Text(content="Single prompt")])
+
+    def test_prompts_list_skips_empty_items(self):
+        from opentelemetry.util.genai.types import Text
+
+        result = _extract_system_instruction({"prompts": ["", "keep", None]})
+        self.assertEqual(result, [Text(content="keep")])
+
+    def test_extracts_system_message_from_messages_path(self):
+        from langchain_core.messages import HumanMessage, SystemMessage
+        from opentelemetry.util.genai.types import Text
+
+        inputs = {
+            "messages": [
+                [
+                    SystemMessage(content="You are a helpful assistant."),
+                    HumanMessage(content="hi"),
+                ]
+            ]
+        }
+        result = _extract_system_instruction(inputs)
+        self.assertEqual(result, [Text(content="You are a helpful assistant.")])
+
+    def test_messages_path_without_system_message_returns_empty(self):
+        from langchain_core.messages import HumanMessage
+
+        inputs = {"messages": [[HumanMessage(content="hi")]]}
+        self.assertEqual(_extract_system_instruction(inputs), [])
+
+    def test_prompts_takes_precedence_over_messages(self):
+        from langchain_core.messages import SystemMessage
+        from opentelemetry.util.genai.types import Text
+
+        inputs = {
+            "prompts": ["From prompts"],
+            "messages": [[SystemMessage(content="From messages")]],
+        }
+        result = _extract_system_instruction(inputs)
+        self.assertEqual(result, [Text(content="From prompts")])
+
+    def test_extracts_system_message_from_flat_message_list(self):
+        """Flat message lists ({"messages": [msg, msg]}) must be scanned in full,
+        not just the first element (regression for PR #232 feedback)."""
+        from langchain_core.messages import HumanMessage, SystemMessage
+        from opentelemetry.util.genai.types import Text
+
+        inputs = {
+            "messages": [
+                HumanMessage(content="hi"),
+                SystemMessage(content="You are a helpful assistant."),
+            ]
+        }
+        result = _extract_system_instruction(inputs)
+        self.assertEqual(result, [Text(content="You are a helpful assistant.")])
+
+    def test_extracts_multiple_system_messages_from_flat_list(self):
+        from langchain_core.messages import HumanMessage, SystemMessage
+        from opentelemetry.util.genai.types import Text
+
+        inputs = {
+            "messages": [
+                SystemMessage(content="First rule."),
+                HumanMessage(content="hi"),
+                SystemMessage(content="Second rule."),
+            ]
+        }
+        result = _extract_system_instruction(inputs)
+        self.assertEqual(
+            result,
+            [Text(content="First rule."), Text(content="Second rule.")],
+        )
+
+    def test_response_model_prefers_served_model_header(self):
+        from langchain_core.messages import AIMessage
+
+        ai_msg = AIMessage(content="hi")
+        ai_msg.response_metadata = {
+            "model_name": "gpt-4.1",
+            "id": "resp-123",
+            "headers": {"x-ms-served-model": "gpt-4.1-2025-04-14"},
+        }
+        run = _make_run(
+            run_type="llm",
+            outputs={
+                "llm_output": None,
+                "generations": [[{"message": ai_msg, "generation_info": {"finish_reason": "stop"}}]],
+            },
+            extra=None,
+            inputs=None,
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(inv.response_model_name, "gpt-4.1-2025-04-14")
+
+    def test_served_model_header_overrides_llm_output_model(self):
+        run = _make_run(
+            run_type="llm",
+            outputs={
+                "llm_output": {"model_name": "gpt-4.1", "id": "resp-1"},
+                "generations": [
+                    [
+                        {
+                            "message": {
+                                "content": "hi",
+                                "response_metadata": {
+                                    "headers": {"x-ms-served-model": "gpt-4.1-2025-04-14"},
+                                },
+                            },
+                            "generation_info": {"finish_reason": "stop"},
+                        }
+                    ]
+                ],
+            },
+            extra=None,
+            inputs=None,
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(inv.response_model_name, "gpt-4.1-2025-04-14")
+
+    def test_served_model_header_does_not_override_llm_output_model_when_response_header_empty(self):
+        run = _make_run(
+            run_type="llm",
+            outputs={
+                "llm_output": {"model_name": "gpt-4.1-deployment", "id": "resp-1"},
+                "generations": [
+                    [
+                        {
+                            "message": {
+                                "content": "hi",
+                                "response_metadata": {
+                                    "headers": {"x-ms-served-model": " "},
+                                },
+                            },
+                            "generation_info": {"finish_reason": "stop"},
+                        }
+                    ]
+                ],
+            },
+            extra=None,
+            inputs=None,
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(inv.response_model_name, "gpt-4.1-deployment")
+
+    def test_response_model_falls_back_when_no_served_model_header(self):
+        # No ``x-ms-served-model`` header present -> fall back to llm_output.
+        run = _make_run(
+            run_type="llm",
+            outputs={
+                "llm_output": {"model_name": "gpt-4.1-2025-04-14", "id": "resp-1"},
+                "generations": [
+                    [
+                        {
+                            "message": {
+                                "content": "hi",
+                                "response_metadata": {"headers": {"content-type": "application/json"}},
+                            }
+                        }
+                    ]
+                ],
+            },
+            extra=None,
+            inputs=None,
+        )
+        inv = build_llm_invocation(run)
+        self.assertEqual(inv.response_model_name, "gpt-4.1-2025-04-14")
+
+
+# ---- _served_model_from_outputs ---------------------------------------------
+
+
+class TestServedModelFromOutputs(TestCase):
+    def test_returns_none_for_none_outputs(self):
+        self.assertIsNone(_served_model_from_outputs(None))
+
+    def test_returns_none_when_no_headers(self):
+        outputs = {
+            "generations": [[{"message": {"content": "hi"}, "generation_info": {"finish_reason": "stop"}}]],
+        }
+        self.assertIsNone(_served_model_from_outputs(outputs))
+
+    def test_extracts_from_generation_info_headers(self):
+        outputs = {
+            "generations": [
+                [
+                    {
+                        "message": {"content": "hi"},
+                        "generation_info": {"headers": {"x-ms-served-model": "gpt-4o-2024-11-20"}},
+                    }
+                ]
+            ],
+        }
+        self.assertEqual(_served_model_from_outputs(outputs), "gpt-4o-2024-11-20")
+
+    def test_extracts_from_message_response_metadata_headers(self):
+        from langchain_core.messages import AIMessage
+
+        ai_msg = AIMessage(content="hi")
+        ai_msg.response_metadata = {"headers": {"x-ms-served-model": "gpt-4.1-2025-04-14"}}
+        outputs = {"generations": [[{"message": ai_msg, "generation_info": {}}]]}
+        self.assertEqual(_served_model_from_outputs(outputs), "gpt-4.1-2025-04-14")
+
+    def test_header_lookup_is_case_insensitive(self):
+        outputs = {
+            "generations": [
+                [
+                    {
+                        "message": {"content": "hi"},
+                        "generation_info": {"headers": {"X-MS-Served-Model": "gpt-4o-2024-11-20"}},
+                    }
+                ]
+            ],
+        }
+        self.assertEqual(_served_model_from_outputs(outputs), "gpt-4o-2024-11-20")
+
+    def test_ignores_empty_header_value(self):
+        outputs = {
+            "generations": [
+                [
+                    {
+                        "message": {"content": "hi"},
+                        "generation_info": {"headers": {"x-ms-served-model": ""}},
+                    }
+                ]
+            ],
+        }
+        self.assertIsNone(_served_model_from_outputs(outputs))
+
+    def test_ignores_non_mapping_headers(self):
+        outputs = {
+            "generations": [
+                [
+                    {
+                        "message": {"content": "hi"},
+                        "generation_info": {"headers": "x-ms-served-model: gpt-4o"},
+                    }
+                ]
+            ],
+        }
+        self.assertIsNone(_served_model_from_outputs(outputs))
+
 
 # ---- Spec-compliant input.messages (issue #172) ------------------------------
 
@@ -1377,6 +1911,87 @@ class TestExtractStructuredInputMessagesSpecCompliance(TestCase):
         self.assertEqual(tool_parts[0].response, "rainy, 57F")
 
 
+# ---- System prompt routing / no-leak guarantees ------------------------------
+
+
+class TestSystemPromptRouting(TestCase):
+    """Guard against the system prompt leaking into the wrong attribute.
+
+    On the messages path the system message must be routed *out* of
+    ``gen_ai.input.messages`` and *into* ``gen_ai.system_instructions``
+    (no duplication). When no system message is present, neither attribute
+    may contain any system content."""
+
+    def test_system_message_routed_out_of_input_messages(self):
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        from microsoft.opentelemetry._genai._langchain._utils import (
+            _extract_structured_input_messages,
+        )
+
+        inputs = {
+            "messages": [
+                [
+                    SystemMessage(content="You are a helpful assistant."),
+                    HumanMessage(content="hi"),
+                ]
+            ]
+        }
+        result = _extract_structured_input_messages(inputs)
+        # Only the user message survives; the system message is routed out.
+        self.assertEqual([m.role for m in result], ["user"])
+        # Belt-and-suspenders: the system text must not appear anywhere in inputs.
+        self.assertNotIn("helpful assistant", safe_json_dumps(list(result)))
+
+    def test_system_message_goes_to_instructions_not_duplicated_in_inputs(self):
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        from microsoft.opentelemetry._genai._langchain._utils import (
+            _extract_structured_input_messages,
+        )
+
+        inputs = {
+            "messages": [
+                [
+                    SystemMessage(content="You are a helpful assistant."),
+                    HumanMessage(content="hi"),
+                ]
+            ]
+        }
+        instructions = _extract_system_instruction(inputs)
+        input_msgs = _extract_structured_input_messages(inputs)
+        # System content lives in exactly one place: instructions.
+        self.assertEqual(len(instructions), 1)
+        self.assertEqual(instructions[0].content, "You are a helpful assistant.")
+        self.assertNotIn("helpful assistant", safe_json_dumps(input_msgs))
+
+    def test_no_system_prompt_leaks_nowhere(self):
+        """No system message specified => empty system_instructions AND no
+        phantom system role/content in input.messages."""
+        from langchain_core.messages import HumanMessage
+
+        from microsoft.opentelemetry._genai._langchain._utils import (
+            _extract_structured_input_messages,
+        )
+
+        inputs = {"messages": [[HumanMessage(content="hi")]]}
+        instructions = _extract_system_instruction(inputs)
+        input_msgs = _extract_structured_input_messages(inputs)
+        # Nothing routed to system_instructions.
+        self.assertEqual(instructions, [])
+        # Input contains only the user turn -- no system role sneaks in.
+        self.assertEqual([m.role for m in input_msgs], ["user"])
+        self.assertEqual(input_msgs[0].parts[0].content, "hi")
+
+    def test_empty_inputs_leak_nowhere(self):
+        from microsoft.opentelemetry._genai._langchain._utils import (
+            _extract_structured_input_messages,
+        )
+
+        self.assertEqual(_extract_system_instruction({}), [])
+        self.assertEqual(_extract_structured_input_messages({}), [])
+
+
 # ---- _should_capture_content_on_spans ---------------------------------------
 
 
@@ -1388,7 +2003,11 @@ class TestShouldCaptureContentOnSpans(TestCase):
             mock_mode.assert_not_called()
             self.assertIs(result, True)
 
-    def test_enable_sensitive_data_false_delegates_to_upstream_mode(self):
+    @patch(
+        "microsoft.opentelemetry._genai._langchain._utils.is_experimental_mode",
+        return_value=True,
+    )
+    def test_enable_sensitive_data_false_delegates_to_upstream_mode(self, _mock_experimental):
         """When enable_sensitive_data=False, calls get_content_capturing_mode to determine the result."""
         from opentelemetry.util.genai.utils import ContentCapturingMode
 
@@ -1398,7 +2017,11 @@ class TestShouldCaptureContentOnSpans(TestCase):
         ):
             self.assertTrue(_should_capture_content_on_spans(enable_sensitive_data=False))
 
-    def test_enable_sensitive_data_false_span_only_returns_true(self):
+    @patch(
+        "microsoft.opentelemetry._genai._langchain._utils.is_experimental_mode",
+        return_value=True,
+    )
+    def test_enable_sensitive_data_false_span_only_returns_true(self, _mock_experimental):
         from opentelemetry.util.genai.utils import ContentCapturingMode
 
         with patch(

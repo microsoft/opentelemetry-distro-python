@@ -23,6 +23,7 @@ from microsoft.opentelemetry._constants import (
     GEN_AI_MAIN_AGENT_ID_KEY,
     GEN_AI_MAIN_AGENT_NAME_KEY,
     GEN_AI_MAIN_AGENT_VERSION_KEY,
+    GEN_AI_PROJECT_ID_KEYS,
 )
 from microsoft.opentelemetry._genai.main_agent._processor import (
     GenAIMainAgentSpanProcessor,
@@ -302,6 +303,116 @@ class TestSDKPropagation(unittest.TestCase):
 
         spans = self._get_exported_spans()
         self.assertIsNone(spans["chat gpt-4"].attributes.get(GEN_AI_MAIN_AGENT_NAME_KEY))
+
+
+class TestSDKProjectIdPropagation(unittest.TestCase):
+    """Verifies Foundry project-id attributes propagate parent → child spans."""
+
+    PROJECT_ID = "/subscriptions/sub/resourceGroups/rg/providers/x/projects/p"
+
+    def setUp(self):
+        self.exporter = InMemorySpanExporter()
+        self.provider = TracerProvider()
+        self.provider.add_span_processor(GenAIMainAgentSpanProcessor())
+        self.provider.add_span_processor(SimpleSpanProcessor(self.exporter))
+        self.tracer = self.provider.get_tracer("test")
+
+    def tearDown(self):
+        self.provider.shutdown()
+
+    def _get_exported_spans(self):
+        return {s.name: s for s in self.exporter.get_finished_spans()}
+
+    def _stamp_project_id(self, span):
+        for key in GEN_AI_PROJECT_ID_KEYS:
+            span.set_attribute(key, self.PROJECT_ID)
+
+    def _assert_has_project_id(self, span):
+        for key in GEN_AI_PROJECT_ID_KEYS:
+            self.assertEqual(span.attributes.get(key), self.PROJECT_ID)
+
+    def test_project_id_propagates_to_child_span(self):
+        root_ctx = trace_api.set_span_in_context(trace_api.INVALID_SPAN)
+        agent_span = self.tracer.start_span("invoke_agent TravelBot", context=root_ctx)
+        agent_span.set_attribute(GEN_AI_OPERATION_NAME_KEY, INVOKE_AGENT_OPERATION_NAME)
+        agent_span.set_attribute(GEN_AI_AGENT_NAME_KEY, "TravelBot")
+        self._stamp_project_id(agent_span)
+
+        chat_ctx = trace_api.set_span_in_context(agent_span)
+        chat_span = self.tracer.start_span("chat gpt-4", context=chat_ctx)
+        chat_span.end()
+        agent_span.end()
+
+        spans = self._get_exported_spans()
+        self._assert_has_project_id(spans["chat gpt-4"])
+
+    def test_project_id_propagates_through_multiple_levels(self):
+        root_ctx = trace_api.set_span_in_context(trace_api.INVALID_SPAN)
+        agent_span = self.tracer.start_span("invoke_agent TravelBot", context=root_ctx)
+        agent_span.set_attribute(GEN_AI_OPERATION_NAME_KEY, INVOKE_AGENT_OPERATION_NAME)
+        agent_span.set_attribute(GEN_AI_AGENT_NAME_KEY, "TravelBot")
+        self._stamp_project_id(agent_span)
+
+        tool_ctx = trace_api.set_span_in_context(agent_span)
+        tool_span = self.tracer.start_span("execute_tool get_weather", context=tool_ctx)
+        inner_ctx = trace_api.set_span_in_context(tool_span)
+        inner_span = self.tracer.start_span("chat gpt-4", context=inner_ctx)
+        inner_span.end()
+        tool_span.end()
+        agent_span.end()
+
+        spans = self._get_exported_spans()
+        self._assert_has_project_id(spans["execute_tool get_weather"])
+        self._assert_has_project_id(spans["chat gpt-4"])
+
+    def test_project_id_recovered_on_end_when_stamped_after_child(self):
+        root_ctx = trace_api.set_span_in_context(trace_api.INVALID_SPAN)
+        agent_span = self.tracer.start_span("invoke_agent TravelBot", context=root_ctx)
+
+        child_ctx = trace_api.set_span_in_context(agent_span)
+        child = self.tracer.start_span("chat gpt-4", context=child_ctx)
+
+        # Stamp project id AFTER the child was created → on_start already fired.
+        self._stamp_project_id(agent_span)
+
+        child.end()
+        agent_span.end()
+
+        spans = self._get_exported_spans()
+        self._assert_has_project_id(spans["chat gpt-4"])
+
+    def test_project_id_propagates_alongside_main_agent_attrs(self):
+        root_ctx = trace_api.set_span_in_context(trace_api.INVALID_SPAN)
+        agent_span = self.tracer.start_span("invoke_agent TravelBot", context=root_ctx)
+        agent_span.set_attribute(GEN_AI_OPERATION_NAME_KEY, INVOKE_AGENT_OPERATION_NAME)
+        agent_span.set_attribute(GEN_AI_AGENT_NAME_KEY, "TravelBot")
+        agent_span.set_attribute(GEN_AI_AGENT_ID_KEY, "agent-1")
+        self._stamp_project_id(agent_span)
+
+        chat_ctx = trace_api.set_span_in_context(agent_span)
+        chat_span = self.tracer.start_span("chat gpt-4", context=chat_ctx)
+        chat_span.end()
+        agent_span.end()
+
+        chat = self._get_exported_spans()["chat gpt-4"]
+        self.assertEqual(chat.attributes.get(GEN_AI_MAIN_AGENT_NAME_KEY), "TravelBot")
+        self.assertEqual(chat.attributes.get(GEN_AI_MAIN_AGENT_ID_KEY), "agent-1")
+        self._assert_has_project_id(chat)
+
+    def test_no_project_id_when_parent_unstamped(self):
+        root_ctx = trace_api.set_span_in_context(trace_api.INVALID_SPAN)
+        agent_span = self.tracer.start_span("invoke_agent TravelBot", context=root_ctx)
+        agent_span.set_attribute(GEN_AI_OPERATION_NAME_KEY, INVOKE_AGENT_OPERATION_NAME)
+        agent_span.set_attribute(GEN_AI_AGENT_NAME_KEY, "TravelBot")
+
+        chat_ctx = trace_api.set_span_in_context(agent_span)
+        chat_span = self.tracer.start_span("chat gpt-4", context=chat_ctx)
+        chat_span.end()
+        agent_span.end()
+
+        chat = self._get_exported_spans()["chat gpt-4"]
+        for key in GEN_AI_PROJECT_ID_KEYS:
+            self.assertIsNone(chat.attributes.get(key))
 
 
 if __name__ == "__main__":

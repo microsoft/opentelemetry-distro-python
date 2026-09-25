@@ -38,6 +38,8 @@ class Agent365ExporterOptions:
         exporter_timeout_ms: int = 30000,
         max_export_batch_size: int = 512,
         max_payload_bytes: int = DEFAULT_MAX_PAYLOAD_BYTES,
+        disable_offline_storage: bool = False,
+        storage_directory: Optional[str] = None,
     ):
         """
         Args:
@@ -57,7 +59,17 @@ class Agent365ExporterOptions:
                 splits per-identity batches into sub-batches whose estimated size stays under
                 this limit, providing headroom under the A365 1 MB server limit. Default is
                 900_000 (~100 KB headroom for estimator error and JSON envelope overhead).
+            disable_offline_storage: When True, disables durable delivery (no disk writes or
+                replay). Defaults to False (storage enabled).
+            storage_directory: Custom directory for durable offline storage. When None, a
+                platform default path is used. An explicitly empty or whitespace-only string
+                is rejected with ``ValueError``. Defaults to None.
+
+        Raises:
+            ValueError: If ``storage_directory`` is an empty or whitespace-only string.
         """
+        if storage_directory is not None and not str(storage_directory).strip():
+            raise ValueError("storage_directory must be a non-empty path or None")
         self.cluster_category = cluster_category
         self.token_resolver = token_resolver
         self.contextual_token_resolver = contextual_token_resolver
@@ -67,3 +79,5 @@ class Agent365ExporterOptions:
         self.exporter_timeout_ms = exporter_timeout_ms
         self.max_export_batch_size = max_export_batch_size
         self.max_payload_bytes = max_payload_bytes
+        self.disable_offline_storage = disable_offline_storage
+        self.storage_directory = storage_directory

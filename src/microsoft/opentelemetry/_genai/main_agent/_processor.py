@@ -13,6 +13,7 @@ from microsoft.opentelemetry._constants import (
     GEN_AI_MAIN_AGENT_ID_KEY,
     GEN_AI_MAIN_AGENT_NAME_KEY,
     GEN_AI_MAIN_AGENT_VERSION_KEY,
+    GEN_AI_PROJECT_ID_KEYS,
 )
 from microsoft.opentelemetry.a365.core.constants import (
     GEN_AI_AGENT_ID_KEY,
@@ -28,6 +29,7 @@ from opentelemetry.sdk._logs import LogRecordProcessor, ReadWriteLogRecord
 from opentelemetry.sdk.trace import ReadableSpan, Span
 from opentelemetry.sdk.trace.export import SpanProcessor
 from opentelemetry.trace import Span as SpanAPI
+from opentelemetry.util.types import AttributeValue
 
 # Each row: (target attribute on current span,
 #            primary source attribute on parent span,
@@ -49,6 +51,9 @@ _PROPAGATION_TABLE: tuple[tuple[str, str, str], ...] = (
 _SELF_COPY_TABLE: tuple[tuple[str, str], ...] = tuple(
     (target, fallback) for target, _primary, fallback in _PROPAGATION_TABLE
 )
+
+# Project-scope attributes, so all telemetry is attributed to the same project.
+_PROJECT_ID_KEYS: tuple[str, ...] = GEN_AI_PROJECT_ID_KEYS
 
 
 class GenAIMainAgentSpanProcessor(SpanProcessor):
@@ -91,15 +96,16 @@ class GenAIMainAgentSpanProcessor(SpanProcessor):
             if value is not None:
                 span.set_attribute(target, value)
 
+        for key in _PROJECT_ID_KEYS:
+            value = parent_attributes.get(key)
+            if value is not None:
+                span.set_attribute(key, value)
+
     def on_end(self, span: ReadableSpan) -> None:
         span_id = span.context.span_id
         parent = self._parent_spans.pop(span_id, None)
 
         attributes = span.attributes or {}
-
-        # Already enriched — nothing to do.
-        if any(k.startswith(GEN_AI_MAIN_AGENT_ATTRIBUTE_PREFIX) for k in attributes):
-            return
 
         # Access the internal mutable attributes dict.  ``on_end`` receives a
         # ``ReadableSpan`` which lacks ``set_attribute``, so we write to the
@@ -108,25 +114,56 @@ class GenAIMainAgentSpanProcessor(SpanProcessor):
         if mutable is None:
             return
 
-        # Self-promotion: top-level invoke_agent spans copy their own
-        # gen_ai.agent.* → microsoft.gen_ai.main_agent.*
-        if attributes.get(GEN_AI_OPERATION_NAME_KEY) == INVOKE_AGENT_OPERATION_NAME:
-            for target, source in _SELF_COPY_TABLE:
-                value = attributes.get(source)
-                if value is not None:
-                    mutable[target] = value
+        parent_attributes = getattr(parent, "attributes", None) or {}
+
+        # Build the attributes to write before touching the (now frozen) span.
+        updates: dict[str, AttributeValue] = {}
+
+        # Main-agent enrichment — skipped when the span is already enriched.
+        if not any(k.startswith(GEN_AI_MAIN_AGENT_ATTRIBUTE_PREFIX) for k in attributes):
+            # Self-promotion: top-level invoke_agent spans copy their own
+            # gen_ai.agent.* → microsoft.gen_ai.main_agent.*
+            if attributes.get(GEN_AI_OPERATION_NAME_KEY) == INVOKE_AGENT_OPERATION_NAME:
+                for target, source in _SELF_COPY_TABLE:
+                    value = attributes.get(source)
+                    if value is not None:
+                        updates[target] = value
+            # Fallback propagation: re-read from the parent span whose attributes
+            # may have been set after this child was created (timing issue).
+            if parent is not None:
+                for target, primary, fallback in _PROPAGATION_TABLE:
+                    value = parent_attributes.get(primary)
+                    if value is None:
+                        value = parent_attributes.get(fallback)
+                    if value is not None:
+                        updates[target] = value
+
+        # Project-id fallback: handles parents stamped after child start.
+        if parent is not None:
+            for key in _PROJECT_ID_KEYS:
+                if attributes.get(key) is None:
+                    value = parent_attributes.get(key)
+                    if value is not None:
+                        updates[key] = value
+
+        if not updates:
             return
 
-        # Fallback propagation: re-read from the parent span whose attributes
-        # may have been set after this child was created (timing issue).
-        if parent is not None:
-            parent_attributes = getattr(parent, "attributes", None) or {}
-            for target, primary, fallback in _PROPAGATION_TABLE:
-                value = parent_attributes.get(primary)
-                if value is None:
-                    value = parent_attributes.get(fallback)
-                if value is not None:
+        # OTel SDK >= 1.43 freezes span attributes (``_immutable = True``) inside
+        # ``end()`` *before* invoking ``on_end``.  Writing then raises ``TypeError``.
+        # Temporarily lift the freeze for our own synchronous writes and always
+        # restore it so the exported ``ReadableSpan`` snapshot stays frozen.
+        was_immutable = getattr(mutable, "_immutable", False)
+        if was_immutable:
+            mutable._immutable = False  # pylint: disable=protected-access
+            try:
+                for target, value in updates.items():
                     mutable[target] = value
+            finally:
+                mutable._immutable = True  # pylint: disable=protected-access
+        else:
+            for target, value in updates.items():
+                mutable[target] = value
 
     def shutdown(self) -> None:
         self._parent_spans.clear()
@@ -136,8 +173,9 @@ class GenAIMainAgentSpanProcessor(SpanProcessor):
 
 
 class GenAIMainAgentLogRecordProcessor(LogRecordProcessor):
-    """Copies any ``microsoft.gen_ai.main_agent.*`` attributes from the
-    current span onto every emitted log record.
+    """Copies any ``microsoft.gen_ai.main_agent.*`` attributes (and the
+    Foundry project-id attributes) from the current span onto every emitted
+    log record.
     """
 
     def on_emit(self, log_record: ReadWriteLogRecord) -> None:
@@ -147,7 +185,9 @@ class GenAIMainAgentLogRecordProcessor(LogRecordProcessor):
 
         span_attributes = getattr(span, "attributes", None) or {}
         main_agent_attributes = {
-            key: value for key, value in span_attributes.items() if key.startswith(GEN_AI_MAIN_AGENT_ATTRIBUTE_PREFIX)
+            key: value
+            for key, value in span_attributes.items()
+            if key.startswith(GEN_AI_MAIN_AGENT_ATTRIBUTE_PREFIX) or key in _PROJECT_ID_KEYS
         }
         if not main_agent_attributes:
             return

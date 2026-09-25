@@ -51,9 +51,11 @@ class TestHttpxInstrumentationConfig(unittest.TestCase):
 
     def test_httpx_in_supported_libraries(self):
         self.assertIn("httpx", _SUPPORTED_INSTRUMENTED_LIBRARIES)
+        self.assertIn("httpx2", _SUPPORTED_INSTRUMENTED_LIBRARIES)
 
     def test_httpx_in_a365_disabled_list(self):
         self.assertIn("httpx", _A365_DISABLED_INSTRUMENTATIONS)
+        self.assertIn("httpx2", _A365_DISABLED_INSTRUMENTATIONS)
 
 
 class TestHttpxInstrumentorLifecycle(unittest.TestCase):

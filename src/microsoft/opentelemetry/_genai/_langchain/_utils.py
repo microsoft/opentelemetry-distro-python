@@ -97,6 +97,8 @@ try:
 except ImportError:
     GEN_AI_AGENT_VERSION = "gen_ai.agent.version"  # type: ignore[misc]
 
+_SERVED_MODEL_HEADERS = ("x-ms-served-model",)
+
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
@@ -264,16 +266,6 @@ LANGCHAIN_THREAD_ID = "thread_id"
 
 
 @stop_on_exception
-def prompts(inputs: Mapping[str, Any] | None) -> Iterator[tuple[str, list[str]]]:
-    if not inputs:
-        return
-    if not isinstance(inputs, Mapping):
-        return
-    if p := inputs.get("prompts"):
-        yield GEN_AI_SYSTEM_INSTRUCTIONS_KEY, p
-
-
-@stop_on_exception
 def input_messages(
     inputs: Mapping[str, Any] | None,
 ) -> Iterator[tuple[str, str]]:
@@ -397,7 +389,9 @@ def output_messages(
 
 
 @stop_on_exception
-def invocation_parameters(run: Run) -> Iterator[tuple[str, AttributeValue]]:  # pylint: disable=too-many-statements
+def invocation_parameters(  # pylint: disable=too-many-statements
+    run: Run, enable_sensitive_data: bool = False
+) -> Iterator[tuple[str, AttributeValue]]:
     if run.run_type.lower() not in ("llm", "chat_model"):
         return
     if not (extra := run.extra):
@@ -437,7 +431,7 @@ def invocation_parameters(run: Run) -> Iterator[tuple[str, AttributeValue]]:  # 
                 tool_list = source.get(source_key, [])
                 if isinstance(tool_list, list):
                     tool_defs.extend(tool_list)
-        if tool_defs:
+        if tool_defs and _should_capture_content_on_spans(enable_sensitive_data):
             yield GEN_AI_TOOL_DEFINITIONS_KEY, safe_json_dumps(tool_defs)
 
         # gen_ai.request.choice_count (OpenAI/Anthropic "n")
@@ -783,6 +777,19 @@ def _iter_generation_response_metadata(outputs: Mapping[str, Any] | None) -> Ite
             yield meta
 
 
+def _served_model_from_outputs(outputs: Mapping[str, Any] | None) -> str | None:
+    """Return the Azure Foundry served-model snapshot from response headers."""
+    for meta in _iter_generation_response_metadata(outputs):
+        headers = meta.get("headers")
+        if not isinstance(headers, Mapping):
+            continue
+        for header_name, header_value in headers.items():
+            if isinstance(header_name, str) and header_name.lower() in _SERVED_MODEL_HEADERS:
+                if isinstance(header_value, str) and header_value.strip():
+                    return str(header_value)
+    return None
+
+
 def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
     if (
         outputs
@@ -794,10 +801,10 @@ def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
         return token_usage
     if outputs and hasattr(outputs, "get") and (top_usage := outputs.get("usage")):
         return top_usage
-    # Fallback for code paths (e.g. OpenAI Responses API in langchain-openai) where
-    # ``llm_output["token_usage"]`` is not populated and usage lives on each
-    # generation's ``message.usage_metadata`` (langchain_core ``UsageMetadata``) or
-    # in ``message.response_metadata.token_usage``.
+    # Fallback for code paths (e.g. OpenAI Responses API in langchain-openai, or
+    # ChatGoogleGenerativeAI) where ``llm_output["token_usage"]`` is not populated
+    # and usage lives on each generation's ``message.usage_metadata``
+    # (langchain_core ``UsageMetadata``) or in ``message.response_metadata``.
     if not isinstance(outputs, Mapping):
         return None
     for generation in _iter_generation_mappings(outputs):
@@ -806,8 +813,6 @@ def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
         gen_info = generation.get("generation_info")
         if isinstance(gen_info, Mapping):
             usage = get_first_value(gen_info, ("token_usage", "usage"))
-            if usage is None:
-                usage = gen_info
 
         message_data = generation.get("message")
         if usage is None:
@@ -831,6 +836,24 @@ def _parse_token_usage(outputs: Mapping[str, Any] | None) -> Any:
     return None
 
 
+def output_has_modern_tool_calls(outputs: Mapping[str, Any] | None) -> bool:
+    """Return True if the run output already carries modern ``tool_calls``."""
+    if not isinstance(outputs, Mapping):
+        return False
+    try:
+        message_kwargs = outputs["generations"][0][0]["message"]["kwargs"]
+    except Exception:
+        return False
+    if not isinstance(message_kwargs, Mapping):
+        return False
+    if message_kwargs.get("tool_calls"):
+        return True
+    additional_kwargs = message_kwargs.get("additional_kwargs")
+    if isinstance(additional_kwargs, Mapping) and additional_kwargs.get("tool_calls"):
+        return True
+    return False
+
+
 @stop_on_exception
 def function_calls(outputs: Mapping[str, Any] | None, enable_sensitive_data: bool = False) -> Iterator[tuple[str, str]]:
     if not outputs:
@@ -848,7 +871,7 @@ def function_calls(outputs: Mapping[str, Any] | None, enable_sensitive_data: boo
     if isinstance(name, str):
         yield GEN_AI_TOOL_NAME_KEY, name
     desc = fc.get("description")
-    if isinstance(desc, str):
+    if isinstance(desc, str) and _should_capture_content_on_spans(enable_sensitive_data):
         yield GEN_AI_TOOL_DESCRIPTION_KEY, desc
     call_id = fc.get("id")
     if isinstance(call_id, str):
@@ -881,7 +904,8 @@ def tools(run: Run, enable_sensitive_data: bool = False) -> Iterator[tuple[str, 
     if name := serialized.get("name"):
         yield GEN_AI_TOOL_NAME_KEY, name
     if description := serialized.get("description"):
-        yield GEN_AI_TOOL_DESCRIPTION_KEY, description
+        if _should_capture_content_on_spans(enable_sensitive_data):
+            yield GEN_AI_TOOL_DESCRIPTION_KEY, description
     if run.extra and hasattr(run.extra, "get"):
         if tool_call_id := run.extra.get("tool_call_id"):
             yield GEN_AI_TOOL_CALL_ID_KEY, tool_call_id
@@ -889,11 +913,12 @@ def tools(run: Run, enable_sensitive_data: bool = False) -> Iterator[tuple[str, 
         if run.inputs and hasattr(run.inputs, "get"):
             _sentinel = object()
             input_val = run.inputs.get("input", _sentinel)
-            if input_val is not _sentinel:
-                if isinstance(input_val, str):
-                    yield GEN_AI_TOOL_ARGS_KEY, input_val
-                else:
-                    yield GEN_AI_TOOL_ARGS_KEY, safe_json_dumps(input_val)
+            if input_val is _sentinel:
+                input_val = run.inputs
+            if isinstance(input_val, str):
+                yield GEN_AI_TOOL_ARGS_KEY, input_val
+            else:
+                yield GEN_AI_TOOL_ARGS_KEY, safe_json_dumps(input_val)
         if run.outputs and hasattr(run.outputs, "get"):
             _sentinel = object()
             result = run.outputs.get("output", _sentinel)
@@ -1054,8 +1079,12 @@ def build_llm_invocation(run: Run) -> LLMInvocation:  # pylint: disable=too-many
                         inv.server_address = normalized_addr
                         break
 
-    # --- Response model name (from llm_output) ---
-    if run.outputs and isinstance(run.outputs, Mapping):
+    # Prefer the real served-model snapshot from the ``x-ms-served-model``
+    # response header (foundry responses protocol) when available.
+    if served_model := _served_model_from_outputs(run.outputs):
+        inv.response_model_name = served_model
+
+    if not inv.response_model_name and run.outputs and isinstance(run.outputs, Mapping):
         llm_output = run.outputs.get("llm_output")
         if llm_output and hasattr(llm_output, "get"):
             for key in ("model_name", "model"):
@@ -1317,6 +1346,25 @@ def _extract_system_instruction(inputs: Mapping[str, Any] | None) -> list[Text]:
             return [Text(content=str(item)) for item in p if item]
         if isinstance(p, str):
             return [Text(content=p)]
+        return []
+    # Messages path: only reached when there are no prompts.
+    multiple_messages = inputs.get("messages")
+    if multiple_messages and isinstance(multiple_messages, Iterable):
+        if isinstance(multiple_messages, list) and multiple_messages:
+            first_item = multiple_messages[0]
+            first_messages = first_item if isinstance(first_item, list) else multiple_messages
+        else:
+            first_messages = next(iter(multiple_messages), None)  # type: ignore[arg-type]
+        if first_messages is not None:
+            if not isinstance(first_messages, list):
+                first_messages = [first_messages]
+            results: list[Text] = []
+            for msg in first_messages:
+                if _normalize_role(_langchain_role(msg)) == "system":
+                    content = _langchain_content(msg)
+                    if content:
+                        results.append(Text(content=content))
+            return results
     return []
 
 
@@ -1326,6 +1374,8 @@ def _extract_structured_input_messages(
     """Convert LangChain input messages to OTel ``InputMessage`` list."""
     if not inputs or not isinstance(inputs, Mapping):
         return []
+
+    route_system_out = not inputs.get("prompts")
     multiple_messages = inputs.get("messages")
     if multiple_messages and isinstance(multiple_messages, Iterable):
         first_messages = next(iter(multiple_messages), None)
@@ -1336,6 +1386,8 @@ def _extract_structured_input_messages(
             results: list[InputMessage] = []
             for msg in first_messages:
                 role = _normalize_role(_langchain_role(msg))
+                if route_system_out and role == "system":
+                    continue
                 parts: list[Any] = []
                 tool_responses = _langchain_tool_responses(msg)
                 if tool_responses:
@@ -1489,6 +1541,21 @@ def _extract_agent_output_messages(
 
 
 # ---- Agent input-history builders (issue #172) -------------------------------
+
+
+def _is_structured_output_run(run: Run) -> bool:
+    """Return True if this LLM/chat run came from ``with_structured_output``."""
+    extra = run.extra
+    if not isinstance(extra, Mapping):
+        return False
+    for container_key in ("options", "invocation_params", "metadata"):
+        container = extra.get(container_key)
+        if isinstance(container, Mapping):
+            if container.get("ls_structured_output_format") is not None:
+                return True
+            if container.get("structured_output_format") is not None:
+                return True
+    return False
 
 
 def _seed_initial_messages(inputs: Mapping[str, Any] | None) -> list[InputMessage]:

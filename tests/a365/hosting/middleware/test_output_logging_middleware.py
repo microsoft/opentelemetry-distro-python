@@ -86,8 +86,6 @@ async def test_output_logging_passes_through_without_recipient():
         conversation=ConversationAccount(id="conv-id"),
         service_url="https://example.com",
     )
-    # Remove recipient so agent details cannot be derived
-    activity.recipient = None
     adapter = MagicMock()
     ctx = TurnContext(adapter, activity)
 

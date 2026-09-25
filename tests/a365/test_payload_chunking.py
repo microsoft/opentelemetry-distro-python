@@ -16,6 +16,10 @@ from opentelemetry.trace import StatusCode
 from microsoft.opentelemetry.a365.core.exporters.agent365_exporter import (
     _Agent365Exporter,
 )
+from microsoft.opentelemetry.a365.core.exporters.durable_delivery import (
+    DeliveryDisposition,
+    DeliveryResult,
+)
 from microsoft.opentelemetry.a365.core.exporters.utils import (
     chunk_by_size,
     estimate_span_bytes,
@@ -188,13 +192,16 @@ class TestExporterChunking(unittest.TestCase):
             token_resolver=self.token_resolver,
             cluster_category="test",
             max_payload_bytes=300_000,
+            enable_durable_delivery=False,
         )
 
         # Each span carries ~200 KB of payload; with a 300 KB chunk limit,
         # 5 spans should yield at least 2 chunks.
         spans = [self._make_span(span_id=i + 1, attribute_size=200_000) for i in range(5)]
 
-        with patch.object(exporter, "_post_with_retries", return_value=True) as mock_post:
+        with patch.object(
+            exporter, "_post_once", return_value=DeliveryResult(DeliveryDisposition.DELIVERED)
+        ) as mock_post:
             result = exporter.export(spans)
 
         self.assertEqual(result, SpanExportResult.SUCCESS)
@@ -217,14 +224,20 @@ class TestExporterChunking(unittest.TestCase):
             token_resolver=self.token_resolver,
             cluster_category="test",
             max_payload_bytes=300_000,
+            enable_durable_delivery=False,
         )
         spans = [self._make_span(span_id=i + 1, attribute_size=200_000) for i in range(5)]
 
-        with patch.object(exporter, "_post_with_retries", return_value=False) as mock_post:
+        # A retryable failure blocks the identity gate; with durable storage
+        # disabled the payload cannot be stored, so the export fails and the
+        # remaining chunks are gated off (persisted-or-dropped, never sent).
+        with patch.object(
+            exporter, "_post_once", return_value=DeliveryResult(DeliveryDisposition.RETRYABLE)
+        ) as mock_post:
             result = exporter.export(spans)
 
         self.assertEqual(result, SpanExportResult.FAILURE)
-        # First chunk fails; remaining chunks must not be sent.
+        # First chunk is sent; the gate blocks the rest, so no further sends.
         self.assertEqual(mock_post.call_count, 1)
 
     @patch.dict("os.environ", {}, clear=True)
@@ -232,10 +245,13 @@ class TestExporterChunking(unittest.TestCase):
         exporter = _Agent365Exporter(
             token_resolver=self.token_resolver,
             cluster_category="test",
+            enable_durable_delivery=False,
         )
         spans = [self._make_span(span_id=1, attribute_size=100)]
 
-        with patch.object(exporter, "_post_with_retries", return_value=True) as mock_post:
+        with patch.object(
+            exporter, "_post_once", return_value=DeliveryResult(DeliveryDisposition.DELIVERED)
+        ) as mock_post:
             result = exporter.export(spans)
 
         self.assertEqual(result, SpanExportResult.SUCCESS)

@@ -197,23 +197,20 @@ class TestLangChainObservabilityPipeline:
 
         # --- 1. Find invoke_agent span ---
         invoke_spans = _find_spans_by_name_prefix(spans, "invoke_agent")
-        assert len(invoke_spans) >= 1, (
-            f"Expected at least 1 invoke_agent span, got: {[s.name for s in spans]}"
-        )
+        assert len(invoke_spans) >= 1, f"Expected at least 1 invoke_agent span, got: {[s.name for s in spans]}"
         invoke_span = invoke_spans[0]
         trace_id = invoke_span.context.trace_id
 
         # --- 2. All spans share the same trace_id ---
         for s in spans:
             assert s.context.trace_id == trace_id, (
-                f"Span '{s.name}' has different trace_id: "
-                f"{s.context.trace_id:032x} vs {trace_id:032x}"
+                f"Span '{s.name}' has different trace_id: " f"{s.context.trace_id:032x} vs {trace_id:032x}"
             )
 
         # --- 3. invoke_agent span is the root ---
-        assert invoke_span.parent is None, (
-            f"invoke_agent should be root but has parent: {invoke_span.parent.span_id:016x}"
-        )
+        assert (
+            invoke_span.parent is None
+        ), f"invoke_agent should be root but has parent: {invoke_span.parent.span_id:016x}"
 
         # --- 4. invoke_agent has correct operation name ---
         assert _get_span_attr(invoke_span, GEN_AI_OPERATION_NAME_KEY) == INVOKE_AGENT_OPERATION_NAME
@@ -233,9 +230,7 @@ class TestLangChainObservabilityPipeline:
             )
             and not s.name.startswith("execute_tool")
         ]
-        assert len(inference_spans) >= 1, (
-            f"Expected at least 1 inference span, got: {[s.name for s in spans]}"
-        )
+        assert len(inference_spans) >= 1, f"Expected at least 1 inference span, got: {[s.name for s in spans]}"
 
         invoke_span_id = invoke_span.context.span_id
         for inf_span in inference_spans:
@@ -334,9 +329,7 @@ class TestLangChainObservabilityPipeline:
 
         # Inference spans are descendants
         inference_spans = [
-            s
-            for s in spans
-            if s != invoke_span and _get_span_attr(s, GEN_AI_INPUT_MESSAGES_KEY) is not None
+            s for s in spans if s != invoke_span and _get_span_attr(s, GEN_AI_INPUT_MESSAGES_KEY) is not None
         ]
         assert len(inference_spans) >= 1
 

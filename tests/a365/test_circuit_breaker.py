@@ -1,8 +1,17 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
+"""Transmission-gate coverage.
+
+The legacy global ``_CircuitBreaker`` was removed in favour of the
+per-identity :class:`TransmissionGate`.  Its half-open / probe behaviour now
+lives on the gate, so the circuit-breaker tests were migrated here to cover the
+gate directly and to verify that the exporter honours it (a blocked identity
+persists instead of sending, and a single probe is admitted once the block
+window elapses).
+"""
+
 import os
-import time
 import unittest
 from unittest.mock import MagicMock, patch
 
@@ -10,113 +19,95 @@ from opentelemetry.sdk.trace.export import SpanExportResult
 from opentelemetry.trace import SpanKind, StatusCode
 
 from microsoft.opentelemetry.a365.core.exporters.agent365_exporter import (
-    DEFAULT_CB_FAILURE_THRESHOLD,
     _Agent365Exporter,
-    _CircuitBreaker,
+)
+from microsoft.opentelemetry.a365.core.exporters.durable_delivery import (
+    DeliveryDisposition,
+    DeliveryResult,
+    IdentityKey,
+    TransmissionGate,
 )
 
-# ---------------------------------------------------------------------------
-# _CircuitBreaker unit tests
-# ---------------------------------------------------------------------------
+
+class FakeClock:
+    """Callable monotonic clock used to drive the gate deterministically."""
+
+    def __init__(self, value: float = 0.0) -> None:
+        self.value = value
+
+    def __call__(self) -> float:
+        return self.value
+
+    def advance(self, seconds: float) -> None:
+        self.value += seconds
 
 
-class TestCircuitBreakerInit(unittest.TestCase):
-    def test_starts_closed(self):
-        cb = _CircuitBreaker()
-        self.assertEqual(cb.state, _CircuitBreaker.CLOSED)
-
-    def test_custom_thresholds(self):
-        cb = _CircuitBreaker(failure_threshold=10, recovery_timeout=60.0)
-        self.assertEqual(cb.state, _CircuitBreaker.CLOSED)
-        self.assertEqual(cb.total_rejected, 0)
-
-
-class TestCircuitBreakerTransitions(unittest.TestCase):
-    def test_stays_closed_below_threshold(self):
-        cb = _CircuitBreaker(failure_threshold=5)
-        for _ in range(4):
-            cb.record_failure()
-        self.assertEqual(cb.state, _CircuitBreaker.CLOSED)
-        self.assertTrue(cb.allow_request())
-
-    def test_opens_at_threshold(self):
-        cb = _CircuitBreaker(failure_threshold=5)
-        for _ in range(5):
-            cb.record_failure()
-        self.assertEqual(cb.state, _CircuitBreaker.OPEN)
-        self.assertFalse(cb.allow_request())
-
-    def test_rejects_when_open(self):
-        cb = _CircuitBreaker(failure_threshold=2)
-        cb.record_failure()
-        cb.record_failure()
-        self.assertFalse(cb.allow_request())
-        self.assertFalse(cb.allow_request())
-        self.assertEqual(cb.total_rejected, 2)
-
-    def test_transitions_to_half_open_after_recovery_timeout(self):
-        cb = _CircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
-        cb.record_failure()
-        self.assertEqual(cb.state, _CircuitBreaker.OPEN)
-        # Simulate recovery timeout elapsing
-        cb._last_failure_time = time.monotonic() - 31.0
-        self.assertEqual(cb.state, _CircuitBreaker.HALF_OPEN)
-        self.assertTrue(cb.allow_request())
-
-    def test_half_open_success_closes(self):
-        cb = _CircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
-        cb.record_failure()
-        cb._last_failure_time = time.monotonic() - 31.0
-        self.assertTrue(cb.allow_request())  # half-open allows probe
-        cb.record_success()
-        self.assertEqual(cb.state, _CircuitBreaker.CLOSED)
-        self.assertTrue(cb.allow_request())
-
-    def test_half_open_failure_reopens(self):
-        cb = _CircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
-        cb.record_failure()
-        cb._last_failure_time = time.monotonic() - 31.0
-        self.assertTrue(cb.allow_request())  # half-open probe
-        cb.record_failure()
-        self.assertEqual(cb.state, _CircuitBreaker.OPEN)
-        self.assertFalse(cb.allow_request())
-
-    def test_half_open_allows_only_one_probe(self):
-        cb = _CircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
-        cb.record_failure()
-        cb._last_failure_time = time.monotonic() - 31.0
-        # First call gets the probe token
-        self.assertTrue(cb.allow_request())
-        # Second call should be rejected while probe is in flight
-        self.assertFalse(cb.allow_request())
-        self.assertEqual(cb.total_rejected, 1)
-
-    def test_success_resets_failure_count(self):
-        cb = _CircuitBreaker(failure_threshold=3)
-        cb.record_failure()
-        cb.record_failure()
-        cb.record_success()
-        # After reset, need 3 more failures to trip
-        cb.record_failure()
-        cb.record_failure()
-        self.assertEqual(cb.state, _CircuitBreaker.CLOSED)
-        cb.record_failure()
-        self.assertEqual(cb.state, _CircuitBreaker.OPEN)
-
-    def test_total_rejected_resets_on_close(self):
-        cb = _CircuitBreaker(failure_threshold=1, recovery_timeout=30.0)
-        cb.record_failure()
-        cb.allow_request()  # rejected
-        cb.allow_request()  # rejected
-        self.assertEqual(cb.total_rejected, 2)
-        cb._last_failure_time = time.monotonic() - 31.0
-        cb.allow_request()  # half-open probe allowed
-        cb.record_success()
-        self.assertEqual(cb.total_rejected, 0)
+KEY = IdentityKey(tenant_id="t1", agent_id="a1", agentic_user_id=None, use_s2s_endpoint=False)
+OTHER_KEY = IdentityKey(tenant_id="t2", agent_id="a2", agentic_user_id=None, use_s2s_endpoint=False)
 
 
 # ---------------------------------------------------------------------------
-# Integration: _Agent365Exporter with circuit breaker
+# TransmissionGate unit tests (half-open probe behaviour).
+# ---------------------------------------------------------------------------
+
+
+class TestTransmissionGate(unittest.TestCase):
+    def _gate(self, clock=None):
+        return TransmissionGate(clock=clock or FakeClock(), random_fn=lambda: 0.0)
+
+    def test_closed_gate_allows_concurrent_sends(self):
+        gate = self._gate()
+        self.assertTrue(gate.try_acquire(KEY))
+        self.assertTrue(gate.try_acquire(KEY))
+
+    def test_blocks_after_retryable_failure(self):
+        clock = FakeClock()
+        gate = self._gate(clock)
+        gate.record_retryable_failure(KEY, retry_after=30)
+        self.assertFalse(gate.try_acquire(KEY))
+
+    def test_allows_single_probe_after_block_window(self):
+        clock = FakeClock()
+        gate = self._gate(clock)
+        gate.record_retryable_failure(KEY, retry_after=30)
+        clock.advance(30)
+        # Exactly one probe is admitted; a concurrent second acquire is refused.
+        self.assertTrue(gate.try_acquire(KEY))
+        self.assertFalse(gate.try_acquire(KEY))
+
+    def test_success_resets_block(self):
+        clock = FakeClock()
+        gate = self._gate(clock)
+        gate.record_retryable_failure(KEY, retry_after=30)
+        clock.advance(30)
+        self.assertTrue(gate.try_acquire(KEY))  # probe
+        gate.record_success(KEY)
+        self.assertTrue(gate.try_acquire(KEY))  # fully reset
+
+    def test_failed_probe_reblocks(self):
+        clock = FakeClock()
+        gate = self._gate(clock)
+        gate.record_retryable_failure(KEY, retry_after=30)
+        clock.advance(30)
+        self.assertTrue(gate.try_acquire(KEY))  # probe admitted
+        gate.record_retryable_failure(KEY, retry_after=30)  # probe failed
+        self.assertFalse(gate.try_acquire(KEY))
+
+    def test_release_probe_allows_reacquire(self):
+        gate = self._gate()
+        self.assertTrue(gate.try_acquire(KEY))
+        gate.release_probe(KEY)
+        self.assertTrue(gate.try_acquire(KEY))
+
+    def test_isolates_identities(self):
+        gate = self._gate()
+        gate.record_retryable_failure(KEY, retry_after=30)
+        self.assertFalse(gate.try_acquire(KEY))
+        self.assertTrue(gate.try_acquire(OTHER_KEY))
+
+
+# ---------------------------------------------------------------------------
+# Exporter integration: the gate governs sending vs. persisting.
 # ---------------------------------------------------------------------------
 
 
@@ -169,218 +160,69 @@ def _make_span(
     return span
 
 
-class TestExporterCircuitBreakerIntegration(unittest.TestCase):
-    """Verify that _Agent365Exporter honours the circuit breaker."""
+class TestExporterGateIntegration(unittest.TestCase):
+    def _make_exporter(self, clock):
+        exporter = _Agent365Exporter(
+            token_resolver=lambda a, t: "token",
+            enable_durable_delivery=False,
+        )
+        exporter._gate = TransmissionGate(clock=clock, random_fn=lambda: 0.0)
+        exporter._storage = MagicMock()
+        exporter._storage.store.return_value = True
+        return exporter
 
     @patch.dict(os.environ, {}, clear=True)
-    def _make_exporter(self):
-        return _Agent365Exporter(token_resolver=lambda a, t: "token")
-
-    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.time.sleep")
-    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.requests.Session")
-    @patch.dict(os.environ, {}, clear=True)
-    def test_circuit_opens_after_consecutive_500s(self, mock_session_cls, mock_sleep):
-        """After DEFAULT_CB_FAILURE_THRESHOLD export cycles all returning 500,
-        subsequent exports should be rejected without HTTP calls."""
-        mock_resp = MagicMock()
-        mock_resp.status_code = 500
-        mock_resp.text = "Internal Server Error"
-        mock_resp.headers = {}
-
-        session_instance = MagicMock()
-        session_instance.post.return_value = mock_resp
-        mock_session_cls.return_value = session_instance
-
-        exporter = self._make_exporter()
-        exporter._session = session_instance
-
+    def test_retryable_blocks_gate_then_subsequent_export_persists_without_send(self):
+        clock = FakeClock()
+        exporter = self._make_exporter(clock)
+        exporter._post_once = MagicMock(return_value=DeliveryResult(DeliveryDisposition.RETRYABLE, 30))
         span = _make_span()
 
-        # Each failed export cycle = 1 circuit breaker failure
-        for _ in range(DEFAULT_CB_FAILURE_THRESHOLD):
-            result = exporter.export([span])
-            self.assertEqual(result, SpanExportResult.FAILURE)
+        # First export: one send, retryable => persisted, gate blocked.
+        self.assertIs(exporter.export([span]), SpanExportResult.SUCCESS)
+        self.assertEqual(exporter._post_once.call_count, 1)
 
-        # Circuit should now be open
-        self.assertEqual(exporter._circuit_breaker.state, _CircuitBreaker.OPEN)
-
-        # Next export should fail immediately without HTTP
-        session_instance.post.reset_mock()
-        result = exporter.export([span])
-        self.assertEqual(result, SpanExportResult.FAILURE)
-        session_instance.post.assert_not_called()
-
+        # Second export while blocked: gate rejects => persisted, no send.
+        exporter._post_once.reset_mock()
+        exporter._storage.store.reset_mock()
+        self.assertIs(exporter.export([span]), SpanExportResult.SUCCESS)
+        exporter._post_once.assert_not_called()
+        exporter._storage.store.assert_called_once()
         exporter.shutdown()
 
-    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.time.sleep")
-    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.requests.Session")
     @patch.dict(os.environ, {}, clear=True)
-    def test_circuit_recovers_after_success(self, mock_session_cls, mock_sleep):
-        """After the circuit opens and recovery timeout elapses, a successful
-        probe should close the circuit."""
-        mock_fail_resp = MagicMock()
-        mock_fail_resp.status_code = 503
-        mock_fail_resp.text = "Service Unavailable"
-        mock_fail_resp.headers = {}
-
-        mock_ok_resp = MagicMock()
-        mock_ok_resp.status_code = 200
-        mock_ok_resp.text = "OK"
-        mock_ok_resp.headers = {}
-
-        session_instance = MagicMock()
-        mock_session_cls.return_value = session_instance
-
-        exporter = self._make_exporter()
-        exporter._session = session_instance
-        exporter._circuit_breaker._recovery_timeout = 30.0
-
+    def test_probe_admitted_after_block_window_elapses(self):
+        clock = FakeClock()
+        exporter = self._make_exporter(clock)
+        exporter._post_once = MagicMock(return_value=DeliveryResult(DeliveryDisposition.RETRYABLE, 30))
         span = _make_span()
 
-        # Trip the circuit
-        session_instance.post.return_value = mock_fail_resp
-        for _ in range(DEFAULT_CB_FAILURE_THRESHOLD):
-            exporter.export([span])
+        exporter.export([span])  # block gate
+        clock.advance(30)
 
-        self.assertEqual(exporter._circuit_breaker.state, _CircuitBreaker.OPEN)
-
-        # Simulate recovery timeout elapsing by backdating _last_failure_time
-        exporter._circuit_breaker._last_failure_time = time.monotonic() - 31.0
-
-        # Next call should be a probe (half-open) — make it succeed
-        session_instance.post.return_value = mock_ok_resp
-        result = exporter.export([span])
-        self.assertEqual(result, SpanExportResult.SUCCESS)
-        self.assertEqual(exporter._circuit_breaker.state, _CircuitBreaker.CLOSED)
-
+        exporter._post_once.reset_mock()
+        exporter._post_once.return_value = DeliveryResult(DeliveryDisposition.DELIVERED)
+        exporter._storage.store.reset_mock()
+        self.assertIs(exporter.export([span]), SpanExportResult.SUCCESS)
+        exporter._post_once.assert_called_once()  # probe sent
+        exporter._storage.store.assert_not_called()  # delivered => no persist
         exporter.shutdown()
 
-    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.time.sleep")
-    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.requests.Session")
     @patch.dict(os.environ, {}, clear=True)
-    def test_circuit_reopens_on_failed_probe(self, mock_session_cls, mock_sleep):
-        """If the half-open probe fails, the circuit re-opens."""
-        mock_fail_resp = MagicMock()
-        mock_fail_resp.status_code = 500
-        mock_fail_resp.text = "Error"
-        mock_fail_resp.headers = {}
+    def test_block_is_isolated_to_failing_identity(self):
+        clock = FakeClock()
+        exporter = self._make_exporter(clock)
+        exporter._post_once = MagicMock(return_value=DeliveryResult(DeliveryDisposition.RETRYABLE, 30))
 
-        session_instance = MagicMock()
-        session_instance.post.return_value = mock_fail_resp
-        mock_session_cls.return_value = session_instance
+        exporter.export([_make_span(tenant_id="t1", agent_id="a1")])  # block a1
 
-        exporter = self._make_exporter()
-        exporter._session = session_instance
-        exporter._circuit_breaker._recovery_timeout = 30.0
-
-        span = _make_span()
-
-        # Trip the circuit
-        for _ in range(DEFAULT_CB_FAILURE_THRESHOLD):
-            exporter.export([span])
-
-        self.assertEqual(exporter._circuit_breaker.state, _CircuitBreaker.OPEN)
-
-        # Simulate recovery timeout elapsing
-        exporter._circuit_breaker._last_failure_time = time.monotonic() - 31.0
-
-        # Probe should fail, re-opening the circuit
-        result = exporter.export([span])
-        self.assertEqual(result, SpanExportResult.FAILURE)
-        self.assertEqual(exporter._circuit_breaker.state, _CircuitBreaker.OPEN)
-
-        exporter.shutdown()
-
-    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.time.sleep")
-    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.requests.Session")
-    @patch.dict(os.environ, {}, clear=True)
-    def test_non_retryable_errors_do_not_trip_circuit(self, mock_session_cls, mock_sleep):
-        """Non-retryable 4xx errors (e.g. 401, 403) should not count toward
-        the circuit breaker threshold — they indicate config problems, not
-        transient endpoint failures."""
-        mock_resp = MagicMock()
-        mock_resp.status_code = 403
-        mock_resp.text = "Forbidden"
-        mock_resp.headers = {}
-
-        session_instance = MagicMock()
-        session_instance.post.return_value = mock_resp
-        mock_session_cls.return_value = session_instance
-
-        exporter = self._make_exporter()
-        exporter._session = session_instance
-
-        span = _make_span()
-
-        # Non-retryable errors should NOT trip the circuit breaker
-        for _ in range(DEFAULT_CB_FAILURE_THRESHOLD + 2):
-            exporter.export([span])
-
-        self.assertEqual(exporter._circuit_breaker.state, _CircuitBreaker.CLOSED)
-        exporter.shutdown()
-
-    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.time.sleep")
-    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.requests.Session")
-    @patch.dict(os.environ, {}, clear=True)
-    def test_network_errors_trip_circuit(self, mock_session_cls, mock_sleep):
-        """Network-level failures (RequestException) count toward the circuit breaker."""
-        import requests as req
-
-        session_instance = MagicMock()
-        session_instance.post.side_effect = req.ConnectionError("connection refused")
-        mock_session_cls.return_value = session_instance
-
-        exporter = self._make_exporter()
-        exporter._session = session_instance
-
-        span = _make_span()
-
-        for _ in range(DEFAULT_CB_FAILURE_THRESHOLD):
-            exporter.export([span])
-
-        self.assertEqual(exporter._circuit_breaker.state, _CircuitBreaker.OPEN)
-        exporter.shutdown()
-
-    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.time.sleep")
-    @patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter.requests.Session")
-    @patch.dict(os.environ, {}, clear=True)
-    def test_success_between_failures_resets_circuit(self, mock_session_cls, mock_sleep):
-        """A successful POST mid-stream should reset the failure counter."""
-        mock_fail_resp = MagicMock()
-        mock_fail_resp.status_code = 500
-        mock_fail_resp.text = "Error"
-        mock_fail_resp.headers = {}
-
-        mock_ok_resp = MagicMock()
-        mock_ok_resp.status_code = 200
-        mock_ok_resp.text = "OK"
-        mock_ok_resp.headers = {}
-
-        session_instance = MagicMock()
-        mock_session_cls.return_value = session_instance
-
-        exporter = self._make_exporter()
-        exporter._session = session_instance
-
-        span = _make_span()
-
-        # Fail 4 times (threshold is 5)
-        session_instance.post.return_value = mock_fail_resp
-        for _ in range(DEFAULT_CB_FAILURE_THRESHOLD - 1):
-            exporter.export([span])
-        self.assertEqual(exporter._circuit_breaker.state, _CircuitBreaker.CLOSED)
-
-        # Succeed once — resets counter
-        session_instance.post.return_value = mock_ok_resp
-        exporter.export([span])
-        self.assertEqual(exporter._circuit_breaker.state, _CircuitBreaker.CLOSED)
-
-        # Fail 4 more times — circuit should still be closed
-        session_instance.post.return_value = mock_fail_resp
-        for _ in range(DEFAULT_CB_FAILURE_THRESHOLD - 1):
-            exporter.export([span])
-        self.assertEqual(exporter._circuit_breaker.state, _CircuitBreaker.CLOSED)
-
+        exporter._post_once.reset_mock()
+        exporter._post_once.return_value = DeliveryResult(DeliveryDisposition.DELIVERED)
+        self.assertIs(
+            exporter.export([_make_span(tenant_id="t2", agent_id="a2")]),
+            SpanExportResult.SUCCESS,
+        )
+        exporter._post_once.assert_called_once()  # a2 unaffected by a1's block
         exporter.shutdown()
 
 

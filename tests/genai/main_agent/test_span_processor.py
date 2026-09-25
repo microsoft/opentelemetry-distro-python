@@ -12,6 +12,7 @@ from microsoft.opentelemetry._constants import (
     GEN_AI_MAIN_AGENT_ID_KEY,
     GEN_AI_MAIN_AGENT_NAME_KEY,
     GEN_AI_MAIN_AGENT_VERSION_KEY,
+    GEN_AI_PROJECT_ID_KEYS,
 )
 from microsoft.opentelemetry._genai.main_agent._processor import (
     GenAIMainAgentSpanProcessor,
@@ -205,3 +206,102 @@ class TestGenAIMainAgentSpanProcessorLifecycle(unittest.TestCase):
         processor = GenAIMainAgentSpanProcessor()
         processor.shutdown()
         self.assertTrue(processor.force_flush())
+
+
+class TestGenAIMainAgentSpanProcessorProjectIdOnStart(unittest.TestCase):
+    """on_start copies Foundry project-id attributes from parent to child."""
+
+    PROJECT_ID = "/subscriptions/sub/resourceGroups/rg/providers/x/projects/p"
+
+    def setUp(self) -> None:
+        self.processor = GenAIMainAgentSpanProcessor()
+        self.span = MagicMock()
+
+    def test_copies_project_id_keys_from_parent(self):
+        parent_attrs = {key: self.PROJECT_ID for key in GEN_AI_PROJECT_ID_KEYS}
+        with patch(
+            "microsoft.opentelemetry._genai.main_agent._processor.trace.get_current_span",
+            return_value=_mock_parent_span(parent_attrs),
+        ):
+            self.processor.on_start(self.span, parent_context=None)
+
+        for key in GEN_AI_PROJECT_ID_KEYS:
+            self.span.set_attribute.assert_any_call(key, self.PROJECT_ID)
+
+    def test_copies_project_id_alongside_main_agent_attrs(self):
+        parent_attrs = {GEN_AI_AGENT_NAME_KEY: "main"}
+        parent_attrs.update({key: self.PROJECT_ID for key in GEN_AI_PROJECT_ID_KEYS})
+        with patch(
+            "microsoft.opentelemetry._genai.main_agent._processor.trace.get_current_span",
+            return_value=_mock_parent_span(parent_attrs),
+        ):
+            self.processor.on_start(self.span, parent_context=None)
+
+        self.span.set_attribute.assert_any_call(GEN_AI_MAIN_AGENT_NAME_KEY, "main")
+        for key in GEN_AI_PROJECT_ID_KEYS:
+            self.span.set_attribute.assert_any_call(key, self.PROJECT_ID)
+
+    def test_no_project_id_keys_when_parent_unstamped(self):
+        with patch(
+            "microsoft.opentelemetry._genai.main_agent._processor.trace.get_current_span",
+            return_value=_mock_parent_span({GEN_AI_AGENT_NAME_KEY: "main"}),
+        ):
+            self.processor.on_start(self.span, parent_context=None)
+
+        for key in GEN_AI_PROJECT_ID_KEYS:
+            for call in self.span.set_attribute.call_args_list:
+                self.assertNotEqual(call.args[0], key)
+
+
+class TestGenAIMainAgentSpanProcessorProjectIdOnEnd(unittest.TestCase):
+    """on_end recovers project-id attributes from the parent when on_start
+    missed them (parent stamped after the child was created)."""
+
+    PROJECT_ID = "/subscriptions/sub/resourceGroups/rg/providers/x/projects/p"
+
+    def setUp(self) -> None:
+        self.processor = GenAIMainAgentSpanProcessor()
+
+    @staticmethod
+    def _make_span(attributes: dict):
+        span = MagicMock()
+        span.attributes = dict(attributes)
+        span.context.span_id = id(span)
+        span._attributes = dict(attributes)
+        return span
+
+    def test_recovers_project_id_from_parent_on_end(self):
+        parent = _mock_parent_span({key: self.PROJECT_ID for key in GEN_AI_PROJECT_ID_KEYS})
+        span = self._make_span({GEN_AI_OPERATION_NAME_KEY: "chat"})
+
+        self.processor._parent_spans[span.context.span_id] = parent
+
+        self.processor.on_end(span)
+
+        for key in GEN_AI_PROJECT_ID_KEYS:
+            self.assertEqual(span._attributes[key], self.PROJECT_ID)
+
+    def test_does_not_overwrite_existing_project_id(self):
+        parent = _mock_parent_span({key: "parent-value" for key in GEN_AI_PROJECT_ID_KEYS})
+        span = self._make_span(
+            {
+                GEN_AI_OPERATION_NAME_KEY: "chat",
+                **{key: self.PROJECT_ID for key in GEN_AI_PROJECT_ID_KEYS},
+            }
+        )
+        self.processor._parent_spans[span.context.span_id] = parent
+
+        self.processor.on_end(span)
+
+        for key in GEN_AI_PROJECT_ID_KEYS:
+            self.assertEqual(span._attributes[key], self.PROJECT_ID)
+
+    def test_no_project_id_when_parent_unstamped(self):
+        parent = _mock_parent_span({GEN_AI_AGENT_NAME_KEY: "main"})
+        span = self._make_span({GEN_AI_OPERATION_NAME_KEY: "chat"})
+        self.processor._parent_spans[span.context.span_id] = parent
+
+        self.processor.on_end(span)
+
+        for key in GEN_AI_PROJECT_ID_KEYS:
+            self.assertNotIn(key, span._attributes)

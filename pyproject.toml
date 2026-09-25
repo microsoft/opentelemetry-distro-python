@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "microsoft-opentelemetry"
-version = "1.3.4"
+version = "1.3.9"
 description = "Minimal template for the Microsoft OpenTelemetry distro for Python"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -23,23 +23,23 @@ classifiers = [
 dependencies = [
     "azure-core<2.0.0,>=1.28.0",
     "azure-core-tracing-opentelemetry~=1.0.0b11",
-    "azure-monitor-opentelemetry-exporter~=1.0.0b53",
-    "opentelemetry-sdk==1.40",
-    "opentelemetry-api==1.40",
-    "opentelemetry-exporter-otlp-proto-http==1.40",
-    "opentelemetry-instrumentation==0.61b0",
-    "opentelemetry-instrumentation-django==0.61b0",
-    "opentelemetry-instrumentation-fastapi==0.61b0",
-    "opentelemetry-instrumentation-flask==0.61b0",
-    "opentelemetry-instrumentation-httpx==0.61b0",
-    "opentelemetry-instrumentation-psycopg2==0.61b0",
-    "opentelemetry-instrumentation-requests==0.61b0",
-    "opentelemetry-instrumentation-urllib==0.61b0",
-    "opentelemetry-instrumentation-urllib3==0.61b0",
-    "opentelemetry-instrumentation-logging==0.61b0",
+    "azure-monitor-opentelemetry-exporter~=1.0.0b57",
+    "opentelemetry-sdk~=1.44.0",
+    "opentelemetry-api~=1.44.0",
+    "opentelemetry-exporter-otlp-proto-http~=1.44.0",
+    "opentelemetry-instrumentation>=0.65b0,<0.66b0",
+    "opentelemetry-instrumentation-django>=0.65b0,<0.66b0",
+    "opentelemetry-instrumentation-fastapi>=0.65b0,<0.66b0",
+    "opentelemetry-instrumentation-flask>=0.65b0,<0.66b0",
+    "opentelemetry-instrumentation-httpx>=0.65b0,<0.66b0",
+    "opentelemetry-instrumentation-psycopg2>=0.65b0,<0.66b0",
+    "opentelemetry-instrumentation-requests>=0.65b0,<0.66b0",
+    "opentelemetry-instrumentation-urllib>=0.65b0,<0.66b0",
+    "opentelemetry-instrumentation-urllib3>=0.65b0,<0.66b0",
+    "opentelemetry-instrumentation-logging>=0.65b0,<0.66b0",
     "opentelemetry-instrumentation-openai-agents-v2==0.1.0",
     "opentelemetry-instrumentation-openai-v2==2.3b0",
-    "opentelemetry-resource-detector-azure<1.0.0,>=0.1.5",
+    "opentelemetry-resource-detector-azure<1.0.0,>=0.2.0",
     "wrapt>=1.0.0,<2.0.0",
     "opentelemetry-util-genai==0.3b0",
     "aiohttp>=3.8.0",
@@ -48,21 +48,11 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-langchain = [
-    "langchain-core>=0.2.0",
-]
 agent-framework = [
     "agent-framework>=1.4.0",
-    # openai 2.45.0 made InputTokensDetails.cache_write_tokens a required field,
-    # which breaks openai-agents (pulled transitively by agent-framework) since it
-    # constructs InputTokensDetails(cached_tokens=0). Cap until openai-agents adds it.
-    "openai>=2.36.0,<2.45.0",
 ]
 openai-agents = [
     "openai-agents>=0.0.7",
-    # See note above: openai 2.45.0's required cache_write_tokens field breaks
-    # openai-agents' InputTokensDetails(cached_tokens=0) construction.
-    "openai>=2.36.0,<2.45.0",
 ]
 hosting = [
     "microsoft-agents-activity>=0.9.0",

@@ -11,6 +11,7 @@ pytest.importorskip("microsoft_agents.hosting.core")
 import threading
 from unittest.mock import AsyncMock, MagicMock
 
+from microsoft_agents.activity import TokenResponse
 from microsoft_agents.hosting.core.app.oauth.authorization import Authorization
 from microsoft_agents.hosting.core.turn_context import TurnContext
 from microsoft.opentelemetry.a365.hosting.token_cache_helpers import (
@@ -48,7 +49,7 @@ async def test_register_and_retrieve_token_success(token_cache, mock_authorizati
     expected_token = "mock-token-xyz"
     scopes = ["https://example.com/.default"]
 
-    mock_authorization.exchange_token.return_value = expected_token
+    mock_authorization.exchange_token.return_value = TokenResponse(token=expected_token)
 
     token_struct = AgenticTokenStruct(
         authorization=mock_authorization,

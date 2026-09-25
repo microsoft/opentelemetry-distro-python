@@ -7,6 +7,8 @@ Span operation names and OpenTelemetry semantic-convention attribute keys
 shared across the Agent365 core scopes and exporters.
 """
 
+from microsoft.opentelemetry.a365.core.inference_operation_type import InferenceOperationType
+
 # --- Span operation names ---
 INVOKE_AGENT_OPERATION_NAME = "invoke_agent"
 EXECUTE_TOOL_OPERATION_NAME = "execute_tool"
@@ -14,12 +16,48 @@ OUTPUT_MESSAGES_OPERATION_NAME = "output_messages"
 CHAT_OPERATION_NAME = "chat"
 APPLY_GUARDRAIL_OPERATION_NAME = "apply_guardrail"
 
+GEN_AI_PROCESSOR_OPERATION_NAMES: frozenset[str] = frozenset(
+    {
+        INVOKE_AGENT_OPERATION_NAME,
+        EXECUTE_TOOL_OPERATION_NAME,
+        OUTPUT_MESSAGES_OPERATION_NAME,
+        CHAT_OPERATION_NAME,
+        APPLY_GUARDRAIL_OPERATION_NAME,
+    }
+    | {operation.value for operation in InferenceOperationType}
+)
+
+# --- Baggage metadata ---
+CUSTOM_KEYS_BAGGAGE_KEY = "_internal.custom_keys"
+
 # --- OpenTelemetry semantic conventions ---
 ERROR_TYPE_KEY = "error.type"
 ERROR_MESSAGE_KEY = "error.message"
 AZ_NAMESPACE_KEY = "az.namespace"
 AZURE_RP_NAMESPACE_VALUE = "Microsoft.CognitiveServices"
 SOURCE_NAME = "Agent365Sdk"
+
+# Identify GenAI spans before instrumentations set ``gen_ai.operation.name``.
+# Scope matching accepts an exact root or dotted child.
+GEN_AI_INSTRUMENTATION_SCOPE_ROOTS: tuple[str, ...] = (
+    SOURCE_NAME,
+    "agent_framework",
+    "semantic_kernel",
+    "microsoft.opentelemetry._genai",
+    "opentelemetry.instrumentation.openai_v2",
+    "opentelemetry.instrumentation.openai_agents",
+)
+
+# Initial names used by supported GenAI instrumentations before span renaming.
+GEN_AI_INITIAL_SPAN_NAMES: frozenset[str] = frozenset(
+    {
+        "chat.completions",
+        "chat.streaming_completions",
+        "text.completions",
+        "text.streaming_completions",
+        "text_completions",
+    }
+)
 
 # --- Feature switches ---
 ENABLE_OPENTELEMETRY_SWITCH = "Azure.Experimental.EnableActivitySource"
@@ -33,8 +71,15 @@ ENABLE_A365_OBSERVABILITY = "ENABLE_A365_OBSERVABILITY"
 GEN_AI_CLIENT_OPERATION_DURATION_METRIC_NAME = "gen_ai.client.operation.duration"
 GEN_AI_CLIENT_TOKEN_USAGE_METRIC_NAME = "gen_ai.client.token.usage"
 GEN_AI_OPERATION_NAME_KEY = "gen_ai.operation.name"
+GEN_AI_DATA_SOURCE_ID_KEY = "gen_ai.data_source.id"
+GEN_AI_OUTPUT_TYPE_KEY = "gen_ai.output.type"
+GEN_AI_REQUEST_CHOICE_COUNT_KEY = "gen_ai.request.choice.count"
+GEN_AI_REQUEST_FREQUENCY_PENALTY_KEY = "gen_ai.request.frequency_penalty"
 GEN_AI_REQUEST_MAX_TOKENS_KEY = "gen_ai.request.max_tokens"
 GEN_AI_REQUEST_MODEL_KEY = "gen_ai.request.model"
+GEN_AI_REQUEST_PRESENCE_PENALTY_KEY = "gen_ai.request.presence_penalty"
+GEN_AI_REQUEST_SEED_KEY = "gen_ai.request.seed"
+GEN_AI_REQUEST_STOP_SEQUENCES_KEY = "gen_ai.request.stop_sequences"
 GEN_AI_REQUEST_TEMPERATURE_KEY = "gen_ai.request.temperature"
 GEN_AI_REQUEST_TOP_P_KEY = "gen_ai.request.top_p"
 GEN_AI_RESPONSE_FINISH_REASONS_KEY = "gen_ai.response.finish_reasons"
@@ -49,6 +94,8 @@ GEN_AI_AGENT_THOUGHT_PROCESS_KEY = "microsoft.a365.agent.thought.process"
 GEN_AI_CONVERSATION_ID_KEY = "gen_ai.conversation.id"
 GEN_AI_CONVERSATION_ITEM_LINK_KEY = "microsoft.conversation.item.link"
 GEN_AI_TOKEN_TYPE_KEY = "gen_ai.token.type"
+GEN_AI_USAGE_CACHE_WRITE_INPUT_TOKENS_KEY = "gen_ai.usage.cache_write.input_tokens"
+GEN_AI_USAGE_CACHE_READ_INPUT_TOKENS_KEY = "gen_ai.usage.cache_read.input_tokens"
 GEN_AI_USAGE_INPUT_TOKENS_KEY = "gen_ai.usage.input_tokens"
 GEN_AI_USAGE_OUTPUT_TOKENS_KEY = "gen_ai.usage.output_tokens"
 GEN_AI_CHOICE = "gen_ai.choice"

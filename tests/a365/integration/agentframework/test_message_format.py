@@ -69,16 +69,10 @@ class TestAgentFrameworkMessageFormat:
         """
         get_tracer_provider().force_flush()
         time.sleep(0.5)
-        return [
-            s
-            for s in distro_exporter.spans
-            if s.attributes and GEN_AI_INPUT_MESSAGES_KEY in s.attributes
-        ]
+        return [s for s in distro_exporter.spans if s.attributes and GEN_AI_INPUT_MESSAGES_KEY in s.attributes]
 
     @pytest.mark.asyncio
-    async def test_simple_chat_message_mapping(
-        self, distro_exporter, chat_client: OpenAIChatClient
-    ) -> None:
+    async def test_simple_chat_message_mapping(self, distro_exporter, chat_client: OpenAIChatClient) -> None:
         """Simple chat: verify exported spans contain structured A365 messages
         after enrichment (no manual mapper call)."""
         agent = RawAgent(
@@ -92,9 +86,7 @@ class TestAgentFrameworkMessageFormat:
         assert len(result.text) > 0
 
         chat_spans = self._find_chat_spans(distro_exporter)
-        assert len(chat_spans) > 0, (
-            f"No chat spans found. All spans: {[s.name for s in distro_exporter.spans]}"
-        )
+        assert len(chat_spans) > 0, f"No chat spans found. All spans: {[s.name for s in distro_exporter.spans]}"
 
         attrs = dict(chat_spans[-1].attributes or {})
 
@@ -132,9 +124,7 @@ class TestAgentFrameworkMessageFormat:
         print(f"\n=== Enriched output ===\n{json.dumps(output_data, indent=2)}")
 
     @pytest.mark.asyncio
-    async def test_tool_call_message_mapping(
-        self, distro_exporter, chat_client: OpenAIChatClient
-    ) -> None:
+    async def test_tool_call_message_mapping(self, distro_exporter, chat_client: OpenAIChatClient) -> None:
         """Tool-calling chat: verify tool_call and tool_call_response parts
         survive enrichment in exported spans."""
         agent = RawAgent(
@@ -170,7 +160,5 @@ class TestAgentFrameworkMessageFormat:
                         part_types.add(part.get("type", ""))
 
         assert "tool_call" in part_types, f"Expected tool_call in exported parts: {part_types}"
-        assert "tool_call_response" in part_types, (
-            f"Expected tool_call_response in exported parts: {part_types}"
-        )
+        assert "tool_call_response" in part_types, f"Expected tool_call_response in exported parts: {part_types}"
         print(f"\n  Exported part types: {part_types}")

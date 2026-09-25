@@ -8,10 +8,12 @@ dist/
 build/
 .venv/
 .worktrees/
+.vscode/
 .env
 .pytest_cache/
 .mypy_cache/
 docs/_build/
 docs/api/
+docs/superpowers/
 *.log
 *_output.txt

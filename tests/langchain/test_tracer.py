@@ -23,7 +23,9 @@ from microsoft.opentelemetry._genai._langchain._utils import (  # noqa: E402  # 
     GEN_AI_OUTPUT_MESSAGES_KEY,
     GEN_AI_PROVIDER_NAME_KEY,
     GEN_AI_REQUEST_CHOICE_COUNT_KEY,
+    GEN_AI_SYSTEM_INSTRUCTIONS_KEY,
     GEN_AI_TOOL_DEFINITIONS_KEY,
+    GEN_AI_TOOL_NAME_KEY,
     INVOKE_AGENT_OPERATION_NAME,
 )
 
@@ -51,6 +53,11 @@ def _make_run(**kwargs):
     return run
 
 
+def _captured_attrs(mock_span):
+    """Return the {key: value} attributes set on a mock span via set_attribute."""
+    return {c.args[0]: c.args[1] for c in mock_span.set_attribute.call_args_list if c.args}
+
+
 def _make_tracer(**kwargs):
     """Create a LangChainTracer with mocked OTel tracer."""
     otel_tracer = MagicMock()
@@ -61,6 +68,7 @@ def _make_tracer(**kwargs):
         kwargs.get("separate_trace", False),
         agent_config=kwargs.get("agent_config", {}),
         event_logger=kwargs.get("event_logger", None),
+        enable_sensitive_data=kwargs.get("enable_sensitive_data", False),
     )
     return tracer, otel_tracer, mock_span
 
@@ -195,6 +203,18 @@ def _node_run(node_name, *, parent_run_id=None, **meta):
     )
 
 
+def _subgraph_body_run(graph_name, node_name, *, parent_run_id=None, **meta):
+    """Build the *body* run of a nested compiled graph (subgraph / compiled
+    agent) invoked as node ``node_name`` inside an outer graph."""
+    metadata = {"langgraph_node": node_name, **meta}
+    return _make_run(
+        run_type="chain",
+        name=graph_name,
+        parent_run_id=parent_run_id or uuid4(),
+        extra={"metadata": metadata},
+    )
+
+
 class TestShouldIgnoreLangGraphNode(TestCase):
     """Guards the suppression rules for genuine LangGraph nodes.  These
     rules decide which framework-internal nodes (``__start__``, middleware,
@@ -267,6 +287,45 @@ class TestShouldIgnoreLangGraphNode(TestCase):
         run = _node_run("model", parent_run_id=uuid4())
         self.assertTrue(self.tracer._should_ignore_langgraph_node(run))
 
+    def test_nested_subgraph_boundary_kept(self):
+        run = _subgraph_body_run("Travel_Assistant", "assistant", parent_run_id=uuid4())
+        self.assertFalse(self.tracer._should_ignore_langgraph_node(run))
+
+
+class TestIsSubgraphBoundary(TestCase):
+    """The ``run.name != langgraph_node`` rule that auto-detects a nested
+    compiled graph (subgraph / compiled agent) invoked as a node inside an
+    outer graph -- the framework-native signal used to emit nested agents
+    without requiring the user to supply metadata."""
+
+    def test_subgraph_body_run_is_boundary(self):
+        run = _subgraph_body_run("Travel_Assistant", "assistant")
+        self.assertTrue(LangChainTracer._is_subgraph_boundary(run))
+
+    def test_task_run_is_not_boundary(self):
+        run = _make_run(
+            run_type="chain",
+            name="model",
+            extra={"metadata": {"langgraph_node": "model"}},
+        )
+        self.assertFalse(LangChainTracer._is_subgraph_boundary(run))
+
+    def test_generic_langgraph_name_is_not_boundary(self):
+        run = _node_run("model", parent_run_id=uuid4())
+        self.assertFalse(LangChainTracer._is_subgraph_boundary(run))
+
+    def test_no_langgraph_node_is_not_boundary(self):
+        run = _make_run(run_type="chain", name="Travel_Assistant")
+        self.assertFalse(LangChainTracer._is_subgraph_boundary(run))
+
+    def test_empty_run_name_is_not_boundary(self):
+        run = _make_run(
+            run_type="chain",
+            name="",
+            extra={"metadata": {"langgraph_node": "assistant"}},
+        )
+        self.assertFalse(LangChainTracer._is_subgraph_boundary(run))
+
 
 # ---- Agent name resolution ---------------------------------------------------
 
@@ -322,6 +381,15 @@ class TestResolveAgentName(TestCase):
             extra={"metadata": {"langgraph_node": "researcher"}},
         )
         self.assertEqual(tracer._resolve_agent_name(run), "researcher")
+
+    def test_subgraph_boundary_resolves_to_graph_name(self):
+        """At a nested subgraph boundary the wrapper ``langgraph_node`` name is
+        skipped and the compiled graph's own ``run.name`` supplies the agent
+        identity (so a nested ``create_agent(name=...)`` renders under its real
+        name, not the outer wrapper node name)."""
+        tracer, _, _ = _make_tracer()
+        run = _subgraph_body_run("Travel_Assistant", "assistant")
+        self.assertEqual(tracer._resolve_agent_name(run), "Travel_Assistant")
 
     def test_langgraph_start_node_skipped(self):
         """The ``__start__`` entrypoint node name is never used as a label;
@@ -534,6 +602,200 @@ class TestStartTrace(TestCase):
             self.assertIs(mock_sic.call_args_list[0][0][0], agent_span)
 
 
+class TestNestedAgentSameNameDedup(TestCase):
+    """A nested agent whose resolved name matches its agent ancestor's is a
+    LangGraph wrapper of the same logical agent (e.g. a ``create_agent``
+    re-invoked as its own node) and must NOT emit a duplicate
+    ``invoke_agent`` span."""
+
+    def _start_agent(self, tracer, otel_tracer, *, name, run_id=None, parent_run_id=None):
+        span = MagicMock(name=f"span-{name}")
+        otel_tracer.start_span.return_value = span
+        run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            id=run_id or uuid4(),
+            parent_run_id=parent_run_id,
+            extra={"metadata": {"agent_name": name}},
+        )
+        tracer._start_trace(run)
+        return run
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_same_name_nested_agent_suppressed(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        parent = self._start_agent(tracer, otel_tracer, name="Travel_Assistant")
+        otel_tracer.start_span.reset_mock()
+
+        child = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            parent_run_id=parent.id,
+            extra={"metadata": {"agent_name": "Travel_Assistant"}},
+        )
+        tracer._start_trace(child)
+
+        otel_tracer.start_span.assert_not_called()
+        self.assertNotIn(child.id, tracer._spans_by_run)
+        self.assertNotIn(child.id, tracer._agent_run_ids)
+        self.assertIn(str(child.id), tracer.run_map)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_same_name_case_insensitive_suppressed(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        parent = self._start_agent(tracer, otel_tracer, name="Travel_Assistant")
+        otel_tracer.start_span.reset_mock()
+
+        child = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            parent_run_id=parent.id,
+            extra={"metadata": {"agent_name": "travel_assistant"}},
+        )
+        tracer._start_trace(child)
+
+        otel_tracer.start_span.assert_not_called()
+        self.assertNotIn(child.id, tracer._spans_by_run)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_different_name_nested_agent_emits_span(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        parent = self._start_agent(tracer, otel_tracer, name="Coordinator")
+
+        child_span = MagicMock(name="child")
+        otel_tracer.start_span.return_value = child_span
+        otel_tracer.start_span.reset_mock()
+
+        child = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            parent_run_id=parent.id,
+            extra={"metadata": {"agent_name": "Travel_Assistant"}},
+        )
+        tracer._start_trace(child)
+
+        otel_tracer.start_span.assert_called_once()
+        self.assertEqual(
+            otel_tracer.start_span.call_args.kwargs["name"],
+            f"{INVOKE_AGENT_OPERATION_NAME} Travel_Assistant",
+        )
+        self.assertIn(child.id, tracer._spans_by_run)
+        self.assertIn(child.id, tracer._agent_run_ids)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_top_level_agent_matching_name_not_suppressed(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer(agent_config={"agent_name": "Travel_Assistant"})
+        run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            parent_run_id=None,
+            extra={"metadata": {"agent_name": "Travel_Assistant"}},
+        )
+        tracer._start_trace(run)
+        otel_tracer.start_span.assert_called_once()
+        self.assertIn(run.id, tracer._spans_by_run)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_unresolvable_ancestor_name_does_not_suppress(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        parent_span = MagicMock(name="parent")
+        otel_tracer.start_span.return_value = parent_span
+        parent = _make_run(run_type="chain", name="LangGraph", parent_run_id=None)
+        tracer._start_trace(parent)
+        self.assertIsNone(tracer._resolve_agent_name(parent, use_config=False))
+
+        child_span = MagicMock(name="child")
+        otel_tracer.start_span.return_value = child_span
+        otel_tracer.start_span.reset_mock()
+        child = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            parent_run_id=parent.id,
+            extra={"metadata": {"agent_name": "Flight_Specialist"}},
+        )
+        tracer._start_trace(child)
+        otel_tracer.start_span.assert_called_once()
+        self.assertIn(child.id, tracer._spans_by_run)
+
+
+class TestNestedSubgraphEmission(TestCase):
+    """End-to-end ``_start_trace`` behaviour for compiled agents auto-detected
+    as nested subgraph boundaries (``run.name != langgraph_node``)"""
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_nested_compiled_agent_emits_span_with_graph_name(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, mock_span = _make_tracer()
+        run = _subgraph_body_run("Travel_Assistant", "assistant", parent_run_id=uuid4())
+        tracer._start_trace(run)
+        otel_tracer.start_span.assert_called_once()
+        span_name = otel_tracer.start_span.call_args.kwargs["name"]
+        self.assertEqual(span_name, f"{INVOKE_AGENT_OPERATION_NAME} Travel_Assistant")
+        mock_span.set_attribute.assert_any_call(GEN_AI_AGENT_NAME_KEY, "Travel_Assistant")  # pylint: disable=no-member
+        self.assertIn(run.id, tracer._spans_by_run)
+        self.assertIn(run.id, tracer._agent_run_ids)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_two_level_nesting_emits_both_agents(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        coordinator_span = MagicMock(name="coordinator")
+        assistant_span = MagicMock(name="assistant")
+        otel_tracer.start_span.side_effect = [coordinator_span, assistant_span]
+
+        # Outer graph invokes the coordinator subgraph as node ``coordinator``.
+        coordinator = _subgraph_body_run("Travel_Coordinator", "coordinator", parent_run_id=uuid4())
+        with patch("microsoft.opentelemetry._genai._langchain._tracer.trace_api.set_span_in_context"):
+            tracer._start_trace(coordinator)
+
+        # Coordinator invokes the assistant subgraph as node ``assistant``.
+        assistant = _subgraph_body_run("Travel_Assistant", "assistant", parent_run_id=coordinator.id)
+        with patch("microsoft.opentelemetry._genai._langchain._tracer.trace_api.set_span_in_context"):
+            tracer._start_trace(assistant)
+
+        self.assertEqual(otel_tracer.start_span.call_count, 2)
+        names = [c.kwargs["name"] for c in otel_tracer.start_span.call_args_list]
+        self.assertEqual(
+            names,
+            [
+                f"{INVOKE_AGENT_OPERATION_NAME} Travel_Coordinator",
+                f"{INVOKE_AGENT_OPERATION_NAME} Travel_Assistant",
+            ],
+        )
+        self.assertIn(coordinator.id, tracer._agent_run_ids)
+        self.assertIn(assistant.id, tracer._agent_run_ids)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_internal_node_of_nested_agent_is_suppressed(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        agent_span = MagicMock(name="agent")
+        otel_tracer.start_span.side_effect = [agent_span]
+
+        agent = _subgraph_body_run("Travel_Assistant", "assistant", parent_run_id=uuid4())
+        with patch("microsoft.opentelemetry._genai._langchain._tracer.trace_api.set_span_in_context"):
+            tracer._start_trace(agent)
+        otel_tracer.start_span.reset_mock()
+
+        # The agent's internal model node: run.name == langgraph_node -> not a
+        # boundary, no explicit identity -> suppressed.
+        model_node = _make_run(
+            run_type="chain",
+            name="model",
+            parent_run_id=agent.id,
+            extra={"metadata": {"langgraph_node": "model"}},
+        )
+        tracer._start_trace(model_node)
+        otel_tracer.start_span.assert_not_called()
+        self.assertNotIn(model_node.id, tracer._spans_by_run)
+        self.assertIn(str(model_node.id), tracer.run_map)
+
+
 class TestEndTrace(TestCase):
     @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
     def test_ends_span(self, mock_ctx):
@@ -673,6 +935,289 @@ class TestUpdateSpan(TestCase):
 
         self.assertEqual(merged_attrs.get(GEN_AI_PROVIDER_NAME_KEY), "openai")
         self.assertEqual(merged_attrs.get(GEN_AI_REQUEST_CHOICE_COUNT_KEY), 2)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer._should_capture_content_on_spans", return_value=True)
+    def test_llm_span_sets_messages_when_content_capture_enabled(self, _mock_capture):
+        from langchain_core.messages import HumanMessage
+
+        span = MagicMock()
+        run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            inputs={"messages": [[HumanMessage(content="hi")]]},
+            outputs={
+                "llm_output": {"model_name": "gpt-4o"},
+                "generations": [[{"message": {"content": "hello there"}}]],
+            },
+            extra=None,
+        )
+
+        _update_span(span, run, enable_sensitive_data=True)
+
+        calls = getattr(span.set_attribute, "call_args_list")
+        set_attr_keys = {call.args[0] for call in calls if call.args}
+        self.assertIn(GEN_AI_INPUT_MESSAGES_KEY, set_attr_keys)
+        self.assertIn(GEN_AI_OUTPUT_MESSAGES_KEY, set_attr_keys)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer._should_capture_content_on_spans", return_value=False)
+    def test_llm_span_skips_messages_when_content_capture_disabled(self, _mock_capture):
+        from langchain_core.messages import HumanMessage
+
+        span = MagicMock()
+        run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            inputs={"messages": [[HumanMessage(content="hi")]]},
+            outputs={
+                "llm_output": {"model_name": "gpt-4o"},
+                "generations": [[{"message": {"content": "hello there"}}]],
+            },
+            extra=None,
+        )
+
+        _update_span(span, run, enable_sensitive_data=False)
+
+        calls = getattr(span.set_attribute, "call_args_list")
+        set_attr_keys = {call.args[0] for call in calls if call.args}
+        self.assertNotIn(GEN_AI_INPUT_MESSAGES_KEY, set_attr_keys)
+        self.assertNotIn(GEN_AI_OUTPUT_MESSAGES_KEY, set_attr_keys)
+
+
+# ---- System instructions gating (LLM span) -----------------------------------
+
+
+def _system_run():
+    """A chat_model run carrying a SystemMessage in its inputs."""
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    return _make_run(
+        run_type="chat_model",
+        name="gpt-4o",
+        inputs={
+            "messages": [
+                [
+                    SystemMessage(content="You are a helpful assistant."),
+                    HumanMessage(content="hi"),
+                ]
+            ]
+        },
+        outputs={
+            "llm_output": {"model_name": "gpt-4o"},
+            "generations": [[{"message": {"content": "hello there"}}]],
+        },
+        extra=None,
+    )
+
+
+class TestUpdateSpanSystemInstructions(TestCase):
+    """``gen_ai.system_instructions`` must follow the same content-capture
+    gate as input/output messages: emitted only when
+    ``enable_sensitive_data`` is set OR the upstream env-var mode enables it."""
+
+    def _keys_set(self, span):
+        return {call.args[0] for call in span.set_attribute.call_args_list if call.args}
+
+    def test_emitted_when_enable_sensitive_data_true(self):
+        span = MagicMock()
+        _update_span(span, _system_run(), enable_sensitive_data=True)
+        self.assertIn(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, self._keys_set(span))
+
+    def test_not_emitted_when_no_gate(self):
+        """enable_sensitive_data=False and non-experimental mode => skipped."""
+        span = MagicMock()
+        with patch(
+            "microsoft.opentelemetry._genai._langchain._utils.is_experimental_mode",
+            return_value=False,
+        ):
+            _update_span(span, _system_run(), enable_sensitive_data=False)
+        self.assertNotIn(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, self._keys_set(span))
+
+    def test_emitted_when_env_vars_enable_content_capture(self):
+        """enable_sensitive_data=False but experimental mode + SPAN content
+        capturing (the two upstream env vars) => emitted."""
+        from opentelemetry.util.genai.utils import ContentCapturingMode
+
+        span = MagicMock()
+        with (
+            patch(
+                "microsoft.opentelemetry._genai._langchain._utils.is_experimental_mode",
+                return_value=True,
+            ),
+            patch(
+                "microsoft.opentelemetry._genai._langchain._utils.get_content_capturing_mode",
+                return_value=ContentCapturingMode.SPAN_ONLY,
+            ),
+        ):
+            _update_span(span, _system_run(), enable_sensitive_data=False)
+        self.assertIn(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, self._keys_set(span))
+
+    def test_not_emitted_when_env_vars_disable_content_capture(self):
+        """Experimental mode on but content mode NO_CONTENT => skipped."""
+        from opentelemetry.util.genai.utils import ContentCapturingMode
+
+        span = MagicMock()
+        with (
+            patch(
+                "microsoft.opentelemetry._genai._langchain._utils.is_experimental_mode",
+                return_value=True,
+            ),
+            patch(
+                "microsoft.opentelemetry._genai._langchain._utils.get_content_capturing_mode",
+                return_value=ContentCapturingMode.NO_CONTENT,
+            ),
+        ):
+            _update_span(span, _system_run(), enable_sensitive_data=False)
+        self.assertNotIn(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, self._keys_set(span))
+
+    def test_serialized_shape_is_content_first_text_part(self):
+        """Matches the reference util-genai serialization (plain asdict):
+        ``[{"content": "...", "type": "text"}]``."""
+        import json
+
+        span = MagicMock()
+        _update_span(span, _system_run(), enable_sensitive_data=True)
+        attrs = _captured_attrs(span)
+        parts = json.loads(attrs[GEN_AI_SYSTEM_INSTRUCTIONS_KEY])
+        self.assertEqual(parts, [{"content": "You are a helpful assistant.", "type": "text"}])
+
+    def test_prompts_input_serialized_as_structured_parts_not_raw_list(self):
+        """Regression (PR #232): a chat_model run whose inputs use the flat
+        ``prompts`` field must emit ``gen_ai.system_instructions`` as the
+        structured content-first JSON, never the raw LangChain prompts list."""
+        import json
+
+        run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            inputs={"prompts": ["You are a helpful assistant."]},
+            outputs={
+                "llm_output": {"model_name": "gpt-4o"},
+                "generations": [[{"message": {"content": "hi"}}]],
+            },
+            extra=None,
+        )
+        span = MagicMock()
+        _update_span(span, run, enable_sensitive_data=True)
+        attrs = _captured_attrs(span)
+        value = attrs[GEN_AI_SYSTEM_INSTRUCTIONS_KEY]
+        # Must be serialized structured parts, not a raw Python list of strings.
+        self.assertIsInstance(value, str)
+        parts = json.loads(value)
+        self.assertEqual(parts, [{"content": "You are a helpful assistant.", "type": "text"}])
+
+
+# ---- _update_span function_call / tool_calls guard ---------------------------
+
+
+class TestUpdateSpanFunctionCallGuard(TestCase):
+    """Verify the legacy ``function_call`` guard on the chat/LLM span.
+
+    Only the legacy singular ``additional_kwargs.function_call`` is suppressed
+    (and only when modern plural ``tool_calls`` are present). The other extras
+    (``invocation_parameters``, ``metadata``) must always be
+    carried forward regardless of the guard.
+    """
+
+    _EXTRA = {"invocation_params": {"use_responses_api": True, "model": "gpt-4o"}}
+
+    @staticmethod
+    def _merged_attrs(span):
+        merged = {}
+        for call in span.set_attributes.call_args_list:
+            if call.args and isinstance(call.args[0], dict):
+                merged.update(call.args[0])
+        return merged
+
+    def _run_with(self, message_kwargs):
+        return _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            extra=self._EXTRA,
+            inputs=None,
+            outputs={"generations": [[{"message": {"kwargs": message_kwargs}}]]},
+        )
+
+    def test_both_present_suppresses_legacy_but_keeps_extras(self):
+        span = MagicMock()
+        run = self._run_with(
+            {
+                "content": "",
+                "additional_kwargs": {"function_call": {"name": "get_population", "arguments": '{"city":"Paris"}'}},
+                "tool_calls": [{"name": "get_population", "args": {"city": "Paris"}, "id": "1"}],
+            }
+        )
+
+        _update_span(span, run, enable_sensitive_data=True)
+
+        merged = self._merged_attrs(span)
+
+        self.assertNotIn(GEN_AI_TOOL_NAME_KEY, merged)
+
+        self.assertEqual(merged.get(GEN_AI_PROVIDER_NAME_KEY), "openai")
+
+    def test_legacy_only_emits_tool_attributes(self):
+        span = MagicMock()
+        run = self._run_with(
+            {
+                "content": "",
+                "additional_kwargs": {"function_call": {"name": "get_population", "arguments": '{"city":"Paris"}'}},
+            }
+        )
+
+        _update_span(span, run, enable_sensitive_data=True)
+
+        merged = self._merged_attrs(span)
+
+        self.assertEqual(merged.get(GEN_AI_TOOL_NAME_KEY), "get_population")
+
+        self.assertEqual(merged.get(GEN_AI_PROVIDER_NAME_KEY), "openai")
+
+    def test_child_llm_emits_tool_definitions_when_sensitive_data_enabled(self):
+        """The agent wrapper aggregates tool definitions, but the child LLM
+        span must retain the same opted-in attribute as well."""
+        span = MagicMock()
+        run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            extra={
+                "invocation_params": {
+                    "model": "gpt-4o",
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {"name": "get_weather", "parameters": {}},
+                        }
+                    ],
+                }
+            },
+            inputs=None,
+            outputs={"generations": [[{"message": {"kwargs": {"content": "Sunny."}}}]]},
+        )
+
+        _update_span(span, run, enable_sensitive_data=True)
+
+        self.assertIn(
+            "get_weather",
+            self._merged_attrs(span)[GEN_AI_TOOL_DEFINITIONS_KEY],
+        )
+
+    def test_modern_only_no_tool_leak_and_keeps_extras(self):
+        """Modern OpenAI/Anthropic case: only tool_calls -> no gen_ai.tool.*."""
+        span = MagicMock()
+        run = self._run_with(
+            {
+                "content": "",
+                "tool_calls": [{"name": "get_population", "args": {"city": "Paris"}, "id": "1"}],
+            }
+        )
+
+        _update_span(span, run, enable_sensitive_data=True)
+
+        merged = self._merged_attrs(span)
+
+        self.assertNotIn(GEN_AI_TOOL_NAME_KEY, merged)
+
+        self.assertEqual(merged.get(GEN_AI_PROVIDER_NAME_KEY), "openai")
 
 
 # ---- Aggregation -------------------------------------------------------------
@@ -1073,11 +1618,148 @@ class TestAggregateInputMessagesLastWins(TestCase):
         self.assertEqual(content["pending_assistant"][0].role, "assistant")
 
 
+class TestAggregateExcludesStructuredOutput(TestCase):
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_structured_output_llm_excluded_from_transcript(self, mock_ctx):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        wrapper = MagicMock()
+        inner = MagicMock()
+        otel_tracer.start_span.side_effect = [wrapper, inner]
+
+        agent_run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            inputs={"messages": [{"role": "user", "content": "What is 2+2?"}]},
+        )
+        tracer.run_map[str(agent_run.id)] = agent_run
+        tracer._start_trace(agent_run)
+
+        triage_llm = _make_run(
+            run_type="chat_model",
+            name="gpt-4.1",
+            parent_run_id=agent_run.id,
+            inputs={"prompts": ["System: route this\nHuman: What is 2+2?"]},
+            extra={
+                "options": {
+                    "ls_structured_output_format": {
+                        "kwargs": {"method": "json_schema"},
+                        "schema": {"type": "object"},
+                    }
+                }
+            },
+            outputs={
+                "generations": [
+                    [
+                        {
+                            "text": '{"destination":"math"}',
+                            "message": {
+                                "id": ["langchain", "schema", "messages", "AIMessage"],
+                                "kwargs": {
+                                    "content": '{"destination":"math"}',
+                                    "type": "ai",
+                                },
+                            },
+                        }
+                    ]
+                ]
+            },
+        )
+        tracer.run_map[str(triage_llm.id)] = triage_llm
+        tracer._aggregate_into_parent(triage_llm)
+
+        answer_llm = _make_run(
+            run_type="chat_model",
+            name="gpt-4.1",
+            parent_run_id=agent_run.id,
+            inputs={"prompts": ["Human: What is 2+2?"]},
+            extra=None,
+            outputs={
+                "generations": [
+                    [
+                        {
+                            "text": "4",
+                            "message": {
+                                "id": ["langchain", "schema", "messages", "AIMessage"],
+                                "kwargs": {"content": "4", "type": "ai"},
+                            },
+                        }
+                    ]
+                ]
+            },
+        )
+        tracer.run_map[str(answer_llm.id)] = answer_llm
+        tracer._aggregate_into_parent(answer_llm)
+
+        content = tracer._agent_content[agent_run.id]
+
+        roles = [m.role for m in content["input_messages"]]
+        self.assertEqual(roles, ["user"])
+        transcript_text = "".join(
+            part.content for m in content["input_messages"] for part in m.parts if getattr(part, "content", None)
+        )
+        self.assertNotIn("destination", transcript_text)
+        self.assertIsNotNone(content["pending_assistant"])
+        self.assertEqual(content["pending_assistant"][0].role, "assistant")
+
+
 class TestAggregateToolDefinitions(TestCase):
     """Aggregate gen_ai.tool.definitions from LLM children onto the wrapper."""
 
+    @staticmethod
+    def _all_attributes(span):
+        """Merge attributes applied through either OTel setter method."""
+        attributes = _captured_attrs(span)
+        for call in span.set_attributes.call_args_list:
+            if call.args and isinstance(call.args[0], dict):
+                attributes.update(call.args[0])
+        return attributes
+
     @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
-    def test_captures_tool_definitions_from_invocation_params(self, mock_ctx):
+    def test_sensitive_data_emits_tool_definitions_on_agent_and_llm_spans(self, mock_ctx):
+        """A single opted-in run must place tool definitions on the LLM span
+        and on the agent span that aggregates its children."""
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer(enable_sensitive_data=True)
+        agent_span = MagicMock(name="agent")
+        llm_span = MagicMock(name="llm")
+        otel_tracer.start_span.side_effect = [agent_span, llm_span]
+
+        agent_run = _make_run(run_type="chain", name="LangGraph")
+        tracer._start_trace(agent_run)
+        llm_run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            parent_run_id=agent_run.id,
+            extra={
+                "invocation_params": {
+                    "model": "gpt-4o",
+                    "tools": [
+                        {
+                            "type": "function",
+                            "function": {"name": "get_weather", "parameters": {}},
+                        }
+                    ],
+                }
+            },
+            inputs=None,
+            outputs={"generations": [[{"message": {"kwargs": {"content": "Sunny."}}}]]},
+        )
+        tracer._start_trace(llm_run)
+        tracer._end_trace(llm_run)
+        tracer._end_trace(agent_run)
+
+        for span in (agent_span, llm_span):
+            attributes = self._all_attributes(span)
+            self.assertIn(GEN_AI_TOOL_DEFINITIONS_KEY, attributes)
+            self.assertIn("get_weather", attributes[GEN_AI_TOOL_DEFINITIONS_KEY])
+
+    @patch(
+        "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
+        return_value=True,
+    )
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_captures_tool_definitions_from_invocation_params(self, mock_ctx, _mock_capture):
         mock_ctx.get_value.return_value = None
         tracer, otel_tracer, _ = _make_tracer()
         wrapper = MagicMock()
@@ -1112,15 +1794,59 @@ class TestAggregateToolDefinitions(TestCase):
         self.assertIn("tool_definitions", content)
         self.assertIn("get_weather", content["tool_definitions"])
 
+    @patch(
+        "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
+        return_value=False,
+    )
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_omits_tool_definitions_when_content_capture_disabled(self, mock_ctx, _mock_capture):
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer()
+        wrapper = MagicMock()
+        inner = MagicMock()
+        otel_tracer.start_span.side_effect = [wrapper, inner]
+
+        agent_run = _make_run(run_type="chain", name="LangGraph")
+        tracer._start_trace(agent_run)
+
+        tool_defs = [
+            {
+                "type": "function",
+                "function": {
+                    "name": "get_weather",
+                    "description": "Get weather",
+                    "parameters": {"type": "object", "properties": {"location": {"type": "string"}}},
+                },
+            }
+        ]
+        llm_run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            parent_run_id=agent_run.id,
+            extra={"invocation_params": {"model": "gpt-4o", "tools": tool_defs}},
+            outputs={"generations": []},
+            inputs=None,
+        )
+        tracer.run_map[str(llm_run.id)] = llm_run
+        tracer._aggregate_into_parent(llm_run)
+
+        content = tracer._agent_content[agent_run.id]
+        # Tool definitions must not leak into agent content when capture is off.
+        self.assertNotIn("tool_definitions", content)
+
 
 class TestFinalizeAgentSpanAttributes(TestCase):
     """End-to-end finalize: assert the wrapper invoke_agent span actually
     receives ``gen_ai.input.messages``, ``gen_ai.output.messages``, and
     ``gen_ai.tool.definitions`` attributes with the correct shape."""
 
+    @patch(
+        "microsoft.opentelemetry._genai._langchain._utils._should_capture_content_on_spans",
+        return_value=True,
+    )
     @patch("microsoft.opentelemetry._genai._langchain._tracer._should_capture_content_on_spans")
     @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
-    def test_finalize_writes_input_output_and_tool_definitions(self, mock_ctx, mock_capture):
+    def test_finalize_writes_input_output_and_tool_definitions(self, mock_ctx, mock_capture, _mock_utils_capture):
         import json
 
         mock_ctx.get_value.return_value = None
@@ -1258,6 +1984,111 @@ class TestFinalizeAgentSpanAttributes(TestCase):
         # Tool definitions preserved on the wrapper span.
         tool_defs_attr = attrs[GEN_AI_TOOL_DEFINITIONS_KEY]
         self.assertIn("get_weather", str(tool_defs_attr))
+
+
+class TestFinalizeAgentSpanSystemInstructions(TestCase):
+    """``gen_ai.system_instructions`` on the invoke_agent span follows the
+    same content-capture gate (``enable_sensitive_data`` OR the upstream
+    env-var mode) and is sourced from the agent's first real LLM child."""
+
+    def _finalize_with_system(self, mock_ctx, *, enable_sensitive_data):
+        """Drive an agent run with one LLM child that carries a SystemMessage,
+        then finalize and return the attributes set on the wrapper span."""
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        mock_ctx.get_value.return_value = None
+        tracer, otel_tracer, _ = _make_tracer(enable_sensitive_data=enable_sensitive_data)
+        wrapper = MagicMock()
+        inner = MagicMock()
+        otel_tracer.start_span.side_effect = [wrapper, inner]
+
+        agent_run = _make_run(
+            run_type="chain",
+            name="LangGraph",
+            inputs={"messages": [("human", "hi")]},
+            outputs={"messages": []},
+        )
+        tracer.run_map[str(agent_run.id)] = agent_run
+        tracer._start_trace(agent_run)
+
+        llm_run = _make_run(
+            run_type="chat_model",
+            name="gpt-4o",
+            parent_run_id=agent_run.id,
+            inputs={
+                "messages": [
+                    [
+                        SystemMessage(content="You are a helpful travel assistant."),
+                        HumanMessage(content="hi"),
+                    ]
+                ]
+            },
+            outputs={
+                "llm_output": {"model_name": "gpt-4o"},
+                "generations": [[{"message": {"content": "hello"}}]],
+            },
+            extra=None,
+        )
+        tracer.run_map[str(llm_run.id)] = llm_run
+        tracer._aggregate_into_parent(llm_run)
+
+        tracer._finalize_agent_span(wrapper, agent_run)
+        return _captured_attrs(wrapper)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_emitted_when_enable_sensitive_data_true(self, mock_ctx):
+        import json
+
+        attrs = self._finalize_with_system(mock_ctx, enable_sensitive_data=True)
+        self.assertIn(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, attrs)
+        parts = json.loads(attrs[GEN_AI_SYSTEM_INSTRUCTIONS_KEY])
+        self.assertEqual(
+            parts,
+            [{"content": "You are a helpful travel assistant.", "type": "text"}],
+        )
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_not_emitted_when_no_gate(self, mock_ctx):
+        with patch(
+            "microsoft.opentelemetry._genai._langchain._utils.is_experimental_mode",
+            return_value=False,
+        ):
+            attrs = self._finalize_with_system(mock_ctx, enable_sensitive_data=False)
+        self.assertNotIn(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, attrs)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_emitted_when_env_vars_enable_content_capture(self, mock_ctx):
+        from opentelemetry.util.genai.utils import ContentCapturingMode
+
+        with (
+            patch(
+                "microsoft.opentelemetry._genai._langchain._utils.is_experimental_mode",
+                return_value=True,
+            ),
+            patch(
+                "microsoft.opentelemetry._genai._langchain._utils.get_content_capturing_mode",
+                return_value=ContentCapturingMode.SPAN_ONLY,
+            ),
+        ):
+            attrs = self._finalize_with_system(mock_ctx, enable_sensitive_data=False)
+        self.assertIn(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, attrs)
+
+    @patch("microsoft.opentelemetry._genai._langchain._tracer.context_api")
+    def test_not_emitted_when_env_vars_disable_content_capture(self, mock_ctx):
+        from opentelemetry.util.genai.utils import ContentCapturingMode
+
+        with (
+            patch(
+                "microsoft.opentelemetry._genai._langchain._utils.is_experimental_mode",
+                return_value=True,
+            ),
+            patch(
+                "microsoft.opentelemetry._genai._langchain._utils.get_content_capturing_mode",
+                return_value=ContentCapturingMode.NO_CONTENT,
+            ),
+        ):
+            attrs = self._finalize_with_system(mock_ctx, enable_sensitive_data=False)
+        self.assertNotIn(GEN_AI_SYSTEM_INSTRUCTIONS_KEY, attrs)
 
 
 class TestExtractAgentInputMessagesToolRole(TestCase):

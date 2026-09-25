@@ -1,0 +1,17 @@
+# Pre-commit hooks for local development.
+#
+# Install once:
+#   pip install pre-commit
+#   pre-commit install
+#
+# After that, `git commit` automatically runs Black. If Black reformats any
+# file, the commit is aborted and the reformatted files are left in your
+# working tree as unstaged changes -- review them, `git add`, and commit again.
+repos:
+  - repo: https://github.com/psf/black
+    rev: 24.10.0
+    hooks:
+      - id: black
+        language_version: python3
+        # Match the paths the tox `black` env targets.
+        files: ^(src|tests|samples)/

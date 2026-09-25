@@ -59,11 +59,7 @@ class TestLangChainMessageFormat:
         """Find exported spans that have gen_ai.input.messages."""
         get_tracer_provider().force_flush()
         time.sleep(0.5)
-        return [
-            s
-            for s in distro_exporter.spans
-            if s.attributes and GEN_AI_INPUT_MESSAGES_KEY in s.attributes
-        ]
+        return [s for s in distro_exporter.spans if s.attributes and GEN_AI_INPUT_MESSAGES_KEY in s.attributes]
 
     @pytest.mark.asyncio
     async def test_simple_chat_message_mapping(
@@ -82,9 +78,7 @@ class TestLangChainMessageFormat:
         assert len(result.content) > 0
 
         chat_spans = self._find_chat_spans(distro_exporter)
-        assert len(chat_spans) > 0, (
-            f"No chat spans found. All spans: {[s.name for s in distro_exporter.spans]}"
-        )
+        assert len(chat_spans) > 0, f"No chat spans found. All spans: {[s.name for s in distro_exporter.spans]}"
 
         print(f"\n=== All exported spans ({len(distro_exporter.spans)}) ===")
         for s in distro_exporter.spans:
@@ -123,9 +117,7 @@ class TestLangChainMessageFormat:
                     for part in item.get("parts", []):
                         if isinstance(part, dict) and "content" in part:
                             flat_text += part["content"].lower()
-            assert "capital" in flat_text, (
-                f"Expected 'capital' in input messages content, got: {input_data}"
-            )
+            assert "capital" in flat_text, f"Expected 'capital' in input messages content, got: {input_data}"
             print("\n  → List format (pre-mapper)")
 
         # --- Output messages ---

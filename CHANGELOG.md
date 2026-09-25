@@ -1,4 +1,107 @@
 # Release History
+# Unreleased
+### Features Added
+- Add typed Agent365 execute-tool argument and result schema models with `schema_version: "1.0"` serialization,
+  `ToolCallAction`/`ToolCallOutcomeStatus`/`ToolPolicyDecision` enums, provider extension data wrapped under
+  the JSON `metadata` property, public exports, and `ExecuteToolScope` support while preserving raw
+  dict/string payloads. Execute-tool payload serialization is non-throwing: unserializable payloads record
+  `{"serialization_error": "Failed to serialize execute tool payload."}` instead of failing the span.
+- Add explicit custom baggage APIs and propagate opted-in attributes to supported GenAI spans, including unmodeled operations. ([#264](https://github.com/microsoft/opentelemetry-distro-python/pull/264))
+- Add Python-native `InvokeAgentScope` request and response parameter models
+  that emit OpenTelemetry GenAI semantic attributes, including structured
+  system instructions and cache read/write token counts, introduced by .NET
+  PR #120.
+- Remove optional dependency for langchain-core and document guidance for installation
+  ([#269](https://github.com/microsoft/opentelemetry-distro-python/pull/269))
+
+### Bugs Fixed
+- Restrict A365 identity and baggage enrichment to recognized GenAI spans while preserving supported span-start signals. ([#265](https://github.com/microsoft/opentelemetry-distro-python/pull/265))
+- Preserve existing span attributes when recording custom scope attributes. ([#266](https://github.com/microsoft/opentelemetry-distro-python/pull/266))
+
+# 1.3.9 (2026-09-09)
+### Features Added
+- Update OpenTelemetry dependencies to latest versions, bump `langchain-core` minimum version to address S360, and support the new `httpx2` entry point exposed by `opentelemetry-instrumentation-httpx`.
+  ([#254](https://github.com/microsoft/opentelemetry-distro-python/pull/254))
+- Add independent dependency checks for the `httpx` and `httpx2` instrumentation entry points.
+  ([#259](https://github.com/microsoft/opentelemetry-distro-python/pull/259))
+- Update NOTICE to include the license declarations for external packages flagged in MPL review.
+  ([#255](https://github.com/microsoft/opentelemetry-distro-python/pull/255))
+# 1.3.8 (2026-08-20)
+### Features Added
+- Add support for agent identity propagation for compiled agents in nested graph
+  ([#245](https://github.com/microsoft/opentelemetry-distro-python/pull/245))
+- Add samples and documentation for LangChain special scenarios, including Foundry Responses API and nested graphs
+  ([#249](https://github.com/microsoft/opentelemetry-distro-python/pull/249))
+- Expose A365 offline storage options: `a365_exporter_disable_offline_storage` (default `False`)
+  and `a365_exporter_storage_directory` (default `None`) on `use_microsoft_opentelemetry`,
+  `Agent365ExporterOptions`, and `create_a365_components`.
+  When `a365_enable_observability_exporter=True`, the exporter provides at-least-once delivery
+  by persisting failed payloads to disk (up to 2 days / 50 MB) and replaying them on recovery.
+  Set `a365_exporter_disable_offline_storage=True` to opt out.
+  Stored payloads are unencrypted; restrict the storage path to the service account, especially
+  when `enable_sensitive_data=True` (payloads may contain prompts or completions).
+  Replay reconstructs the current HTTPS export endpoint and bearer token at send time rather
+  than reusing a stale URL, permanently-rejected or malformed ("poison") records are discarded
+  instead of retried forever, and `shutdown()` is drain-safe: it waits for any in-flight replay
+  send to finish before closing the durable store and HTTP session (parity with `.NET` PR #137).
+  ([#248](https://github.com/microsoft/opentelemetry-distro-python/pull/248))
+
+### Other Changes
+- Contribute Microsoft distro profile information (`component="mot"` and distro version) to the OneSettings control plane during `use_microsoft_opentelemetry()`.
+  ([#244](https://github.com/microsoft/opentelemetry-distro-python/pull/244))
+- Pin GitHub Actions to full-length commit SHAs
+  ([#246](https://github.com/microsoft/opentelemetry-distro-python/pull/246))
+- Apply formatting fixes across source and test files
+  ([#241](https://github.com/microsoft/opentelemetry-distro-python/pull/241))
+
+# 1.3.7 (2026-08-05)
+### Features Added
+- Mark `gen_ai.tool.description` and `gen_ai.tool.definitions` as sensitive attributes per [GenAI Spec](https://github.com/open-telemetry/semantic-conventions-genai/pull/431)
+ ([#237](https://github.com/microsoft/opentelemetry-distro-python/pull/237))
+- Respect RAPI headers in order to populate the `gen_ai.response.model` with the served model if available
+  ([#234](https://github.com/microsoft/opentelemetry-distro-python/pull/234))
+- Capture the agent's system prompt as the `gen_ai.system_instructions` span attribute in the LangChain instrumentation
+  ([#232](https://github.com/microsoft/opentelemetry-distro-python/pull/232))
+
+### Bugs Fixed
+- Suppress duplicate `invoke_agent` spans for nested LangGraph agents that resolve to the same name as their agent ancestor
+  ([#236](https://github.com/microsoft/opentelemetry-distro-python/pull/236))
+- Parse Gemini token usage attributes and stop emitting legacy `gen_ai.tool.*` attributes on the chat span when both modern and legacy `tool_calls` are present
+  ([#233](https://github.com/microsoft/opentelemetry-distro-python/pull/233))
+
+# 1.3.6 (2026-07-22)
+
+### Features Added
+- Propagate the microsoft.foundry.project.id which the foundry SDK populates on the server spans
+  ([#227](https://github.com/microsoft/opentelemetry-distro-python/pull/227))
+
+### Bugs Fixed
+- Gate sensitive data and I/O message attributes on child spans, fix `gen_ai.tool.call.arguments`, and related LangChain fixes
+  ([#223](https://github.com/microsoft/opentelemetry-distro-python/pull/223))
+
+# 1.3.5 (2026-07-01)
+
+### Features Added
+- Pass metrics observations to upstream SDKStats Manager
+  ([#191](https://github.com/microsoft/opentelemetry-distro-python/pull/191))
+- Enable sensitive data for LangChain programmatically
+  ([#201](https://github.com/microsoft/opentelemetry-distro-python/pull/201))
+
+### Bugs Fixed
+- Add actionable 403 error message
+  ([#213](https://github.com/microsoft/opentelemetry-distro-python/pull/213))
+- Remove internal model/tool spans
+  ([#212](https://github.com/microsoft/opentelemetry-distro-python/pull/212))
+
+### Other Changes
+- Update otel dependencies
+  ([#218](https://github.com/microsoft/opentelemetry-distro-python/pull/218))
+- Add pre-commit hook for auto-formatting
+  ([#220](https://github.com/microsoft/opentelemetry-distro-python/pull/220))
+- Remove specific co-code owners
+  ([#221](https://github.com/microsoft/opentelemetry-distro-python/pull/221))
+- Documentation improvements for published API reference
+  ([#214](https://github.com/microsoft/opentelemetry-distro-python/pull/214))
 
 # 1.3.4 (2026-06-17)
 
@@ -312,4 +415,3 @@
   ([#10](https://github.com/microsoft/opentelemetry-distro-python/pull/10))
 - Microsoft mandatory file
   ([#2](https://github.com/microsoft/opentelemetry-distro-python/pull/2))
-

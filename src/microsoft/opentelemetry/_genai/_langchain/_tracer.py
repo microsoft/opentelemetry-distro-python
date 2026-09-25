@@ -55,6 +55,7 @@ from microsoft.opentelemetry._genai._langchain._utils import (
     GEN_AI_PROVIDER_NAME_KEY,
     GEN_AI_REQUEST_CHOICE_COUNT_KEY,
     GEN_AI_REQUEST_MODEL_KEY,
+    GEN_AI_SYSTEM_INSTRUCTIONS_KEY,
     GEN_AI_TOOL_DEFINITIONS_KEY,
     GEN_AI_USAGE_INPUT_TOKENS_KEY,
     GEN_AI_USAGE_OUTPUT_TOKENS_KEY,
@@ -69,11 +70,13 @@ from microsoft.opentelemetry._genai._langchain._utils import (
     llm_provider,
     metadata,
     model_name,
-    prompts,
+    output_has_modern_tool_calls,
     _extract_structured_output_messages,
     _extract_agent_input_messages,
     _extract_agent_output_messages,
+    _extract_system_instruction,
     _output_message_to_input,
+    _is_structured_output_run,
     _seed_initial_messages,
     _should_capture_content_on_spans,
     _tool_run_to_input_message,
@@ -130,6 +133,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         enable_sensitive_data: bool = False,
         **kwargs: Any,
     ) -> None:
+        kwargs.setdefault("_schema_format", "original+chat")
         super().__init__(*args, **kwargs)
         if TYPE_CHECKING:
             assert self.run_map  # type: ignore[has-type]
@@ -192,7 +196,15 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         # Nested agents (sub-agents with an agent ancestor) must NOT inherit
         # their identity from the shared ``_agent_config`` — that describes
         # the top-level agent only.
-        is_nested_agent = is_agent and self._find_agent_ancestor(run) is not None
+        ancestor_id = self._find_agent_ancestor(run) if is_agent else None
+        is_nested_agent = ancestor_id is not None
+
+        if is_nested_agent:
+            ancestor_run = self.run_map.get(str(ancestor_id))
+            ancestor_name = self._resolve_agent_name(ancestor_run, use_config=False) if ancestor_run else None
+            this_name = self._resolve_agent_name(run, use_config=False)
+            if this_name and ancestor_name and this_name.lower() == ancestor_name.lower():
+                return
 
         # Determine span name based on run type
         if is_agent:
@@ -258,6 +270,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                     "output_messages": [],
                     "pending_assistant": None,
                     "seeded_initial": False,
+                    "system_instruction": None,
                     "model": None,
                     "provider": None,
                     "request_choice_count": None,
@@ -373,6 +386,18 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         node = cls._run_metadata(run).get("langgraph_node")
         return str(node) if node else None
 
+    @classmethod
+    def _is_subgraph_boundary(cls, run: Run) -> bool:
+        """Return ``True`` when this run is the invocation of a nested compiled
+        graph (a subgraph / compiled agent used as a node inside an outer graph)."""
+        node = cls._langgraph_node_name(run)
+        if not node:
+            return False
+        name = str(run.name) if run.name else ""
+        if not name or name == "LangGraph":
+            return False
+        return name != node
+
     def _should_ignore_langgraph_node(self, run: Run) -> bool:  # pylint: disable=too-many-return-statements
         """Decide whether a genuine LangGraph node should be suppressed."""
         meta = self._run_metadata(run)
@@ -393,7 +418,11 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         # 4. The compiled-graph root (no parent) is always emitted.
         if run.parent_run_id is None:
             return False
-        # 5. A nested node is a genuine sub-agent only when it advertises an
+        # 5. A nested subgraph boundary (a compiled agent invoked as a node
+        #    inside an outer graph) is a genuine agent and must be emitted.
+        if self._is_subgraph_boundary(run):
+            return False
+        # 6. A nested node is a genuine sub-agent only when it advertises an
         #    explicit identity; otherwise it is an internal orchestration node
         #    (create_agent's ``model`` / ``tools``) and is suppressed.
         if meta.get("agent_name") or meta.get("agent_type"):
@@ -445,9 +474,10 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
         if name := meta.get("agent_type"):
             return str(name)
         # 2. LangGraph structural node name (framework-injected per node).
-        if node := meta.get("langgraph_node"):
-            if str(node) not in ("", "LangGraph", self._LANGGRAPH_START_NODE):
-                return str(node)
+        if not self._is_subgraph_boundary(run):
+            if node := meta.get("langgraph_node"):
+                if str(node) not in ("", "LangGraph", self._LANGGRAPH_START_NODE):
+                    return str(node)
         if name := meta.get("lc_agent_name"):
             return str(name)
         # 3. Process-level config default (top-level agent only).
@@ -493,7 +523,7 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
                     break
 
             if run_type in ("llm", "chat_model"):
-                for key, val in invocation_parameters(run):
+                for key, val in invocation_parameters(run, self._enable_sensitive_data):
                     if key == GEN_AI_REQUEST_CHOICE_COUNT_KEY and isinstance(val, int) and val > 0:
                         previous = content.get("request_choice_count")
                         if not isinstance(previous, int) or val > previous:
@@ -516,7 +546,16 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
             # rely on the LLM child's own ``run.inputs`` because LangChain
             # often hands the model a pre-serialised prompt string, losing
             # the structured per-turn shape (see issue #172).
-            if run_type in ("llm", "chat_model"):
+            #
+            # Structured-output LLM calls (``with_structured_output``) are
+            # excluded: their output is a schema-constrained control object
+            # (e.g. a routing decision), not a conversational turn, and folding
+            # it into the transcript pollutes ``gen_ai.input.messages``.
+            if run_type in ("llm", "chat_model") and not _is_structured_output_run(run):
+                if not content.get("system_instruction"):
+                    system_instruction = _extract_system_instruction(run.inputs)
+                    if system_instruction:
+                        content["system_instruction"] = system_instruction
                 # Seed system/user messages from the agent's top-level inputs
                 # on the first LLM call.
                 if not content.get("seeded_initial"):
@@ -627,6 +666,11 @@ class LangChainTracer(BaseTracer):  # pylint: disable=too-many-ancestors, too-ma
 
         # Set aggregated input/output messages only when content capture is enabled
         if _should_capture_content_on_spans(self._enable_sensitive_data):
+            if system_instruction := content.get("system_instruction"):
+                span.set_attribute(
+                    GEN_AI_SYSTEM_INSTRUCTIONS_KEY,
+                    safe_json_dumps([asdict(p) for p in system_instruction]),
+                )
             if tool_defs := content.get("tool_definitions"):
                 span.set_attribute(GEN_AI_TOOL_DEFINITIONS_KEY, tool_defs)
             if msgs := content.get("input_messages"):
@@ -688,19 +732,32 @@ def _update_span(span: Span, run: Run, enable_sensitive_data: bool = False) -> L
         # Fix "chat None" span name when model is unknown
         if invocation.request_model is None:
             span.update_name(CHAT_OPERATION_NAME)
-        # Extras not covered by LLMInvocation
-        span.set_attributes(
-            dict(
-                flatten(
-                    chain(
-                        prompts(run.inputs),
-                        invocation_parameters(run),
-                        function_calls(run.outputs, enable_sensitive_data),
-                        metadata(run),
-                    )
+
+        if _should_capture_content_on_spans(enable_sensitive_data):
+            if invocation.input_messages:
+                span.set_attribute(
+                    GEN_AI_INPUT_MESSAGES_KEY,
+                    safe_json_dumps([asdict(m) for m in invocation.input_messages]),
                 )
-            )
-        )
+            if invocation.output_messages:
+                span.set_attribute(
+                    GEN_AI_OUTPUT_MESSAGES_KEY,
+                    safe_json_dumps([asdict(m) for m in invocation.output_messages]),
+                )
+            if invocation.system_instruction:
+                span.set_attribute(
+                    GEN_AI_SYSTEM_INSTRUCTIONS_KEY,
+                    safe_json_dumps([asdict(p) for p in invocation.system_instruction]),
+                )
+        # Extras not covered by LLMInvocation
+        extras = [
+            invocation_parameters(run, enable_sensitive_data),
+            metadata(run),
+        ]
+
+        if not output_has_modern_tool_calls(run.outputs):
+            extras.append(function_calls(run.outputs, enable_sensitive_data))
+        span.set_attributes(dict(flatten(chain(*extras))))
         return invocation
 
     # --- Tool / chain / other runs ---
