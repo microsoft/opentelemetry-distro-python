@@ -65,17 +65,17 @@ class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
                 os.environ.pop(MICROSOFT_OPENTELEMETRY_VERSION_ENV, None)
                 importlib.reload(configuration_state)
                 del configuration_state.get_configuration_manager
-                configuration_state.__getattr__ = observe_configuration_state_import
+                configuration_state.__dict__["__getattr__"] = observe_configuration_state_import
 
                 importlib.reload(distro_module)
                 distro_module._initialize_configuration_manager()  # pylint: disable=protected-access
         finally:
-            configuration_state.get_configuration_manager = original_getter
+            configuration_state.__dict__["get_configuration_manager"] = original_getter
             configuration_state._configuration_manager = original_manager  # pylint: disable=protected-access
             if original_module_getattr is None:
                 configuration_state.__dict__.pop("__getattr__", None)
             else:
-                configuration_state.__getattr__ = original_module_getattr
+                configuration_state.__dict__["__getattr__"] = original_module_getattr
             importlib.reload(distro_module)
 
         self.assertEqual(observed_versions, [VERSION])
