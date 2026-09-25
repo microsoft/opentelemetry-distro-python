@@ -103,6 +103,8 @@ class TestOpenTelemetryScopeRecordAttributes(unittest.TestCase):
         )
         mock_span.get_span_context.return_value = MagicMock(span_id=0x1234)
         mock_span.is_recording.return_value = True
+        mock_set_attribute = MagicMock()
+        mock_span.set_attribute = mock_set_attribute
         mock_tracer = MagicMock()
         mock_tracer.start_span.return_value = mock_span
 
@@ -117,7 +119,7 @@ class TestOpenTelemetryScopeRecordAttributes(unittest.TestCase):
             )
         )
 
-        custom_calls = [call for call in mock_span.set_attribute.call_args_list if call.args[0] == "custom.key"]
+        custom_calls = [call for call in mock_set_attribute.call_args_list if call.args[0] == "custom.key"]
         self.assertEqual(len(custom_calls), 1)
         self.assertEqual(custom_calls[0].args[1], "first")
 
