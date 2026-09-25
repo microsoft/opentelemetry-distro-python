@@ -16,7 +16,7 @@
 
 ### Bugs Fixed
 - Restrict A365 identity and baggage enrichment to recognized GenAI spans while preserving supported span-start signals. ([#265](https://github.com/microsoft/opentelemetry-distro-python/pull/265))
-- Prevent `OpenTelemetryScope.record_attributes()` from overwriting span attributes that were already set by scope construction, by baggage propagated through `A365SpanProcessor`, or by earlier custom attributes, while preserving dictionary and iterable inputs.
+- Preserve existing span attributes when recording custom scope attributes. ([#266](https://github.com/microsoft/opentelemetry-distro-python/pull/266))
 
 # 1.3.9 (2026-09-09)
 ### Features Added
