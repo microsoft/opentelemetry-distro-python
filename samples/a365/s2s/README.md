@@ -1,66 +1,99 @@
 # A365 S2S Exporter Sample
 
-A self-contained sample showing how to export [Agent 365](https://learn.microsoft.com/en-us/microsoft-agent-365/) telemetry using the **S2S (service-to-service)** flow.
+This sample exports [Agent 365](https://learn.microsoft.com/en-us/microsoft-agent-365/)
+telemetry through the service-to-service (S2S) endpoint and demonstrates every
+public manual observability scope.
 
-In the S2S scenario a service authenticates **on its own behalf** using its app
-registration credentials — there is **no agentic user**. Two things make this an
-S2S sample:
-
-1. `a365_use_s2s_endpoint=True` — routes export to the S2S ingest path.
-2. A custom `a365_token_resolver` that performs the MSAL app → instance token
-   exchange and acquires an *application* token for the A365 observability scope.
-
-The token resolver mirrors the SDK's FIC flow (`_create_fic_token_resolver` in
-`src/microsoft/opentelemetry/a365/core/exporters/utils.py`), but **excludes** the
-agentic-user step (`A365_AGENTIC_USER_ID` / `user_fic` grant).
-
-The telemetry is produced with the A365 scope classes (manual instrumentation),
-so the sample needs no LLM.
+The service authenticates on its own behalf. The token resolver uses the
+Blueprint application credentials to obtain an agent-instance token and then an
+application token for the A365 observability scope. It deliberately omits the
+agentic-user FIC step and does not emit `microsoft.agent.user.id` or
+`microsoft.agent.user.email`.
 
 ## Prerequisites
 
 - Python 3.10+
 - [uv](https://docs.astral.sh/uv/)
-- To actually export: a Blueprint app registration granted the
-  `Agent365.Observability.OtelWrite` **application** permission (with admin
-  consent). See [`MIGRATION_A365.md`](../../../MIGRATION_A365.md) →
-  "Troubleshooting — Permissions and Setup".
+- A Blueprint app registration granted the
+  `Agent365.Observability.OtelWrite` **application** permission with admin
+  consent. See [`MIGRATION_A365.md`](../../../MIGRATION_A365.md) under
+  "Troubleshooting - Permissions and Setup".
+- Real tenant, agent Blueprint, agent app instance client ID, and human caller
+  values from the deployment being validated. Angle-bracket placeholders are
+  rejected at startup.
 
-## Setup
+## Configure and run
 
-Set the required environment variables in your shell before running the sample.
-The environment variable reference below lists the required values.
+PowerShell:
 
-The S2S credentials are validated at startup, so all four
-`CONNECTIONS__SERVICE_CONNECTION__SETTINGS__*` / `A365_AGENT_APP_INSTANCE_ID`
-values must be set even when `ENABLE_A365_OBSERVABILITY_EXPORTER=false`. Set it
-to `true` once you have real credentials to export to A365.
+```powershell
+$env:ENABLE_OBSERVABILITY = "true"
+$env:ENABLE_A365_OBSERVABILITY_EXPORTER = "true"
+$env:CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID = "<blueprint-app-client-id>"
+$env:CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET = "<blueprint-app-secret>"
+$env:CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID = "<tenant-guid>"
+$env:A365_AGENT_APP_INSTANCE_ID = "<agent-app-instance-id>"
+$env:A365_AGENT_BLUEPRINT_ID = "<agent-blueprint-id>"
+$env:A365_CALLER_USER_ID = "<caller-user-id>"
+$env:A365_CALLER_USER_EMAIL = "<caller-user-email>"
+$env:A365_CALLER_CLIENT_IP = "<caller-client-ip>"
 
-## Run
+uv run --with msal python samples\a365\s2s\s2s_exporter.py
+```
+
+Bash:
 
 ```bash
+export ENABLE_OBSERVABILITY=true
+export ENABLE_A365_OBSERVABILITY_EXPORTER=true
+export CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID="<blueprint-app-client-id>"
+export CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET="<blueprint-app-secret>"
+export CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID="<tenant-guid>"
+export A365_AGENT_APP_INSTANCE_ID="<agent-app-instance-id>"
+export A365_AGENT_BLUEPRINT_ID="<agent-blueprint-id>"
+export A365_CALLER_USER_ID="<caller-user-id>"
+export A365_CALLER_USER_EMAIL="<caller-user-email>"
+export A365_CALLER_CLIENT_IP="<caller-client-ip>"
+
 uv run --with msal python samples/a365/s2s/s2s_exporter.py
 ```
 
-The sample enables DEBUG logging for the A365 exporter, so when
-`ENABLE_A365_OBSERVABILITY_EXPORTER=true` you'll see the export result on
-stderr, for example:
+`a365_use_s2s_endpoint=True` routes exports to the S2S ingest endpoint. The
+tenant and agent ID in each export request must match the configured tenant and
+agent app instance client ID; the resolver rejects mismatches before token
+acquisition. `gen_ai.agent.id` and the `{agentId}` export URL segment therefore
+use `A365_AGENT_APP_INSTANCE_ID`, not the Blueprint client ID.
 
+## Scope and Store-validation coverage
+
+| Scope | Sample behavior | Store validation |
+| --- | --- | --- |
+| `InvokeAgentScope` | Root request, agent/Blueprint/caller identity, endpoint, input, and final output | Required |
+| `InferenceScope` | Model/provider, messages, token usage, and finish reason | Required |
+| `ExecuteToolScope` | Tool identity, arguments, and result | Required |
+| `OutputScope` | Child span representing asynchronous/final output | Validate before publishing |
+| `ApplyGuardrailScope` | Input-safety decision and finding event | Additional security telemetry |
+
+The sample populates the publishing attributes documented in
+[Validate for Store publishing](https://learn.microsoft.com/en-us/microsoft-agent-365/developer/observability?tabs=python#validate-for-store-publishing),
+including the tenant, agent, Blueprint, human caller, client address, channel,
+conversation, operation, message, endpoint, model, and tool fields applicable
+to each span. Human caller identity uses the standard `user.id` and
+`user.email` attributes. S2S agentic-user attributes
+`microsoft.agent.user.id` and `microsoft.agent.user.email` are intentionally
+absent.
+
+## Verify export
+
+The sample enables DEBUG logging for the A365 exporter. A successful run reports
+the HTTP status and correlation ID on stderr:
+
+```text
+DEBUG ...agent365_exporter: HTTP 200 success on attempt 1. Correlation ID: <id>. Response: ...
 ```
-DEBUG ...agent365_exporter: HTTP 200 success on attempt 1. Correlation ID: <id>. Response: {... "status":"sent" ...}
-```
 
-A non-2xx status (e.g. `HTTP 403`) is logged as an error with the same
-correlation ID, which you can use when contacting support.
-
-## Environment variables
-
-| Variable | Description |
-| --- | --- |
-| `ENABLE_OBSERVABILITY` | Required (`true`) for the A365 scope classes to emit spans. |
-| `ENABLE_A365_OBSERVABILITY_EXPORTER` | `true` to send telemetry to the A365 endpoint; `false` still creates spans but skips export. Credentials are required either way. |
-| `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID` | Blueprint app registration client ID. |
-| `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET` | Blueprint app registration client secret. |
-| `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID` | Entra tenant ID. Also used as the exported `AgentDetails.tenant_id`. |
-| `A365_AGENT_APP_INSTANCE_ID` | Agent app instance ID used in the `fmi_path` exchange. Falls back to the exported agent ID when `A365_AGENT_ID` is unset. |
-| `A365_AGENT_ID` | Optional. Agent ID telemetry is exported for; must match an onboarded agent. Defaults to `A365_AGENT_APP_INSTANCE_ID`. |
+HTTP 401 usually indicates an invalid token audience or tenant. HTTP 403
+usually indicates missing `Agent365.Observability.OtelWrite` application
+permission, missing admin consent, or an agent/Blueprint identity that is not
+onboarded for the tenant. Use the logged correlation ID when investigating
+either response.

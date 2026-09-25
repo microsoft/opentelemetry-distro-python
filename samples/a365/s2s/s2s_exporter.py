@@ -32,7 +32,10 @@ Environment variables:
   CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET=<blueprint-app-secret>
   CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID=<tenant-guid>
   A365_AGENT_APP_INSTANCE_ID=<agent-app-instance-id>
-  A365_AGENT_ID=<agent-id>                      Optional; defaults to the instance ID
+  A365_AGENT_BLUEPRINT_ID=<agent-blueprint-id>
+  A365_CALLER_USER_ID=<caller-user-id>
+  A365_CALLER_USER_EMAIL=<caller-user-email>
+  A365_CALLER_CLIENT_IP=<caller-client-ip>
 
 The tenant ID and agent ID also populate ``AgentDetails`` and drive the export
 URL, so they must match an onboarded agent for the endpoint to accept telemetry.
@@ -51,9 +54,17 @@ from typing import Optional
 from microsoft.opentelemetry import use_microsoft_opentelemetry
 from microsoft.opentelemetry.a365.core import (
     AgentDetails,
+    ApplyGuardrailScope,
     BaggageBuilder,
+    CallerDetails,
+    Channel,
     ChatMessage,
     ExecuteToolScope,
+    GuardrailDecisionType,
+    GuardrailDetails,
+    GuardrailFinding,
+    GuardrailRiskSeverity,
+    GuardrailTargetType,
     InferenceCallDetails,
     InferenceOperationType,
     InferenceScope,
@@ -61,13 +72,17 @@ from microsoft.opentelemetry.a365.core import (
     InvokeAgentScope,
     InvokeAgentScopeDetails,
     MessageRole,
+    OutputScope,
     OutputMessage,
     OutputMessages,
     Request,
+    Response,
     ServiceEndpoint,
+    SpanDetails,
     TextPart,
     ToolCallDetails,
     ToolType,
+    UserDetails,
 )
 
 # The A365 observability scope. For the S2S (app-only) client-credential flow,
@@ -81,6 +96,10 @@ A365_SERVICE_CLIENT_ID_ENV = "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTI
 A365_SERVICE_CLIENT_SECRET_ENV = "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET"
 A365_SERVICE_TENANT_ID_ENV = "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID"
 A365_AGENT_APP_INSTANCE_ID_ENV = "A365_AGENT_APP_INSTANCE_ID"
+A365_AGENT_BLUEPRINT_ID_ENV = "A365_AGENT_BLUEPRINT_ID"
+A365_CALLER_USER_ID_ENV = "A365_CALLER_USER_ID"
+A365_CALLER_USER_EMAIL_ENV = "A365_CALLER_USER_EMAIL"
+A365_CALLER_CLIENT_IP_ENV = "A365_CALLER_CLIENT_IP"
 
 
 def _require_env(name: str) -> str:
@@ -142,6 +161,12 @@ def build_s2s_token_resolver():
             print(
                 f"S2S token acquisition failed: request tenant {request_tenant_id!r} "
                 f"does not match configured tenant {configured_tenant_id!r}."
+            )
+            return None
+        if agent_id != instance_id:
+            print(
+                f"S2S token acquisition failed: request agent {agent_id!r} "
+                f"does not match configured agent instance {instance_id!r}."
             )
             return None
         authority = f"https://login.microsoftonline.com/{request_tenant_id}"
@@ -229,73 +254,43 @@ def _configure_export_logging() -> None:
     exporter_logger.addHandler(handler)
 
 
-def main():
-    # Show the A365 exporter's HTTP status / correlation id (DEBUG-level).
-    _configure_export_logging()
-
-    # ------------------------------------------------------------------ #
-    # 1. Configure telemetry with the S2S endpoint + S2S token resolver
-    # ------------------------------------------------------------------ #
-    use_microsoft_opentelemetry(
-        enable_a365=True,
-        a365_use_s2s_endpoint=True,
-        a365_token_resolver=build_s2s_token_resolver(),
-    )
-    print("Telemetry configured for S2S export.\n")
-
-    # ------------------------------------------------------------------ #
-    # 2. Define the agent identity from the real values in the environment.
-    #    In S2S there is no agentic user, so no UserDetails / CallerDetails.
-    #    The tenant ID and agent ID drive the export URL, so they must match
-    #    the onboarded agent for the A365 endpoint to accept the telemetry.
-    # ------------------------------------------------------------------ #
-    real_tenant_id = _require_env(A365_SERVICE_TENANT_ID_ENV)
-    # A365_AGENT_ID is optional; fall back to the (validated) instance ID.
-    agent_id_override = os.environ.get("A365_AGENT_ID", "").strip()
-    if agent_id_override.startswith("<") and agent_id_override.endswith(">"):
-        agent_id_override = ""
-    real_agent_id = agent_id_override or _require_env(A365_AGENT_APP_INSTANCE_ID_ENV)
-
-    agent = AgentDetails(
-        agent_id=real_agent_id,
-        agent_name="Weather Agent",
-        agent_description="Answers weather-related questions",
-        tenant_id=real_tenant_id,
-        provider_name="openai",
-    )
-
-    # ------------------------------------------------------------------ #
-    # 3. Build per-request baggage (no user identity in S2S)
-    # ------------------------------------------------------------------ #
+def _emit_sample_telemetry(
+    agent_details: AgentDetails,
+    user_details: UserDetails,
+    request: Request,
+) -> str:
+    """Emit deterministic Store-validation telemetry without network calls."""
+    user_question = request.content
+    final_answer = "It's currently 62°F and partly cloudy in Seattle."
+    invoke_context = None
     baggage = (
         BaggageBuilder()
-        .tenant_id(agent.tenant_id)
-        .agent_id(agent.agent_id)
-        .channel_name("service")
-        .session_id("session-s2s-123")
-        .conversation_id("conv-s2s-789")
+        .tenant_id(agent_details.tenant_id)
+        .agent_id(agent_details.agent_id)
+        .agent_blueprint_id(agent_details.agent_blueprint_id)
+        .agent_name(agent_details.agent_name)
+        .agent_description(agent_details.agent_description)
+        .agent_version(agent_details.agent_version)
+        .user_id(user_details.user_id)
+        .user_email(user_details.user_email)
+        .user_name(user_details.user_name)
+        .user_client_ip(user_details.user_client_ip)
+        .channel_name(request.channel.name if request.channel else None)
+        .channel_links(request.channel.link if request.channel else None)
+        .session_id(request.session_id)
+        .conversation_id(request.conversation_id)
+        .invoke_agent_server("weather-agent.contoso.com", 8443)
     )
 
     with baggage.build():
-        user_question = "What's the weather in Seattle?"
-
-        request = Request(
-            content=user_question,
-            session_id="session-s2s-123",
-            conversation_id="conv-s2s-789",
-        )
-
-        # -------------------------------------------------------------- #
-        # 4. InvokeAgentScope — top-level agent invocation (no caller)
-        # -------------------------------------------------------------- #
         with InvokeAgentScope.start(
             request=request,
             scope_details=InvokeAgentScopeDetails(
-                endpoint=ServiceEndpoint(hostname="weather-agent.contoso.com", port=443),
+                endpoint=ServiceEndpoint(hostname="weather-agent.contoso.com", port=8443),
             ),
-            agent_details=agent,
+            agent_details=agent_details,
+            caller_details=CallerDetails(user_details=user_details),
         ) as invoke_scope:
-
             invoke_scope.record_input_messages(
                 InputMessages(
                     messages=[
@@ -307,20 +302,50 @@ def main():
                 )
             )
 
-            # ---------------------------------------------------------- #
-            # 5. InferenceScope — LLM call to decide on tool use
-            # ---------------------------------------------------------- #
+            with ApplyGuardrailScope.start(
+                details=GuardrailDetails(
+                    target_type=GuardrailTargetType.LLM_INPUT,
+                    decision_type=GuardrailDecisionType.ALLOW,
+                    guardian_name="Sample Content Safety",
+                    guardian_id="sample-content-safety",
+                    guardian_provider_name="contoso.security",
+                    guardian_version="1.0",
+                    target_id="prompt-123",
+                    decision_reason="No unsafe content detected",
+                    decision_code="allowed",
+                    policy_id="policy-123",
+                    policy_name="Default Prompt Safety",
+                    policy_version="1.0",
+                    content_modified=False,
+                ),
+                agent_details=agent_details,
+                request=request,
+                user_details=user_details,
+            ) as guardrail_scope:
+                guardrail_scope.record_content_input(user_question)
+                guardrail_scope.record_finding(
+                    GuardrailFinding(
+                        risk_category="unsafe_content",
+                        risk_severity=GuardrailRiskSeverity.NONE,
+                        risk_score=0.0,
+                        policy_decision_type=GuardrailDecisionType.ALLOW,
+                        policy_id="policy-123",
+                        policy_name="Default Prompt Safety",
+                        policy_version="1.0",
+                    )
+                )
+
             with InferenceScope.start(
-                request=Request(content=user_question),
+                request=request,
                 details=InferenceCallDetails(
                     operationName=InferenceOperationType.CHAT,
                     model="gpt-4o",
-                    providerName="openai",
-                    endpoint=ServiceEndpoint(hostname="api.openai.com", port=443),
+                    providerName="azure-openai",
+                    endpoint=ServiceEndpoint(hostname="example.openai.azure.com", port=443),
                 ),
-                agent_details=agent,
+                agent_details=agent_details,
+                user_details=user_details,
             ) as inference_scope:
-
                 inference_scope.record_input_messages(
                     InputMessages(
                         messages=[
@@ -335,9 +360,6 @@ def main():
                         ]
                     )
                 )
-
-                time.sleep(0.05)
-
                 inference_scope.record_input_tokens(45)
                 inference_scope.record_output_tokens(12)
                 inference_scope.record_finish_reasons(["tool_call"])
@@ -353,62 +375,21 @@ def main():
                     )
                 )
 
-            # ---------------------------------------------------------- #
-            # 6. ExecuteToolScope — call the weather tool
-            # ---------------------------------------------------------- #
             with ExecuteToolScope.start(
-                request=Request(content=user_question),
+                request=request,
                 details=ToolCallDetails(
                     tool_name="get_weather",
                     arguments={"city": "Seattle", "units": "fahrenheit"},
-                    tool_call_id="call_abc123",
+                    tool_call_id="call-123",
                     description="Fetches current weather for a city",
                     tool_type=ToolType.FUNCTION.value,
-                    endpoint=ServiceEndpoint(hostname="weather-api.contoso.com"),
+                    endpoint=ServiceEndpoint(hostname="weather-api.contoso.com", port=443),
                 ),
-                agent_details=agent,
+                agent_details=agent_details,
+                user_details=user_details,
             ) as tool_scope:
+                tool_scope.record_response('{"temperature":62,"condition":"Partly cloudy"}')
 
-                time.sleep(0.02)
-                tool_result = '{"temperature": 62, "condition": "Partly cloudy"}'
-                tool_scope.record_response(tool_result)
-
-            # ---------------------------------------------------------- #
-            # 7. Second InferenceScope — generate the final answer
-            # ---------------------------------------------------------- #
-            with InferenceScope.start(
-                request=Request(content=user_question),
-                details=InferenceCallDetails(
-                    operationName=InferenceOperationType.CHAT,
-                    model="gpt-4o",
-                    providerName="openai",
-                    inputTokens=80,
-                    outputTokens=25,
-                    finishReasons=["stop"],
-                    endpoint=ServiceEndpoint(hostname="api.openai.com", port=443),
-                ),
-                agent_details=agent,
-            ) as inference_scope_2:
-
-                time.sleep(0.05)
-
-                final_answer = "It's currently 62°F and partly cloudy in Seattle."
-
-                inference_scope_2.record_output_messages(
-                    OutputMessages(
-                        messages=[
-                            OutputMessage(
-                                role=MessageRole.ASSISTANT,
-                                parts=[TextPart(content=final_answer)],
-                                finish_reason="stop",
-                            ),
-                        ]
-                    )
-                )
-
-            # ---------------------------------------------------------- #
-            # 8. Record the final response on the top-level scope
-            # ---------------------------------------------------------- #
             invoke_scope.record_output_messages(
                 OutputMessages(
                     messages=[
@@ -420,6 +401,53 @@ def main():
                     ]
                 )
             )
+            invoke_context = invoke_scope.get_context()
+
+        assert invoke_context is not None
+        with OutputScope.start(
+            request=request,
+            response=Response(messages=final_answer),
+            agent_details=agent_details,
+            user_details=user_details,
+            span_details=SpanDetails(parent_context=invoke_context),
+        ) as output_scope:
+            if request.channel:
+                output_scope.set_tag_maybe("microsoft.channel.name", request.channel.name)
+
+    return final_answer
+
+
+def main():
+    _configure_export_logging()
+    use_microsoft_opentelemetry(
+        enable_a365=True,
+        a365_use_s2s_endpoint=True,
+        a365_token_resolver=build_s2s_token_resolver(),
+    )
+    print("Telemetry configured for S2S export.\n")
+
+    agent = AgentDetails(
+        agent_id=_require_env(A365_AGENT_APP_INSTANCE_ID_ENV),
+        agent_name="Weather Agent",
+        agent_description="Answers weather-related questions",
+        agent_blueprint_id=_require_env(A365_AGENT_BLUEPRINT_ID_ENV),
+        tenant_id=_require_env(A365_SERVICE_TENANT_ID_ENV),
+        provider_name="azure-openai",
+        agent_version="1.0.0",
+    )
+    user = UserDetails(
+        user_id=_require_env(A365_CALLER_USER_ID_ENV),
+        user_email=_require_env(A365_CALLER_USER_EMAIL_ENV),
+        user_name="Sample Caller",
+        user_client_ip=_require_env(A365_CALLER_CLIENT_IP_ENV),
+    )
+    request = Request(
+        content="What's the weather in Seattle?",
+        session_id="session-s2s-123",
+        channel=Channel(name="service", link="https://contoso.example/a365-s2s"),
+        conversation_id="conv-s2s-789",
+    )
+    _emit_sample_telemetry(agent, user, request)
 
     print(
         "\nDone. All spans have been recorded. They are flushed to the A365 "
