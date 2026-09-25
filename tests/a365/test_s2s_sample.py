@@ -11,7 +11,17 @@ import pytest
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export.in_memory_span_exporter import InMemorySpanExporter
 
-from microsoft.opentelemetry.a365.core import AgentDetails, Channel, Request, UserDetails
+from microsoft.opentelemetry.a365.core import (
+    AgentDetails,
+    ApplyGuardrailScope,
+    Channel,
+    ExecuteToolScope,
+    InferenceScope,
+    InvokeAgentScope,
+    OutputScope,
+    Request,
+    UserDetails,
+)
 from microsoft.opentelemetry.a365.core.constants import SOURCE_NAME
 from microsoft.opentelemetry.a365.core.exporters.enriching_span_processor import (
     _EnrichingBatchSpanProcessor,
@@ -66,8 +76,8 @@ S2S_ENV = {
 }
 
 
-@pytest.fixture
-def captured_spans(monkeypatch):
+@pytest.fixture(name="captured_spans")
+def _captured_spans(monkeypatch):
     monkeypatch.setenv("ENABLE_OBSERVABILITY", "true")
     exporter = InMemorySpanExporter()
     provider = TracerProvider()
@@ -78,12 +88,23 @@ def captured_spans(monkeypatch):
         max_export_batch_size=64,
     )
     provider.add_span_processor(processor)
-    OpenTelemetryScope._tracer = provider.get_tracer(SOURCE_NAME)
+    tracer = provider.get_tracer(SOURCE_NAME)
+    scope_types = (
+        OpenTelemetryScope,
+        ApplyGuardrailScope,
+        ExecuteToolScope,
+        InferenceScope,
+        InvokeAgentScope,
+        OutputScope,
+    )
+    for scope_type in scope_types:
+        scope_type._tracer = tracer
 
     yield exporter, provider
 
     provider.shutdown()
-    OpenTelemetryScope._tracer = None
+    for scope_type in scope_types:
+        scope_type._tracer = None
 
 
 def _sample_inputs():
@@ -121,9 +142,7 @@ def test_sample_emits_store_required_attributes(captured_spans):
 
     spans = exporter.get_finished_spans()
     by_operation = {
-        span.attributes["gen_ai.operation.name"]: span
-        for span in spans
-        if "gen_ai.operation.name" in span.attributes
+        span.attributes["gen_ai.operation.name"]: span for span in spans if "gen_ai.operation.name" in span.attributes
     }
     assert {
         "invoke_agent",
@@ -221,11 +240,7 @@ def test_configure_export_logging_adds_one_named_handler():
         s2s_exporter._configure_export_logging()
         s2s_exporter._configure_export_logging()
 
-        matching = [
-            handler
-            for handler in logger.handlers
-            if handler.name == "a365-s2s-sample-export-logging"
-        ]
+        matching = [handler for handler in logger.handlers if handler.name == "a365-s2s-sample-export-logging"]
         assert len(matching) == 1
         assert logger.propagate is False
     finally:

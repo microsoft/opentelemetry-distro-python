@@ -148,7 +148,7 @@ def build_s2s_token_resolver():
     cache: dict[str, tuple[str, float]] = {}
     lock = threading.Lock()
 
-    def resolve(agent_id: str, request_tenant_id: str) -> Optional[str]:
+    def resolve(agent_id: str, request_tenant_id: str) -> Optional[str]:  # pylint: disable=too-many-return-statements
         # The resolver runs on the exporter's worker thread; guard the cache to
         # keep token acquisition thread-safe.
         cache_key = f"{request_tenant_id}:{agent_id}"
@@ -209,10 +209,7 @@ def build_s2s_token_resolver():
                 scopes=[A365_OBSERVABILITY_SCOPE],
             )
             if "access_token" not in result:
-                print(
-                    "S2S step 3 (observability token) failed: "
-                    f"{result.get('error_description', result)}"
-                )
+                print("S2S step 3 (observability token) failed: " f"{result.get('error_description', result)}")
                 return None
 
             access_token = result["access_token"]
@@ -237,9 +234,7 @@ def _configure_export_logging() -> None:
     success, or an error log on failure. Without this, those messages are
     suppressed and the run looks identical whether or not export succeeded.
     """
-    exporter_logger = logging.getLogger(
-        "microsoft.opentelemetry.a365.core.exporters.agent365_exporter"
-    )
+    exporter_logger = logging.getLogger("microsoft.opentelemetry.a365.core.exporters.agent365_exporter")
     exporter_logger.setLevel(logging.DEBUG)
     # Disable propagation so records aren't also emitted via the root logger,
     # and only attach our handler once so repeated runs in the same process
@@ -261,6 +256,8 @@ def _emit_sample_telemetry(
 ) -> str:
     """Emit deterministic Store-validation telemetry without network calls."""
     user_question = request.content
+    if not isinstance(user_question, str):
+        raise ValueError("The S2S sample request content must be a string.")
     final_answer = "It's currently 62°F and partly cloudy in Seattle."
     invoke_context = None
     baggage = (
