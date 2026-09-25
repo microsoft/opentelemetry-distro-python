@@ -16,6 +16,7 @@
 
 ### Bugs Fixed
 - Restrict A365 identity and baggage enrichment to recognized GenAI spans while preserving supported span-start signals. ([#265](https://github.com/microsoft/opentelemetry-distro-python/pull/265))
+- Preserve existing span attributes when recording custom scope attributes. ([#266](https://github.com/microsoft/opentelemetry-distro-python/pull/266))
 
 # 1.3.9 (2026-09-09)
 ### Features Added
@@ -25,7 +26,6 @@
   ([#259](https://github.com/microsoft/opentelemetry-distro-python/pull/259))
 - Update NOTICE to include the license declarations for external packages flagged in MPL review.
   ([#255](https://github.com/microsoft/opentelemetry-distro-python/pull/255))
-
 # 1.3.8 (2026-08-20)
 ### Features Added
 - Add support for agent identity propagation for compiled agents in nested graph
