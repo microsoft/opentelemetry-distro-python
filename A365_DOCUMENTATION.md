@@ -231,7 +231,11 @@ ObservabilityHostingManager.configure(
 
 ## Baggage
 
-Baggage sets per-request context (tenant, agent, user) that flows to all spans. **Without `tenant_id` and `agent_id`, the exporter silently drops spans.**
+Baggage sets per-request context (tenant, agent, user) that flows to recognized GenAI spans only. **Without `tenant_id` and `agent_id`, the exporter silently drops spans.**
+
+A span is recognized as GenAI at span start by evaluating these signals in order: a supported `gen_ai.operation.name` attribute; if that attribute is present but unrecognized (`chain`, `embeddings`, `text_completion`, `generate_content`, `create_agent`, ...) it is authoritative, so baggage and span-name inference are skipped and only the instrumentation scope can still classify the span; otherwise a span name matching a supported operation (`invoke_agent ...`, `chat ...`, ...) or a known pre-rename name (`chat.completions ...`), then a recognized `gen_ai.operation.name` baggage entry, then a supported GenAI instrumentation scope (`Agent365Sdk`, `semantic_kernel.*`, `agent_framework`, `microsoft.opentelemetry._genai.*`, `opentelemetry.instrumentation.openai_v2`, `opentelemetry.instrumentation.openai_agents`). The scope signal matters because LangChain, Semantic Kernel, Agent Framework, and OpenAI Agents all set `gen_ai.operation.name` *after* the span starts — a LangChain chat span begins life named `ChatOpenAI`, and a Semantic Kernel one as `chat.completions gpt-4o`.
+
+Spans classified only by instrumentation scope are GenAI with an unknown operation: they receive the common baggage attributes, but never the `invoke_agent`-only ones (caller agent details, `server.address`, `server.port`).
 
 ### BaggageBuilder
 
@@ -253,6 +257,45 @@ with (
     with InvokeAgentScope.start(...) as scope:
         ...
 ```
+
+To copy an application-specific baggage value onto Agent365 GenAI spans,
+explicitly opt in each key with `custom_attribute()` or `custom_attributes()`:
+
+```python
+with (
+    BaggageBuilder()
+    .tenant_id("contoso-tenant")
+    .agent_id("weather-agent-001")
+    .custom_attribute("customer.tier", "gold")
+    .custom_attributes({"customer.region": "west"})
+    .build()
+):
+    with InvokeAgentScope.start(...) as scope:
+        ...
+```
+
+`set_pairs()` only sets baggage. It does not opt arbitrary baggage keys into
+span attributes; use `custom_attribute()` for any custom key that should appear
+on recognized Agent365 GenAI spans. Baggage propagation never overwrites
+attributes already present on the current span. Baggage-propagated values are
+applied when the span starts, so they precede later `record_attributes()` calls
+when duplicate-key protection is also present; direct/current span attributes
+remain authoritative.
+
+A span is recognized as GenAI at span start by evaluating these signals in
+order: a supported `gen_ai.operation.name` attribute; if that attribute is
+present but unrecognized (`chain`, `embeddings`, `text_completion`,
+`generate_content`, `create_agent`, ...) it is authoritative, so baggage and
+span-name inference are skipped and only the instrumentation scope can still
+classify the span; otherwise a recognized `gen_ai.operation.name` baggage entry,
+then a span name matching a supported operation (`invoke_agent ...`,
+`chat ...`, ...) or a known pre-rename name (`chat.completions ...`), then a
+supported GenAI instrumentation scope (`Agent365Sdk`, `semantic_kernel.*`,
+`agent_framework`, `microsoft.opentelemetry._genai.*`,
+`opentelemetry.instrumentation.openai_v2`,
+`opentelemetry.instrumentation.openai_agents`). Spans classified only by
+instrumentation scope are GenAI with an unknown operation: opted-in custom
+baggage applies to them, but `invoke_agent`-only attributes never do.
 
 ### From TurnContext (Hosting Framework)
 
@@ -360,21 +403,58 @@ Top-level agent invocation — wraps the entire request/response cycle:
 
 ```python
 from microsoft.opentelemetry.a365.core import (
-    AgentDetails, CallerDetails, Channel, InvokeAgentScope,
-    InvokeAgentScopeDetails, Request, ServiceEndpoint, UserDetails,
+    AgentDetails, CallerDetails, Channel, GenAiRequestParameters,
+    GenAiResponseParameters, InvokeAgentScope, InvokeAgentScopeDetails,
+    Request, ServiceEndpoint, TextPart, UserDetails,
 )
 
 agent = AgentDetails(agent_id="agent-001", agent_name="My Agent", tenant_id="t1")
 
 with InvokeAgentScope.start(
     request=Request(content="Hello", session_id="s1", conversation_id="c1", channel=Channel(name="msteams")),
-    scope_details=InvokeAgentScopeDetails(endpoint=ServiceEndpoint(hostname="agent.contoso.com")),
+    scope_details=InvokeAgentScopeDetails(
+        endpoint=ServiceEndpoint(hostname="agent.contoso.com"),
+        request_parameters=GenAiRequestParameters(
+            model="gpt-4o",
+            max_tokens=256,
+            temperature=0.2,
+            stop_sequences=["END"],
+            output_type="text",
+            system_instructions=[TextPart(content="Be concise.")],
+        ),
+    ),
     agent_details=agent,
     caller_details=CallerDetails(user_details=UserDetails(user_id="u1", user_email="u@contoso.com")),
 ) as scope:
     # ... do work ...
+    scope.record_response_parameters(
+        GenAiResponseParameters(
+            finish_reasons=["stop"],
+            input_tokens=42,
+            output_tokens=18,
+            cache_write_input_tokens=4,
+        )
+    )
     scope.record_response("Here is the answer.")
 ```
+
+`GenAiRequestParameters` values are recorded when the scope starts. Use
+`scope.record_response_parameters()` for response values that are only known
+after completion. Fields left as `None` are omitted from the span. Sequence
+fields such as `stop_sequences` and `finish_reasons` are emitted as
+OpenTelemetry string arrays.
+
+Supported semantic attributes:
+
+- Request: `gen_ai.request.model`, `gen_ai.request.seed`,
+  `gen_ai.request.choice.count`, `gen_ai.request.frequency_penalty`,
+  `gen_ai.request.max_tokens`, `gen_ai.request.presence_penalty`,
+  `gen_ai.request.stop_sequences`, `gen_ai.request.temperature`,
+  `gen_ai.request.top_p`, `gen_ai.data_source.id`, `gen_ai.output.type`,
+  `gen_ai.system_instructions`
+- Response: `gen_ai.response.finish_reasons`, `gen_ai.usage.input_tokens`,
+  `gen_ai.usage.output_tokens`, `gen_ai.usage.cache_write.input_tokens`,
+  `gen_ai.usage.cache_read.input_tokens`
 
 ### ExecuteToolScope
 
@@ -389,6 +469,119 @@ with ExecuteToolScope.start(
     result = get_weather("Seattle")
     scope.record_response(result)
 ```
+
+`ToolCallDetails.arguments` and `ExecuteToolScope.record_response()` also accept typed execute-tool schema models.
+Typed top-level arguments and results serialize to the Agent365 JSON contract with `schema_version: "1.0"`,
+while raw dictionaries and strings remain supported and keep their existing behavior.
+
+```python
+from microsoft.opentelemetry.a365.core import (
+    ExecuteToolCallArguments,
+    ExecuteToolCallResult,
+    ExecuteToolScope,
+    ToolCallAction,
+    ToolCallDetails,
+    ToolCallOutcomeStatus,
+    ToolCallResource,
+    ToolCallResultOutcome,
+    ToolCallResultPagination,
+    Request,
+)
+
+arguments = ExecuteToolCallArguments(
+    action=ToolCallAction.READ,
+    resources=[
+        ToolCallResource(
+            resource_id="file-1",
+            uri="https://contoso.example/files/1",
+            name="Forecast",
+            resource_type="file",
+            provider="sharepoint",
+        )
+    ],
+    parameters={"city": "Seattle"},
+    extension_data={"provider_operation": "weather.lookup"},
+)
+
+with ExecuteToolScope.start(
+    request=Request(content="What's the weather?"),
+    details=ToolCallDetails(tool_name="get_weather", tool_call_id="call_1", arguments=arguments),
+    agent_details=agent,
+) as scope:
+    scope.record_response(
+        ExecuteToolCallResult(
+            outcome=ToolCallResultOutcome(status=ToolCallOutcomeStatus.SUCCESS),
+            data={"temperature_f": 68},
+            pagination=ToolCallResultPagination(has_more=False, total_count=1),
+        )
+    )
+```
+
+The typed arguments above generate a JSON payload shaped like:
+
+```json
+{
+  "schema_version": "1.0",
+  "action": "read",
+  "resources": [
+    {
+      "id": "file-1",
+      "uri": "https://contoso.example/files/1",
+      "name": "Forecast",
+      "type": "file",
+      "provider": "sharepoint"
+    }
+  ],
+  "parameters": {"city": "Seattle"},
+  "metadata": {
+    "provider_operation": "weather.lookup"
+  }
+}
+```
+
+#### Schema enums
+
+`action`, `outcome.status`, and `policy.decision` are constrained to the same tokens as the .NET distro:
+
+| Field | Enum | Tokens |
+| --- | --- | --- |
+| `ExecuteToolCallArguments.action` | `ToolCallAction` | `create`, `read`, `update`, `delete` |
+| `ToolCallResultOutcome.status` | `ToolCallOutcomeStatus` | `success`, `failure` |
+| `ToolCallResultPolicy.decision` | `ToolPolicyDecision` | `allow`, `deny` |
+
+The exact lowercase strings are accepted as well, so `action="read"` and `action=ToolCallAction.READ` are
+equivalent. Any other value — a different casing, an undefined token, a number, a boolean, or a member of a
+different enum — is rejected instead of emitting schema-invalid telemetry.
+
+#### Null handling and extension data
+
+Model properties that are `None` are omitted. `False`, zero, empty strings, empty dictionaries, and empty
+lists are preserved. `None` inside a dictionary or list you supply (for example `parameters`, `data`, or
+`extension_data`) is preserved as JSON `null`, matching the .NET contract.
+
+`extension_data` is serialized under a `metadata` property on the same model. The public Python field name
+remains `extension_data`, while the JSON wire contract consistently uses `metadata`. Empty extension
+dictionaries omit `metadata`.
+
+Each extensible nested model owns its own metadata object. Extension keys therefore cannot replace declared
+properties such as `action`, `schema_version`, `outcome.status`, or `policy.decision`; a matching extension key
+remains inside `metadata`.
+
+#### Serialization failures
+
+Typed payload serialization never raises and never leaves a span orphaned. If any value cannot be
+represented — an unsupported type, a reference cycle, `NaN`/`Infinity`, or an undefined enum token — the
+whole attribute value is replaced by the diagnostic payload and a warning is logged:
+
+```json
+{"serialization_error": "Failed to serialize execute tool payload."}
+```
+
+`bytes` and `bytearray` are emitted as base64 strings, `datetime`/`date`/`time` as ISO-8601 strings (using
+the `Z` designator for UTC), `UUID` as its canonical string, and `Decimal` as a precision-preserving JSON
+number. Any `Enum` is emitted as its value, and lists, tuples, sets, and other sized collections as JSON
+arrays. Raw dictionary arguments and results keep their existing
+serialization but also fall back to the same diagnostic payload instead of raising.
 
 ### InferenceScope
 

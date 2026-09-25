@@ -5,8 +5,8 @@
 
 import logging
 import os
-from datetime import datetime
 from collections.abc import Iterable
+from datetime import datetime
 from threading import Lock
 from typing import TYPE_CHECKING, Any
 
@@ -140,6 +140,7 @@ class OpenTelemetryScope:
         self._error_type: str | None = None
         self._exception: Exception | None = None
         self._context_token = None
+        self._recorded_attribute_keys: set[str] = set()
 
         if self._is_telemetry_enabled():
             tracer = self._get_tracer()
@@ -172,12 +173,12 @@ class OpenTelemetryScope:
 
             # Set common tags
             if self._span:
-                self._span.set_attribute(GEN_AI_OPERATION_NAME_KEY, operation_name)
+                self._set_span_attribute(GEN_AI_OPERATION_NAME_KEY, operation_name)
 
                 # Set telemetry SDK attributes
-                self._span.set_attribute(TELEMETRY_SDK_NAME_KEY, TELEMETRY_SDK_NAME_VALUE)
-                self._span.set_attribute(TELEMETRY_SDK_LANGUAGE_KEY, TELEMETRY_SDK_LANGUAGE_VALUE)
-                self._span.set_attribute(TELEMETRY_SDK_VERSION_KEY, get_sdk_version())
+                self._set_span_attribute(TELEMETRY_SDK_NAME_KEY, TELEMETRY_SDK_NAME_VALUE)
+                self._set_span_attribute(TELEMETRY_SDK_LANGUAGE_KEY, TELEMETRY_SDK_LANGUAGE_VALUE)
+                self._set_span_attribute(TELEMETRY_SDK_VERSION_KEY, get_sdk_version())
 
                 # Set agent details if provided
                 if agent_details:
@@ -206,7 +207,7 @@ class OpenTelemetryScope:
         if self._span and self._is_telemetry_enabled():
             self._error_type = type(exception).__name__
             self._exception = exception
-            self._span.set_attribute(ERROR_TYPE_KEY, self._error_type)
+            self._set_span_attribute(ERROR_TYPE_KEY, self._error_type)
             self._span.record_exception(exception)
             self._span.set_status(Status(StatusCode.ERROR, str(exception)))
 
@@ -217,13 +218,13 @@ class OpenTelemetryScope:
             response: The response content to record
         """
         if self._span and self._is_telemetry_enabled():
-            self._span.set_attribute(GEN_AI_OUTPUT_MESSAGES_KEY, response)
+            self._set_span_attribute(GEN_AI_OUTPUT_MESSAGES_KEY, response)
 
     def record_cancellation(self) -> None:
         """Record task cancellation."""
         if self._span and self._is_telemetry_enabled():
             self._error_type = ERROR_TYPE_CANCELLED
-            self._span.set_attribute(ERROR_TYPE_KEY, self._error_type)
+            self._set_span_attribute(ERROR_TYPE_KEY, self._error_type)
             self._span.set_status(Status(StatusCode.ERROR, "Task was cancelled"))
 
     def set_tag_maybe(self, name: str, value: Any) -> None:
@@ -234,7 +235,20 @@ class OpenTelemetryScope:
             value: The value to set (will be skipped if None)
         """
         if value is not None and self._span and self._is_telemetry_enabled():
-            self._span.set_attribute(name, value)
+            self._set_span_attribute(name, value)
+
+    def _set_span_attribute(self, name: str, value: Any) -> bool:
+        """Set an attribute and track it when the span accepts the value."""
+        if self._span is None:
+            return False
+
+        span_attributes = getattr(self._span, "attributes", None)
+        self._span.set_attribute(name, value)
+
+        if span_attributes is None or name in getattr(self._span, "attributes", {}):
+            self._recorded_attribute_keys.add(name)
+            return True
+        return False
 
     def record_attributes(self, attributes: dict[str, Any] | Iterable[tuple[str, Any]]) -> None:
         """Record multiple attribute key/value pairs for telemetry tracking.
@@ -242,8 +256,8 @@ class OpenTelemetryScope:
         This method allows setting multiple custom attributes on the span at once.
 
         Args:
-            attributes: Dictionary or list of tuples containing attribute key-value pairs.
-                        Keys that are None or empty will be skipped.
+            attributes: Dictionary or iterable of tuples containing attribute
+                key-value pairs. Keys that are None or empty will be skipped.
         """
         if not self._is_telemetry_enabled() or self._span is None:
             return
@@ -251,17 +265,16 @@ class OpenTelemetryScope:
         if not self._span.is_recording():
             return
 
+        existing_keys = set(self._recorded_attribute_keys)
         span_attributes = getattr(self._span, "attributes", None)
-        if span_attributes is None:
-            return
-
-        existing_keys = set(span_attributes)
+        if span_attributes is not None:
+            existing_keys.update(span_attributes)
         items = attributes.items() if isinstance(attributes, dict) else attributes
 
         for key, value in items:
             if key and key.strip() and key not in existing_keys:
-                self._span.set_attribute(key, value)
-                existing_keys.add(key)
+                if self._set_span_attribute(key, value):
+                    existing_keys.add(key)
 
     def set_end_time(self, end_time: datetime) -> None:
         """Set a custom end time for the scope.

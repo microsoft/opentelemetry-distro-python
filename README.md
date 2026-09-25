@@ -72,6 +72,26 @@ use_microsoft_opentelemetry(
 
 See the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md) for A365-specific configuration.
 
+Agent365 manual execute-tool spans support typed JSON schema payloads:
+
+```python
+from microsoft.opentelemetry.a365.core import ExecuteToolCallArguments, ToolCallAction, ToolCallResource
+
+arguments = ExecuteToolCallArguments(
+    action=ToolCallAction.READ,
+    resources=[ToolCallResource(resource_id="file-1", resource_type="file", provider="sharepoint")],
+    extension_data={"provider_operation": "lookup"},
+)
+```
+
+The Python `extension_data` dictionary is emitted as a non-empty `metadata` object in the JSON payload,
+preventing provider-specific keys from colliding with declared schema fields.
+
+Typed arguments and results emit `schema_version: "1.0"` and serialize with schema field names such as
+`id`, `type`, `provider_code`, and `has_more`. Serialization never raises: an unserializable payload is
+replaced by `{"serialization_error": "Failed to serialize execute tool payload."}`. Raw dictionary and
+string arguments/results remain supported. See the A365 guide for complete examples.
+
 ---
 
 ## Configuration Reference
@@ -121,6 +141,49 @@ See the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/bl
 | `a365_exporter_storage_directory` | `str` | `None` | Custom directory for durable offline storage. Restrict to the service account; payloads may contain prompts or completions when sensitive-data capture is enabled. |
 
 > For A365 token resolver patterns, baggage, and scope classes, see the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md).
+
+### InvokeAgent semantic parameters
+
+Manual `InvokeAgentScope` instrumentation accepts Python-native request and response parameter models:
+
+```python
+from microsoft.opentelemetry.a365.core import (
+    AgentDetails,
+    GenAiRequestParameters,
+    GenAiResponseParameters,
+    InvokeAgentScope,
+    InvokeAgentScopeDetails,
+    Request,
+    TextPart,
+)
+
+request = Request(content="Hello")
+agent_details = AgentDetails(agent_id="agent-001")
+details = InvokeAgentScopeDetails(
+    request_parameters=GenAiRequestParameters(
+        model="gpt-4o",
+        max_tokens=256,
+        stop_sequences=["END"],
+        system_instructions=[TextPart(content="Be concise.")],
+    )
+)
+
+with InvokeAgentScope.start(request, details, agent_details) as scope:
+    # Invoke your agent here.
+    scope.record_response_parameters(
+        GenAiResponseParameters(
+            finish_reasons=["stop"],
+            output_tokens=18,
+            cache_write_input_tokens=4,
+        )
+    )
+```
+
+Unset fields are omitted. Supported attributes include `gen_ai.request.*`,
+`gen_ai.data_source.id`, `gen_ai.output.type`, `gen_ai.system_instructions`,
+`gen_ai.response.finish_reasons`, and `gen_ai.usage.*` token counts. See the
+[A365 guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md#invokeagentscope)
+for the full list.
 
 ### Sampling
 

@@ -15,6 +15,8 @@ from microsoft.opentelemetry.a365.core.guardrail_details import GuardrailDetails
 from microsoft.opentelemetry.a365.core.guardrail_finding import GuardrailFinding
 from microsoft.opentelemetry.a365.core.guardrail_risk_severity import GuardrailRiskSeverity
 from microsoft.opentelemetry.a365.core.guardrail_target_type import GuardrailTargetType
+from microsoft.opentelemetry.a365.core.gen_ai_request_parameters import GenAiRequestParameters
+from microsoft.opentelemetry.a365.core.gen_ai_response_parameters import GenAiResponseParameters
 from microsoft.opentelemetry.a365.core.inference_call_details import InferenceCallDetails
 from microsoft.opentelemetry.a365.core.models.service_endpoint import ServiceEndpoint
 from microsoft.opentelemetry.a365.core.inference_operation_type import InferenceOperationType
@@ -46,6 +48,24 @@ from microsoft.opentelemetry.a365.core.models.messages import (
     UriPart,
 )
 from microsoft.opentelemetry.a365.core.models.response import Response
+from microsoft.opentelemetry.a365.core.models.tool_call_schema import (
+    ExecuteToolCallArguments,
+    ExecuteToolCallResult,
+    ToolCallAction,
+    ToolCallContainer,
+    ToolCallIdentifier,
+    ToolCallOutcomeStatus,
+    ToolCallPayload,
+    ToolCallResource,
+    ToolCallResultOutcome,
+    ToolCallResultPagination,
+    ToolCallResultPolicy,
+    ToolCallResultResource,
+    ToolCallResultSecurity,
+    ToolCallResultSensitivity,
+    ToolPolicyDecision,
+    serialize_tool_call_payload,
+)
 from microsoft.opentelemetry.a365.core.models.user_details import UserDetails
 from microsoft.opentelemetry.a365.core.opentelemetry_scope import OpenTelemetryScope
 from microsoft.opentelemetry.a365.core.request import Request
@@ -84,9 +104,27 @@ __all__ = [
     "SpanDetails",
     "InferenceCallDetails",
     "ServiceEndpoint",
+    "ExecuteToolCallArguments",
+    "ExecuteToolCallResult",
+    "ToolCallContainer",
+    "ToolCallIdentifier",
+    "ToolCallPayload",
+    "ToolCallResource",
+    "ToolCallResultOutcome",
+    "ToolCallResultPagination",
+    "ToolCallResultPolicy",
+    "ToolCallResultResource",
+    "ToolCallResultSecurity",
+    "ToolCallResultSensitivity",
+    "serialize_tool_call_payload",
+    "GenAiRequestParameters",
+    "GenAiResponseParameters",
     # Enums
     "InferenceOperationType",
     "ToolType",
+    "ToolCallAction",
+    "ToolCallOutcomeStatus",
+    "ToolPolicyDecision",
     # OTEL gen-ai message format types
     "MessageRole",
     "FinishReason",

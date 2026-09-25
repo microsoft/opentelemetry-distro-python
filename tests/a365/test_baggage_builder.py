@@ -1,0 +1,86 @@
+# Copyright (c) Microsoft Corporation.
+# Licensed under the MIT License.
+
+import pytest
+from opentelemetry import baggage, context
+
+from microsoft.opentelemetry.a365.core.constants import CUSTOM_KEYS_BAGGAGE_KEY
+from microsoft.opentelemetry.a365.core.middleware.baggage_builder import BaggageBuilder
+
+
+def test_custom_attribute_sets_value_and_metadata():
+    with BaggageBuilder().custom_attribute("customer.tier", "gold").build():
+        assert baggage.get_baggage("customer.tier") == "gold"
+        assert baggage.get_baggage(CUSTOM_KEYS_BAGGAGE_KEY) == "customer.tier"
+
+
+def test_custom_attributes_track_multiple_keys_in_order_without_duplicates():
+    attributes = [
+        ("customer.tier", "gold"),
+        ("customer.region", "west"),
+        ("customer.tier", "platinum"),
+    ]
+
+    with BaggageBuilder().custom_attributes(attributes).build():
+        assert baggage.get_baggage("customer.tier") == "platinum"
+        assert baggage.get_baggage("customer.region") == "west"
+        assert baggage.get_baggage(CUSTOM_KEYS_BAGGAGE_KEY) == "customer.tier,customer.region"
+
+
+def test_blank_custom_values_are_skipped_without_metadata():
+    builder = BaggageBuilder().custom_attribute("customer.tier", " ")
+
+    with builder.build():
+        assert baggage.get_baggage("customer.tier") is None
+        assert baggage.get_baggage(CUSTOM_KEYS_BAGGAGE_KEY) is None
+
+
+@pytest.mark.parametrize("key", ["", "bad,key", CUSTOM_KEYS_BAGGAGE_KEY])
+def test_custom_attribute_rejects_invalid_keys(key):
+    with pytest.raises(ValueError):
+        BaggageBuilder().custom_attribute(key, "value")
+
+
+def test_set_pairs_does_not_mark_custom_metadata():
+    with BaggageBuilder().set_pairs({"customer.tier": "gold"}).build():
+        assert baggage.get_baggage("customer.tier") == "gold"
+        assert baggage.get_baggage(CUSTOM_KEYS_BAGGAGE_KEY) is None
+
+
+def test_set_pairs_does_not_accept_custom_metadata():
+    pairs = {
+        "customer.tier": "gold",
+        CUSTOM_KEYS_BAGGAGE_KEY: "customer.tier",
+    }
+
+    with BaggageBuilder().set_pairs(pairs).build():
+        assert baggage.get_baggage("customer.tier") == "gold"
+        assert baggage.get_baggage(CUSTOM_KEYS_BAGGAGE_KEY) is None
+
+
+def test_nested_custom_attributes_preserve_outer_metadata():
+    outer_attributes = {
+        "customer.tier": "gold",
+        "customer.region": "west",
+    }
+    inner_attributes = {
+        "customer.region": "east",
+        "customer.segment": "enterprise",
+    }
+
+    with BaggageBuilder().custom_attributes(outer_attributes).build():
+        with BaggageBuilder().custom_attributes(inner_attributes).build():
+            assert baggage.get_baggage("customer.tier") == "gold"
+            assert baggage.get_baggage("customer.region") == "east"
+            assert baggage.get_baggage("customer.segment") == "enterprise"
+            assert baggage.get_baggage(CUSTOM_KEYS_BAGGAGE_KEY) == "customer.tier,customer.region,customer.segment"
+
+
+def test_baggage_scope_restores_previous_context():
+    token = context.attach(baggage.set_baggage("customer.tier", "silver"))
+    try:
+        with BaggageBuilder().custom_attribute("customer.tier", "gold").build():
+            assert baggage.get_baggage("customer.tier") == "gold"
+        assert baggage.get_baggage("customer.tier") == "silver"
+    finally:
+        context.detach(token)

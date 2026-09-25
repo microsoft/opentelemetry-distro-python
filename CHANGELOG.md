@@ -1,6 +1,21 @@
 # Release History
 # Unreleased
+### Features Added
+- Add typed Agent365 execute-tool argument and result schema models with `schema_version: "1.0"` serialization,
+  `ToolCallAction`/`ToolCallOutcomeStatus`/`ToolPolicyDecision` enums, provider extension data wrapped under
+  the JSON `metadata` property, public exports, and `ExecuteToolScope` support while preserving raw
+  dict/string payloads. Execute-tool payload serialization is non-throwing: unserializable payloads record
+  `{"serialization_error": "Failed to serialize execute tool payload."}` instead of failing the span.
+- Add explicit custom baggage APIs and propagate opted-in attributes to supported GenAI spans, including unmodeled operations. ([#264](https://github.com/microsoft/opentelemetry-distro-python/pull/264))
+- Add Python-native `InvokeAgentScope` request and response parameter models
+  that emit OpenTelemetry GenAI semantic attributes, including structured
+  system instructions and cache read/write token counts, introduced by .NET
+  PR #120.
+- Remove optional dependency for langchain-core and document guidance for installation
+  ([#269](https://github.com/microsoft/opentelemetry-distro-python/pull/269))
+
 ### Bugs Fixed
+- Restrict A365 identity and baggage enrichment to recognized GenAI spans while preserving supported span-start signals. ([#265](https://github.com/microsoft/opentelemetry-distro-python/pull/265))
 - Prevent `OpenTelemetryScope.record_attributes()` from overwriting span attributes that were already set by scope construction, by baggage propagated through `A365SpanProcessor`, or by earlier custom attributes, while preserving dictionary and iterable inputs.
 
 # 1.3.9 (2026-09-09)
