@@ -15,6 +15,7 @@
   ([#269](https://github.com/microsoft/opentelemetry-distro-python/pull/269))
 
 ### Bugs Fixed
+- Restore MOT version propagation after OneSettings initialization order caused the exporter version to take precedence over the Microsoft OpenTelemetry distro version
 - Restrict A365 identity and baggage enrichment to recognized GenAI spans while preserving supported span-start signals. ([#265](https://github.com/microsoft/opentelemetry-distro-python/pull/265))
 - Preserve existing span attributes when recording custom scope attributes. ([#266](https://github.com/microsoft/opentelemetry-distro-python/pull/266))
 
