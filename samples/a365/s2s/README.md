@@ -28,20 +28,8 @@ so the sample needs no LLM.
 
 ## Setup
 
-Install dependencies into a project-managed virtual environment with
-[uv](https://docs.astral.sh/uv/) (uv reads `pyproject.toml` and creates
-`.venv` automatically):
-
-```bash
-uv sync
-```
-
-Create your `.env` from the template and fill in your values (`.env` is
-gitignored):
-
-```bash
-cp .env.example .env
-```
+Set the required environment variables in your shell before running the sample.
+The environment variable reference below lists the required values.
 
 The S2S credentials are validated at startup, so all four
 `CONNECTIONS__SERVICE_CONNECTION__SETTINGS__*` / `A365_AGENT_APP_INSTANCE_ID`
@@ -51,7 +39,7 @@ to `true` once you have real credentials to export to A365.
 ## Run
 
 ```bash
-uv run python s2s_exporter.py
+uv run --with msal python samples\a365\s2s\s2s_exporter.py
 ```
 
 The sample enables DEBUG logging for the A365 exporter, so when

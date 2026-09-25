@@ -90,8 +90,8 @@ def _require_env(name: str) -> str:
     value = os.environ.get(name, "").strip()
     if not value or (value.startswith("<") and value.endswith(">")):
         raise SystemExit(
-            f"Environment variable {name} is not set. Copy .env.example to .env "
-            "and fill in your value (see README.md)."
+            f"Environment variable {name} is not set. Set the required shell variables "
+            "and run the sample as described in samples/a365/s2s/README.md."
         )
     return value
 
@@ -118,7 +118,9 @@ def build_s2s_token_resolver():
         import msal
     except ImportError as exc:
         raise SystemExit(
-            "msal is required for the S2S sample. Install dependencies with `uv sync`."
+            "msal is required for the S2S sample. Run `uv run --with msal python "
+            "samples\\a365\\s2s\\s2s_exporter.py` from the repository root as described "
+            "in samples/a365/s2s/README.md."
         ) from exc
 
     client_id = _require_env(A365_SERVICE_CLIENT_ID_ENV)
@@ -230,8 +232,9 @@ def _configure_export_logging() -> None:
 
 
 def main():
-    # Load configuration from a local .env file (see .env.example). Real
-    # environment variables take precedence over the .env file (dotenv default).
+    # Load configuration from a local .env file if present. Real environment
+    # variables take precedence over the file values (dotenv default); see
+    # samples/a365/s2s/README.md for the repository-root run command.
     load_dotenv()
 
     # Show the A365 exporter's HTTP status / correlation id (DEBUG-level).
