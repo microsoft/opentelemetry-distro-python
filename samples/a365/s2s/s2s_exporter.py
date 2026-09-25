@@ -48,8 +48,6 @@ import threading
 import time
 from typing import Optional
 
-from dotenv import load_dotenv
-
 from microsoft.opentelemetry import use_microsoft_opentelemetry
 from microsoft.opentelemetry.a365.core import (
     AgentDetails,
@@ -232,11 +230,6 @@ def _configure_export_logging() -> None:
 
 
 def main():
-    # Load configuration from a local .env file if present. Real environment
-    # variables take precedence over the file values (dotenv default); see
-    # samples/a365/s2s/README.md for the repository-root run command.
-    load_dotenv()
-
     # Show the A365 exporter's HTTP status / correlation id (DEBUG-level).
     _configure_export_logging()
 
