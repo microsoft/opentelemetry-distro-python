@@ -49,12 +49,12 @@ def _load_sample_modules():
         ("s2s_exporter", "s2s_exporter.py"),
     )
     modules = {}
-    original_modules: dict[str, ModuleType] = {}
-    preexisting_module_names = set(sys.modules).intersection(module_name for module_name, _ in module_files)
+    original_modules: dict[str, ModuleType] = {
+        module_name: sys.modules[module_name] for module_name, _ in module_files if module_name in sys.modules
+    }
+    preexisting_module_names = set(original_modules)
     try:
         for module_name, filename in module_files:
-            if module_name in preexisting_module_names:
-                original_modules[module_name] = sys.modules[module_name]
             module = _load_sample_module(module_name, filename)
             modules[module_name] = module
             sys.modules[module_name] = module
@@ -379,3 +379,18 @@ def test_sample_modules_do_not_claim_common_module_names():
 
     assert all(module.__name__.startswith("_a365_s2s_") for module in sample_modules)
     assert all(sys.modules.get(module.__name__.removeprefix("_a365_s2s_")) is not module for module in sample_modules)
+
+
+def test_sample_module_loader_preserves_original_import_error(monkeypatch):
+    original_token_resolver = ModuleType("token_resolver")
+    monkeypatch.setitem(sys.modules, "token_resolver", original_token_resolver)
+
+    def fail_import(_module_name, _filename):
+        raise ImportError("sample import failed")
+
+    monkeypatch.setattr(sys.modules[__name__], "_load_sample_module", fail_import)
+
+    with pytest.raises(ImportError, match="sample import failed"):
+        _load_sample_modules()
+
+    assert sys.modules["token_resolver"] is original_token_resolver

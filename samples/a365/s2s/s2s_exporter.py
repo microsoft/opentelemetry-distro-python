@@ -39,18 +39,18 @@ def _configure_export_logging() -> None:
 def main() -> None:
     config = SampleConfig.load()
     _configure_export_logging()
-    token_resolver = build_s2s_token_resolver(config)
     use_microsoft_opentelemetry(
         enable_a365=True,
         a365_use_s2s_endpoint=True,
-        a365_token_resolver=token_resolver,
+        a365_token_resolver=build_s2s_token_resolver(config),
     )
     print("Telemetry configured for S2S export.\n")
 
-    agent_details = config.create_agent_details()
-    user_details = config.create_user_details()
-    request = config.create_request()
-    emit_sample_telemetry(agent_details, user_details, request)
+    emit_sample_telemetry(
+        config.create_agent_details(),
+        config.create_user_details(),
+        config.create_request(),
+    )
 
     print(
         "\nDone. All spans have been recorded. They are flushed to the A365 "

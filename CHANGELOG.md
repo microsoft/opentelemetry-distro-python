@@ -3,7 +3,7 @@
 ### Features Added
 - Add a Store-ready Agent 365 service-to-service sample covering invoke-agent,
   guardrail, inference, execute-tool, and output telemetry scopes.
-  ([#276](https://github.com/microsoft/opentelemetry-distro-python/pull/276))
+  ([#217](https://github.com/microsoft/opentelemetry-distro-python/pull/217))
 - Add typed Agent365 execute-tool argument and result schema models with `schema_version: "1.0"` serialization,
   `ToolCallAction`/`ToolCallOutcomeStatus`/`ToolPolicyDecision` enums, provider extension data wrapped under
   the JSON `metadata` property, public exports, and `ExecuteToolScope` support while preserving raw
