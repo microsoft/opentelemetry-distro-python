@@ -34,6 +34,13 @@ assert SPEC is not None and SPEC.loader is not None
 s2s_exporter = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(s2s_exporter)
 
+SAMPLE_CONFIG_PATH = Path(__file__).parents[2] / "samples" / "a365" / "s2s" / "sample_config.py"
+SAMPLE_CONFIG_SPEC = importlib.util.spec_from_file_location("a365_s2s_sample_config", SAMPLE_CONFIG_PATH)
+assert SAMPLE_CONFIG_SPEC is not None and SAMPLE_CONFIG_SPEC.loader is not None
+sample_config = importlib.util.module_from_spec(SAMPLE_CONFIG_SPEC)
+sys.modules[SAMPLE_CONFIG_SPEC.name] = sample_config
+SAMPLE_CONFIG_SPEC.loader.exec_module(sample_config)
+
 COMMON_REQUIRED = {
     "microsoft.a365.agent.blueprint.id",
     "gen_ai.agent.id",
@@ -73,6 +80,16 @@ S2S_ENV = {
     s2s_exporter.A365_SERVICE_CLIENT_SECRET_ENV: "secret",
     s2s_exporter.A365_SERVICE_TENANT_ID_ENV: "tenant-123",
     s2s_exporter.A365_AGENT_APP_INSTANCE_ID_ENV: "instance-123",
+}
+SAMPLE_CONFIG_ENV = {
+    sample_config.A365_SERVICE_CLIENT_ID_ENV: "blueprint-client-id",
+    sample_config.A365_SERVICE_CLIENT_SECRET_ENV: "super-secret",
+    sample_config.A365_SERVICE_TENANT_ID_ENV: "tenant-123",
+    sample_config.A365_AGENT_APP_INSTANCE_ID_ENV: "instance-123",
+    sample_config.A365_AGENT_BLUEPRINT_ID_ENV: "blueprint-123",
+    sample_config.A365_CALLER_USER_ID_ENV: "user-123",
+    sample_config.A365_CALLER_USER_EMAIL_ENV: "user@contoso.com",
+    sample_config.A365_CALLER_CLIENT_IP_ENV: "203.0.113.10",
 }
 
 
@@ -130,6 +147,54 @@ def _sample_inputs():
         conversation_id="conversation-123",
     )
     return agent, user, request
+
+
+@pytest.mark.parametrize("invalid_value", ["", "   ", "<required-value>", "  <required-value>  "])
+def test_sample_config_rejects_missing_or_placeholder_values(monkeypatch, invalid_value):
+    for name, value in SAMPLE_CONFIG_ENV.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setenv(sample_config.A365_AGENT_BLUEPRINT_ID_ENV, invalid_value)
+
+    with pytest.raises(SystemExit, match=sample_config.A365_AGENT_BLUEPRINT_ID_ENV):
+        sample_config.SampleConfig.load()
+
+
+def test_sample_config_hides_secret_from_repr(monkeypatch):
+    for name, value in SAMPLE_CONFIG_ENV.items():
+        monkeypatch.setenv(name, value)
+
+    config = sample_config.SampleConfig.load()
+
+    assert "super-secret" not in repr(config)
+
+
+def test_sample_config_creates_deterministic_models(monkeypatch):
+    for name, value in SAMPLE_CONFIG_ENV.items():
+        monkeypatch.setenv(name, value)
+
+    config = sample_config.SampleConfig.load()
+
+    assert config.create_agent_details() == AgentDetails(
+        agent_id="instance-123",
+        agent_name="Weather Agent",
+        agent_description="Answers weather-related questions",
+        agent_blueprint_id="blueprint-123",
+        tenant_id="tenant-123",
+        provider_name="azure-openai",
+        agent_version="1.0.0",
+    )
+    assert config.create_user_details() == UserDetails(
+        user_id="user-123",
+        user_email="user@contoso.com",
+        user_name="Sample Caller",
+        user_client_ip="203.0.113.10",
+    )
+    assert config.create_request() == Request(
+        content="What's the weather in Seattle?",
+        session_id="session-s2s-123",
+        channel=Channel(name="service", link="https://contoso.example/a365-s2s"),
+        conversation_id="conv-s2s-789",
+    )
 
 
 def test_sample_emits_store_required_attributes(captured_spans):
