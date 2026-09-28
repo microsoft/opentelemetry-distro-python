@@ -28,18 +28,22 @@ from microsoft.opentelemetry.a365.core.exporters.enriching_span_processor import
 )
 from microsoft.opentelemetry.a365.core.opentelemetry_scope import OpenTelemetryScope
 
-SAMPLE_PATH = Path(__file__).parents[2] / "samples" / "a365" / "s2s" / "s2s_exporter.py"
-SPEC = importlib.util.spec_from_file_location("a365_s2s_exporter_sample", SAMPLE_PATH)
-assert SPEC is not None and SPEC.loader is not None
-s2s_exporter = importlib.util.module_from_spec(SPEC)
-SPEC.loader.exec_module(s2s_exporter)
+SAMPLE_DIR = Path(__file__).parents[2] / "samples" / "a365" / "s2s"
 
-SAMPLE_CONFIG_PATH = Path(__file__).parents[2] / "samples" / "a365" / "s2s" / "sample_config.py"
-SAMPLE_CONFIG_SPEC = importlib.util.spec_from_file_location("a365_s2s_sample_config", SAMPLE_CONFIG_PATH)
-assert SAMPLE_CONFIG_SPEC is not None and SAMPLE_CONFIG_SPEC.loader is not None
-sample_config = importlib.util.module_from_spec(SAMPLE_CONFIG_SPEC)
-sys.modules[SAMPLE_CONFIG_SPEC.name] = sample_config
-SAMPLE_CONFIG_SPEC.loader.exec_module(sample_config)
+
+def _load_sample_module(module_name, filename):
+    spec = importlib.util.spec_from_file_location(module_name, SAMPLE_DIR / filename)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+sample_config = _load_sample_module("sample_config", "sample_config.py")
+token_resolver = _load_sample_module("token_resolver", "token_resolver.py")
+sample_scenario = _load_sample_module("sample_scenario", "sample_scenario.py")
+s2s_exporter = _load_sample_module("s2s_exporter", "s2s_exporter.py")
 
 COMMON_REQUIRED = {
     "microsoft.a365.agent.blueprint.id",
@@ -75,12 +79,6 @@ TOOL_REQUIRED = COMMON_REQUIRED | {
 OUTPUT_REQUIRED = COMMON_REQUIRED | {"gen_ai.output.messages"}
 GUARDRAIL_REQUIRED = COMMON_REQUIRED
 
-S2S_ENV = {
-    s2s_exporter.A365_SERVICE_CLIENT_ID_ENV: "blueprint-client-id",
-    s2s_exporter.A365_SERVICE_CLIENT_SECRET_ENV: "secret",
-    s2s_exporter.A365_SERVICE_TENANT_ID_ENV: "tenant-123",
-    s2s_exporter.A365_AGENT_APP_INSTANCE_ID_ENV: "instance-123",
-}
 SAMPLE_CONFIG_ENV = {
     sample_config.A365_SERVICE_CLIENT_ID_ENV: "blueprint-client-id",
     sample_config.A365_SERVICE_CLIENT_SECRET_ENV: "super-secret",
@@ -149,6 +147,19 @@ def _sample_inputs():
     return agent, user, request
 
 
+def _sample_config():
+    return sample_config.SampleConfig(
+        client_id="blueprint-client-id",
+        client_secret="secret",
+        tenant_id="tenant-123",
+        agent_instance_id="instance-123",
+        agent_blueprint_id="blueprint-123",
+        caller_user_id="user-123",
+        caller_user_email="user@contoso.com",
+        caller_client_ip="203.0.113.10",
+    )
+
+
 @pytest.mark.parametrize("invalid_value", ["", "   ", "<required-value>", "  <required-value>  "])
 def test_sample_config_rejects_missing_or_placeholder_values(monkeypatch, invalid_value):
     for name, value in SAMPLE_CONFIG_ENV.items():
@@ -201,7 +212,7 @@ def test_sample_emits_store_required_attributes(captured_spans):
     exporter, provider = captured_spans
     agent, user, request = _sample_inputs()
 
-    result = s2s_exporter._emit_sample_telemetry(agent, user, request)
+    result = sample_scenario.emit_sample_telemetry(agent, user, request)
     assert result == "It's currently 62°F and partly cloudy in Seattle."
     assert provider.force_flush()
 
@@ -235,7 +246,7 @@ def test_sample_emits_guardrail_details_and_finding(captured_spans):
     exporter, provider = captured_spans
     agent, user, request = _sample_inputs()
 
-    s2s_exporter._emit_sample_telemetry(agent, user, request)
+    sample_scenario.emit_sample_telemetry(agent, user, request)
     assert provider.force_flush()
 
     guardrail = next(
@@ -252,10 +263,8 @@ def test_sample_emits_guardrail_details_and_finding(captured_spans):
 def test_token_resolver_rejects_tenant_mismatch(monkeypatch, capsys):
     fake_msal = MagicMock()
     monkeypatch.setitem(sys.modules, "msal", fake_msal)
-    for name, value in S2S_ENV.items():
-        monkeypatch.setenv(name, value)
 
-    resolver = s2s_exporter.build_s2s_token_resolver()
+    resolver = token_resolver.build_s2s_token_resolver(_sample_config())
 
     assert resolver("agent-123", "different-tenant") is None
     assert "does not match configured tenant" in capsys.readouterr().out
@@ -265,10 +274,8 @@ def test_token_resolver_rejects_tenant_mismatch(monkeypatch, capsys):
 def test_token_resolver_rejects_agent_mismatch(monkeypatch, capsys):
     fake_msal = MagicMock()
     monkeypatch.setitem(sys.modules, "msal", fake_msal)
-    for name, value in S2S_ENV.items():
-        monkeypatch.setenv(name, value)
 
-    resolver = s2s_exporter.build_s2s_token_resolver()
+    resolver = token_resolver.build_s2s_token_resolver(_sample_config())
 
     assert resolver("different-agent", "tenant-123") is None
     assert "does not match configured agent instance" in capsys.readouterr().out
@@ -286,10 +293,8 @@ def test_token_resolver_caches_by_tenant_and_agent(monkeypatch):
     fake_msal = MagicMock()
     fake_msal.ConfidentialClientApplication.side_effect = [first_app, second_app]
     monkeypatch.setitem(sys.modules, "msal", fake_msal)
-    for name, value in S2S_ENV.items():
-        monkeypatch.setenv(name, value)
 
-    resolver = s2s_exporter.build_s2s_token_resolver()
+    resolver = token_resolver.build_s2s_token_resolver(_sample_config())
 
     assert resolver("instance-123", "tenant-123") == "observability-token"
     assert resolver("instance-123", "tenant-123") == "observability-token"
