@@ -11,6 +11,7 @@ Validates that the microsoft distro wrapper:
   2. Optionally delegates Azure Monitor exporter setup.
 """
 
+import importlib
 import os
 import unittest
 from unittest.mock import MagicMock, patch
@@ -22,7 +23,9 @@ from opentelemetry.sdk.metrics import MeterProvider
 from microsoft.opentelemetry._constants import (
     _A365_DISABLED_INSTRUMENTATIONS,
     _SUPPORTED_INSTRUMENTED_LIBRARIES,
+    MICROSOFT_OPENTELEMETRY_VERSION_ENV,
 )
+import microsoft.opentelemetry._distro as distro_module
 from microsoft.opentelemetry._distro import (
     use_microsoft_opentelemetry,
     _append_a365_components,
@@ -40,6 +43,43 @@ TEST_CONNECTION_STRING = "InstrumentationKey=test-key;IngestionEndpoint=https://
 
 class TestUseMicrosoftOpenTelemetry(unittest.TestCase):
     """Tests for use_microsoft_opentelemetry() orchestration."""
+
+    def test_distro_version_is_set_before_exporter_import(self):
+        """Exporter imports cannot claim the shared profile before the MOT version is available."""
+        from azure.monitor.opentelemetry.exporter._configuration import _state as configuration_state
+
+        manager = MagicMock()
+        observed_versions = []
+        original_getter = configuration_state.get_configuration_manager
+        original_manager = configuration_state._configuration_manager  # pylint: disable=protected-access
+        original_module_getattr = configuration_state.__dict__.get("__getattr__")
+
+        def observe_configuration_state_import(name):
+            if name != "get_configuration_manager":
+                raise AttributeError(name)
+            observed_versions.append(os.environ.get(MICROSOFT_OPENTELEMETRY_VERSION_ENV))
+            return lambda: manager
+
+        try:
+            with patch.dict(os.environ):
+                os.environ.pop(MICROSOFT_OPENTELEMETRY_VERSION_ENV, None)
+                importlib.reload(configuration_state)
+                del configuration_state.get_configuration_manager
+                configuration_state.__dict__["__getattr__"] = observe_configuration_state_import
+
+                importlib.reload(distro_module)
+                distro_module._initialize_configuration_manager()  # pylint: disable=protected-access
+        finally:
+            configuration_state.__dict__["get_configuration_manager"] = original_getter
+            configuration_state._configuration_manager = original_manager  # pylint: disable=protected-access
+            if original_module_getattr is None:
+                configuration_state.__dict__.pop("__getattr__", None)
+            else:
+                configuration_state.__dict__["__getattr__"] = original_module_getattr
+            importlib.reload(distro_module)
+
+        self.assertEqual(observed_versions, [VERSION])
+        manager.initialize.assert_called_once_with(component="mot", version=VERSION)
 
     @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
     @patch("microsoft.opentelemetry._distro._get_configuration_manager")

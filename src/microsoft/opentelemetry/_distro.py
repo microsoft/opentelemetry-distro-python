@@ -24,13 +24,6 @@ from opentelemetry.util._importlib_metadata import (
     entry_points,
 )
 
-_get_configuration_manager: Optional[Callable[[], Any]]
-try:
-    from azure.monitor.opentelemetry.exporter._configuration._state import (  # pylint: disable=import-error,no-name-in-module
-        get_configuration_manager as _get_configuration_manager,
-    )
-except ImportError:
-    _get_configuration_manager = None
 
 from microsoft.opentelemetry._constants import (
     DISABLE_LOGGING_ARG,
@@ -77,6 +70,14 @@ from microsoft.opentelemetry._constants import (
 from microsoft.opentelemetry._version import VERSION
 
 os.environ.setdefault(MICROSOFT_OPENTELEMETRY_VERSION_ENV, VERSION)
+
+_get_configuration_manager: Optional[Callable[[], Any]]
+try:
+    from azure.monitor.opentelemetry.exporter._configuration._state import (  # pylint: disable=import-error,no-name-in-module
+        get_configuration_manager as _get_configuration_manager,
+    )
+except ImportError:
+    _get_configuration_manager = None
 
 # pylint: disable=wrong-import-position
 from microsoft.opentelemetry._genai.main_agent import (
