@@ -10,11 +10,17 @@ from typing import Optional
 
 from sample_config import SampleConfig
 
+# Azure AD requires the resource's ``/.default`` scope rather than a specific
+# delegated scope like ``Agent365.Observability.OtelWrite`` (which is only valid
+# in the FIC ``user_fic`` grant used by the AI-teammate flow).
 A365_OBSERVABILITY_SCOPE = "api://9b975845-388f-4429-889e-eab1ef63949c/.default"
 
 
 def build_s2s_token_resolver(config: SampleConfig) -> Callable[[str, str], Optional[str]]:
-    """Build the app-only S2S token resolver for the configured agent."""
+    """Build the app-only S2S token resolver for the configured agent.
+
+    Returns a ``(agent_id, tenant_id) -> token | None`` callable.
+    """
     try:
         import msal
     except ImportError as exc:
@@ -52,6 +58,7 @@ def build_s2s_token_resolver(config: SampleConfig) -> Callable[[str, str], Optio
                     return token
 
         try:
+            # Step 1: Agent application token via fmi_path.
             app = msal.ConfidentialClientApplication(
                 client_id=config.client_id,
                 client_credential=config.client_secret,
@@ -66,11 +73,17 @@ def build_s2s_token_resolver(config: SampleConfig) -> Callable[[str, str], Optio
                 return None
             agent_token = result["access_token"]
 
+            # Step 2: Instance app authenticated with the agent token as a
+            # client assertion. (No agentic-user / user_fic step in S2S.)
+            # Pass the assertion as a no-arg callable (MSAL's recommended form)
+            # so it can be re-read on demand instead of as a static string.
             instance_app = msal.ConfidentialClientApplication(
                 client_id=config.agent_instance_id,
                 client_credential={"client_assertion": lambda: agent_token},
                 authority=authority,
             )
+
+            # Step 3: Application token for the A365 observability scope.
             result = instance_app.acquire_token_for_client(
                 scopes=[A365_OBSERVABILITY_SCOPE],
             )

@@ -9,7 +9,8 @@ service-principal token resolver. The resolver performs the app-to-instance
 exchange and acquires an application token for the A365 observability scope;
 the deterministic scenario exercises every public manual observability scope.
 
-Run this file directly from the repository root as documented in README.md.
+Run this file directly from the repository root as documented in
+samples/a365/s2s/README.md.
 """
 
 import logging
