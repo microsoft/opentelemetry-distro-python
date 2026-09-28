@@ -5,6 +5,7 @@ import importlib.util
 import logging
 import sys
 from pathlib import Path
+from types import ModuleType
 from unittest.mock import MagicMock
 
 import pytest
@@ -32,7 +33,7 @@ SAMPLE_DIR = Path(__file__).parents[2] / "samples" / "a365" / "s2s"
 
 
 def _load_sample_module(module_name, filename):
-    spec = importlib.util.spec_from_file_location(module_name, SAMPLE_DIR / filename)
+    spec = importlib.util.spec_from_file_location(f"_a365_s2s_{module_name}", SAMPLE_DIR / filename)
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
@@ -40,10 +41,33 @@ def _load_sample_module(module_name, filename):
     return module
 
 
-sample_config = _load_sample_module("sample_config", "sample_config.py")
-token_resolver = _load_sample_module("token_resolver", "token_resolver.py")
-sample_scenario = _load_sample_module("sample_scenario", "sample_scenario.py")
-s2s_exporter = _load_sample_module("s2s_exporter", "s2s_exporter.py")
+def _load_sample_modules():
+    module_files = (
+        ("sample_config", "sample_config.py"),
+        ("token_resolver", "token_resolver.py"),
+        ("sample_scenario", "sample_scenario.py"),
+        ("s2s_exporter", "s2s_exporter.py"),
+    )
+    modules = {}
+    original_modules: dict[str, ModuleType] = {}
+    preexisting_module_names = set(sys.modules).intersection(module_name for module_name, _ in module_files)
+    try:
+        for module_name, filename in module_files:
+            if module_name in preexisting_module_names:
+                original_modules[module_name] = sys.modules[module_name]
+            module = _load_sample_module(module_name, filename)
+            modules[module_name] = module
+            sys.modules[module_name] = module
+    finally:
+        for module_name, _ in module_files:
+            if module_name in preexisting_module_names:
+                sys.modules[module_name] = original_modules[module_name]
+            else:
+                sys.modules.pop(module_name, None)
+    return tuple(modules[module_name] for module_name, _ in module_files)
+
+
+sample_config, token_resolver, sample_scenario, s2s_exporter = _load_sample_modules()
 
 COMMON_REQUIRED = {
     "microsoft.a365.agent.blueprint.id",
@@ -316,3 +340,42 @@ def test_configure_export_logging_adds_one_named_handler():
     finally:
         logger.handlers = original_handlers
         logger.propagate = original_propagate
+
+
+def test_main_configures_s2s_export_and_runs_scenario(monkeypatch):
+    config = MagicMock()
+    agent_details = config.create_agent_details.return_value
+    user_details = config.create_user_details.return_value
+    request = config.create_request.return_value
+    resolver = MagicMock()
+
+    load_config = MagicMock(return_value=config)
+    configure_export_logging = MagicMock()
+    build_token_resolver = MagicMock(return_value=resolver)
+    configure_telemetry = MagicMock()
+    emit_telemetry = MagicMock()
+
+    monkeypatch.setattr(s2s_exporter.SampleConfig, "load", load_config)
+    monkeypatch.setattr(s2s_exporter, "_configure_export_logging", configure_export_logging)
+    monkeypatch.setattr(s2s_exporter, "build_s2s_token_resolver", build_token_resolver)
+    monkeypatch.setattr(s2s_exporter, "use_microsoft_opentelemetry", configure_telemetry)
+    monkeypatch.setattr(s2s_exporter, "emit_sample_telemetry", emit_telemetry)
+
+    s2s_exporter.main()
+
+    load_config.assert_called_once_with()
+    configure_export_logging.assert_called_once_with()
+    build_token_resolver.assert_called_once_with(config)
+    configure_telemetry.assert_called_once_with(
+        enable_a365=True,
+        a365_use_s2s_endpoint=True,
+        a365_token_resolver=resolver,
+    )
+    emit_telemetry.assert_called_once_with(agent_details, user_details, request)
+
+
+def test_sample_modules_do_not_claim_common_module_names():
+    sample_modules = (sample_config, token_resolver, sample_scenario, s2s_exporter)
+
+    assert all(module.__name__.startswith("_a365_s2s_") for module in sample_modules)
+    assert all(sys.modules.get(module.__name__.removeprefix("_a365_s2s_")) is not module for module in sample_modules)

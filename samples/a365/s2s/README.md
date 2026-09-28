@@ -10,6 +10,15 @@ application token for the A365 observability scope. It deliberately omits the
 agentic-user FIC step and does not emit `microsoft.agent.user.id` or
 `microsoft.agent.user.email`.
 
+## Sample organization
+
+| File | Responsibility |
+| --- | --- |
+| `s2s_exporter.py` | Executable entry point that loads configuration, enables S2S export, and runs the scenario |
+| `sample_config.py` | Environment validation and deterministic agent, caller, and request inputs |
+| `token_resolver.py` | Blueprint-to-agent token exchange, observability token acquisition, and token caching |
+| `sample_scenario.py` | Deterministic manual-scope telemetry used for Store validation |
+
 ## Prerequisites
 
 - Python 3.10+
