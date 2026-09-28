@@ -27,7 +27,7 @@ agentic-user FIC step and does not emit `microsoft.agent.user.id` or
   `Agent365.Observability.OtelWrite` **application** permission with admin
   consent. See [`MIGRATION_A365.md`](../../../MIGRATION_A365.md) under
   "Troubleshooting - Permissions and Setup".
-- Real tenant, agent Blueprint, agent app instance client ID, and human caller
+- Real tenant, Blueprint app client ID, agent app instance client ID, and human caller
   values from the deployment being validated. Angle-bracket placeholders are
   rejected at startup.
 
@@ -42,7 +42,6 @@ $env:CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID = "<blueprint-app-clien
 $env:CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET = "<blueprint-app-secret>"
 $env:CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID = "<tenant-guid>"
 $env:A365_AGENT_APP_INSTANCE_ID = "<agent-app-instance-id>"
-$env:A365_AGENT_BLUEPRINT_ID = "<agent-blueprint-id>"
 $env:A365_CALLER_USER_ID = "<caller-user-id>"
 $env:A365_CALLER_USER_EMAIL = "<caller-user-email>"
 $env:A365_CALLER_CLIENT_IP = "<caller-client-ip>"
@@ -59,7 +58,6 @@ export CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID="<blueprint-app-clien
 export CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET="<blueprint-app-secret>"
 export CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID="<tenant-guid>"
 export A365_AGENT_APP_INSTANCE_ID="<agent-app-instance-id>"
-export A365_AGENT_BLUEPRINT_ID="<agent-blueprint-id>"
 export A365_CALLER_USER_ID="<caller-user-id>"
 export A365_CALLER_USER_EMAIL="<caller-user-email>"
 export A365_CALLER_CLIENT_IP="<caller-client-ip>"
@@ -72,6 +70,9 @@ tenant and agent ID in each export request must match the configured tenant and
 agent app instance client ID; the resolver rejects mismatches before token
 acquisition. `gen_ai.agent.id` and the `{agentId}` export URL segment therefore
 use `A365_AGENT_APP_INSTANCE_ID`, not the Blueprint client ID.
+The Blueprint telemetry attribute uses the same
+`CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTID` value used to authenticate
+the Blueprint application.
 
 ## Scope and Store-validation coverage
 

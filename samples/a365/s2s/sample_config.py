@@ -12,7 +12,6 @@ A365_SERVICE_CLIENT_ID_ENV = "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTI
 A365_SERVICE_CLIENT_SECRET_ENV = "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__CLIENTSECRET"
 A365_SERVICE_TENANT_ID_ENV = "CONNECTIONS__SERVICE_CONNECTION__SETTINGS__TENANTID"
 A365_AGENT_APP_INSTANCE_ID_ENV = "A365_AGENT_APP_INSTANCE_ID"
-A365_AGENT_BLUEPRINT_ID_ENV = "A365_AGENT_BLUEPRINT_ID"
 A365_CALLER_USER_ID_ENV = "A365_CALLER_USER_ID"
 A365_CALLER_USER_EMAIL_ENV = "A365_CALLER_USER_EMAIL"
 A365_CALLER_CLIENT_IP_ENV = "A365_CALLER_CLIENT_IP"
@@ -36,7 +35,6 @@ class SampleConfig:
     client_secret: str = field(repr=False)
     tenant_id: str
     agent_instance_id: str
-    agent_blueprint_id: str
     caller_user_id: str
     caller_user_email: str
     caller_client_ip: str
@@ -49,7 +47,6 @@ class SampleConfig:
             client_secret=_require_env(A365_SERVICE_CLIENT_SECRET_ENV),
             tenant_id=_require_env(A365_SERVICE_TENANT_ID_ENV),
             agent_instance_id=_require_env(A365_AGENT_APP_INSTANCE_ID_ENV),
-            agent_blueprint_id=_require_env(A365_AGENT_BLUEPRINT_ID_ENV),
             caller_user_id=_require_env(A365_CALLER_USER_ID_ENV),
             caller_user_email=_require_env(A365_CALLER_USER_EMAIL_ENV),
             caller_client_ip=_require_env(A365_CALLER_CLIENT_IP_ENV),
@@ -61,7 +58,7 @@ class SampleConfig:
             agent_id=self.agent_instance_id,
             agent_name="Weather Agent",
             agent_description="Answers weather-related questions",
-            agent_blueprint_id=self.agent_blueprint_id,
+            agent_blueprint_id=self.client_id,
             tenant_id=self.tenant_id,
             provider_name="azure-openai",
             agent_version="1.0.0",
