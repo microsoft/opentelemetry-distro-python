@@ -87,7 +87,8 @@ def _create_legacy_v1_database(database_path):
     database_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(database_path))
     try:
-        conn.execute("""
+        conn.execute(
+            """
             CREATE TABLE durable_records (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 schema_version INTEGER NOT NULL,
@@ -101,7 +102,8 @@ def _create_legacy_v1_database(database_path):
                 lease_until REAL,
                 retry_count INTEGER NOT NULL DEFAULT 0
             )
-            """)
+            """
+        )
         conn.execute(
             """
             INSERT INTO durable_records (
