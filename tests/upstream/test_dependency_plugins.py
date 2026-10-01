@@ -1,0 +1,129 @@
+import importlib
+import importlib.util
+from importlib.metadata import entry_points, version
+from unittest.mock import patch
+
+import pytest
+from azure.monitor.opentelemetry.exporter import (
+    AzureMonitorLogExporter,
+    AzureMonitorMetricExporter,
+    AzureMonitorTraceExporter,
+)
+from opentelemetry.exporter.otlp.proto.http._log_exporter import OTLPLogExporter
+from opentelemetry.exporter.otlp.proto.http.metric_exporter import OTLPMetricExporter
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
+_LOADABLE_INSTRUMENTORS = {
+    "logging",
+    "requests",
+    "urllib",
+    "urllib3",
+}
+
+_OPTIONAL_RUNTIME_INSTRUMENTORS = {
+    "django": ("opentelemetry.instrumentation.django", "DjangoInstrumentor"),
+    "fastapi": ("opentelemetry.instrumentation.fastapi", "FastAPIInstrumentor"),
+    "flask": ("opentelemetry.instrumentation.flask", "FlaskInstrumentor"),
+    "httpx": ("opentelemetry.instrumentation.httpx", "HTTPXClientInstrumentor"),
+    "httpx2": ("opentelemetry.instrumentation.httpx", "HTTPX2ClientInstrumentor"),
+    "psycopg2": ("opentelemetry.instrumentation.psycopg2", "Psycopg2Instrumentor"),
+}
+
+
+@pytest.mark.parametrize(
+    ("distribution", "module"),
+    [
+        ("azure-core", "azure.core"),
+        ("azure-core-tracing-opentelemetry", "azure.core.tracing.ext.opentelemetry_span"),
+        ("azure-monitor-opentelemetry-exporter", "azure.monitor.opentelemetry.exporter"),
+        ("opentelemetry-api", "opentelemetry.trace"),
+        ("opentelemetry-exporter-otlp-proto-http", "opentelemetry.exporter.otlp.proto.http"),
+        ("opentelemetry-instrumentation", "opentelemetry.instrumentation"),
+        ("opentelemetry-resource-detector-azure", "opentelemetry.resource.detector.azure"),
+        ("opentelemetry-sdk", "opentelemetry.sdk"),
+        ("opentelemetry-util-genai", "opentelemetry.util.genai"),
+    ],
+)
+def test_direct_dependency_distribution_and_module_are_available(distribution, module):
+    assert version(distribution)
+    assert importlib.import_module(module)
+
+
+@pytest.mark.parametrize(
+    ("group", "required_names"),
+    [
+        (
+            "opentelemetry_instrumentor",
+            _LOADABLE_INSTRUMENTORS | _OPTIONAL_RUNTIME_INSTRUMENTORS.keys(),
+        ),
+        ("opentelemetry_logs_exporter", {"azure_monitor_opentelemetry_exporter", "otlp_proto_http"}),
+        ("opentelemetry_metrics_exporter", {"azure_monitor_opentelemetry_exporter", "otlp_proto_http"}),
+        ("opentelemetry_propagator", {"baggage", "tracecontext"}),
+        ("opentelemetry_traces_exporter", {"azure_monitor_opentelemetry_exporter", "otlp_proto_http"}),
+        ("opentelemetry_traces_sampler", {"always_off", "always_on", "parentbased_traceidratio", "traceidratio"}),
+    ],
+)
+def test_required_plugin_entry_points_load(group, required_names):
+    plugins = {plugin.name: plugin for plugin in entry_points(group=group)}
+
+    assert required_names <= plugins.keys()
+    names_to_load = _LOADABLE_INSTRUMENTORS if group == "opentelemetry_instrumentor" else required_names
+    for name in names_to_load:
+        assert plugins[name].load()
+
+
+@pytest.mark.parametrize(
+    ("name", "expected_target"),
+    _OPTIONAL_RUNTIME_INSTRUMENTORS.items(),
+)
+def test_optional_runtime_instrumentor_entry_points_target_installed_modules(name, expected_target):
+    plugins = {plugin.name: plugin for plugin in entry_points(group="opentelemetry_instrumentor")}
+    module, attribute = expected_target
+    plugin = plugins[name]
+
+    # These instrumentors import optional user frameworks or drivers when loaded.
+    # Validate their targets without requiring those applications in the distro test environment.
+    assert plugin.module == module
+    assert plugin.attr == attribute
+    assert importlib.util.find_spec(module) is not None
+
+
+@pytest.mark.parametrize(
+    ("exporter_class", "endpoint"),
+    [
+        (OTLPSpanExporter, "http://localhost:4318/v1/traces"),
+        (OTLPMetricExporter, "http://localhost:4318/v1/metrics"),
+        (OTLPLogExporter, "http://localhost:4318/v1/logs"),
+    ],
+)
+def test_otlp_http_exporters_construct_and_shutdown(exporter_class, endpoint):
+    exporter = exporter_class(endpoint=endpoint)
+
+    exporter.shutdown()
+
+
+@pytest.mark.parametrize(
+    "exporter_class",
+    [
+        AzureMonitorTraceExporter,
+        AzureMonitorMetricExporter,
+        AzureMonitorLogExporter,
+    ],
+)
+def test_azure_monitor_exporters_construct_and_shutdown(exporter_class):
+    with (
+        patch(
+            "azure.monitor.opentelemetry.exporter.export._base.get_configuration_manager",
+            return_value=None,
+        ),
+        patch.object(exporter_class, "_should_collect_stats", return_value=False),
+        patch.object(exporter_class, "_should_collect_customer_sdkstats", return_value=False),
+    ):
+        exporter = exporter_class(
+            connection_string=(
+                "InstrumentationKey=00000000-0000-0000-0000-000000000000;" "IngestionEndpoint=https://example.test/"
+            ),
+            disable_offline_storage=True,
+        )
+
+    exporter.shutdown()
