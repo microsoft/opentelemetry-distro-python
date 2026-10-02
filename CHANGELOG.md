@@ -23,6 +23,7 @@
   ([#269](https://github.com/microsoft/opentelemetry-distro-python/pull/269))
 
 ### Bugs Fixed
+- Handle activities without a recipient when extracting Agent365 tenant baggage.
 - Restore MOT version propagation after OneSettings initialization order caused the exporter version to take precedence over the Microsoft OpenTelemetry distro version
   ([#275](https://github.com/microsoft/opentelemetry-distro-python/pull/275))
 - Restrict A365 identity and baggage enrichment to recognized GenAI spans while preserving supported span-start signals. ([#265](https://github.com/microsoft/opentelemetry-distro-python/pull/265))

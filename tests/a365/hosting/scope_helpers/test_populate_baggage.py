@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 from microsoft_agents.activity import Activity, ChannelAccount, ConversationAccount
 from microsoft_agents.hosting.core import TurnContext
-from microsoft.opentelemetry.a365.core.constants import USER_ID_KEY
+from microsoft.opentelemetry.a365.core.constants import TENANT_ID_KEY, USER_ID_KEY
 from microsoft.opentelemetry.a365.core.middleware.baggage_builder import BaggageBuilder
 from microsoft.opentelemetry.a365.hosting.scope_helpers.populate_baggage import populate
 
@@ -45,3 +45,16 @@ def test_populate():
     # Verify specific expected baggage keys were set
     assert USER_ID_KEY in builder._pairs
     assert builder._pairs[USER_ID_KEY] == "caller-id"
+
+
+def test_populate_without_recipient():
+    activity = Activity(
+        type="message",
+        from_property=ChannelAccount(aad_object_id="caller-id"),
+    )
+    turn_context = TurnContext(MagicMock(), activity)
+    builder = BaggageBuilder()
+
+    assert populate(builder, turn_context) is builder
+    assert builder._pairs[USER_ID_KEY] == "caller-id"
+    assert TENANT_ID_KEY not in builder._pairs

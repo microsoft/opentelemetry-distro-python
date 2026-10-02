@@ -78,6 +78,18 @@ def test_get_tenant_id_pair():
     assert (TENANT_ID_KEY, "test-tenant-id") in result
 
 
+def test_get_tenant_id_pair_without_recipient():
+    activity = Activity(type="message")
+
+    assert not list(get_tenant_id_pair(activity))
+
+
+def test_get_tenant_id_pair_without_tenant_id():
+    activity = Activity(type="message", recipient=ChannelAccount())
+
+    assert list(get_tenant_id_pair(activity)) == [(TENANT_ID_KEY, None)]
+
+
 def test_get_channel_pairs():
     """Test get_channel_pairs extracts channel metadata."""
     activity = Activity(type="message", channel_id="test-channel")

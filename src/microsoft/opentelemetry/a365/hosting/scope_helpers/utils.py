@@ -92,7 +92,10 @@ def get_target_agent_pairs(activity: Activity) -> Iterator[tuple[str, Any]]:
 
 
 def get_tenant_id_pair(activity: Activity) -> Iterator[tuple[str, Any]]:
-    yield TENANT_ID_KEY, activity.recipient.tenant_id
+    rec = activity.recipient
+    if not rec:
+        return
+    yield TENANT_ID_KEY, rec.tenant_id
 
 
 def get_channel_pairs(activity: Activity) -> Iterator[tuple[str, Any]]:
