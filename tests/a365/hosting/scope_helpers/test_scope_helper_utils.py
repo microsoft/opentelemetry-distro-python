@@ -81,7 +81,7 @@ def test_get_tenant_id_pair():
 def test_get_tenant_id_pair_without_recipient():
     activity = Activity(type="message")
 
-    assert list(get_tenant_id_pair(activity)) == []
+    assert not list(get_tenant_id_pair(activity))
 
 
 def test_get_tenant_id_pair_without_tenant_id():
