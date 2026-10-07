@@ -1,5 +1,5 @@
 # Release History
-# Unreleased
+# 1.3.10 (2026-10-07)
 ### Features Added
 - Add network-isolated upstream compatibility tests for Azure resource detectors,
   OpenTelemetry SDK telemetry contracts, dependency plugins, exporters, and
