@@ -98,10 +98,6 @@ def test_aks_identity_is_not_replaced_by_vm_detector(monkeypatch):
     assert "host.id" not in resource.attributes
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="opentelemetry-sdk 1.44 runs the generated service_instance detector after Azure detectors",
-)
 def test_azure_app_service_instance_id_overrides_generated_id(monkeypatch):
     monkeypatch.setenv("OTEL_EXPERIMENTAL_RESOURCE_DETECTORS", "azure_app_service")
     monkeypatch.setenv("WEBSITE_SITE_NAME", "orders-api")
