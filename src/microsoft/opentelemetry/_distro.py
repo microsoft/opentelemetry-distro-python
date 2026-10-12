@@ -155,7 +155,9 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
         Additional log record processors.
     :keyword list metric_readers: Additional metric readers.
     :keyword list views: Metric views.
-    :keyword str logger_name: Logger name for log collection.
+    :keyword str logger_name:
+        Logger name for log collection. Defaults to the root logger when
+        omitted or empty. Use ``disable_logging=True`` to disable collection.
     :keyword logging_formatter: Formatter for collected logs.
     :keyword dict instrumentation_options:
         Per-library instrumentation enable/disable options.
@@ -754,13 +756,12 @@ def _setup_logging(
 
     logger_name: str = otel_kwargs.get(LOGGER_NAME_ARG, "")
     logging_formatter: Optional[Formatter] = otel_kwargs.get(LOGGING_FORMATTER_ARG)
-    if logger_name:
-        logger = getLogger(logger_name)
-        if not any(isinstance(h, LoggingHandler) for h in logger.handlers):
-            handler = LoggingHandler(logger_provider=logger_provider)
-            if logging_formatter:
-                handler.setFormatter(logging_formatter)
-            logger.addHandler(handler)
+    logger = getLogger(logger_name)
+    if not any(isinstance(h, LoggingHandler) for h in logger.handlers):
+        handler = LoggingHandler(logger_provider=logger_provider)
+        if logging_formatter:
+            handler.setFormatter(logging_formatter)
+        logger.addHandler(handler)
 
     return logger_provider
 

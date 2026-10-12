@@ -109,7 +109,7 @@ string arguments/results remain supported. See the A365 guide for complete examp
 | `log_record_processors` | `list` | `[]` | Additional log record processors. |
 | `metric_readers` | `list` | `[]` | Additional metric readers. |
 | `views` | `list` | `[]` | Metric views. |
-| `logger_name` | `str` | `None` | Logger name for log collection. |
+| `logger_name` | `str` | `""` | Logger name for log collection. Omitted or empty names collect from the root logger; use `disable_logging=True` to disable collection. |
 | `logging_formatter` | `Formatter` | `None` | Formatter for collected logs. |
 | `instrumentation_options` | `dict` | `None` | Per-library instrumentation enable/disable options. |
 | `enable_trace_based_sampling_for_logs` | `bool` | `False` | Enable trace-based sampling for logs. |
@@ -141,6 +141,10 @@ string arguments/results remain supported. See the A365 guide for complete examp
 | `a365_exporter_storage_directory` | `str` | `None` | Custom directory for durable offline storage. Restrict to the service account; payloads may contain prompts or completions when sensitive-data capture is enabled. |
 
 > For A365 token resolver patterns, baggage, and scope classes, see the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md).
+
+Python log collection respects logger levels and propagation settings. If using
+`logging.basicConfig(level=logging.INFO)`, call it before `use_microsoft_opentelemetry()`;
+`basicConfig()` has no effect once the root logger already has a handler.
 
 ### InvokeAgent semantic parameters
 
