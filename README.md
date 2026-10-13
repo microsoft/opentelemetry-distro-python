@@ -142,10 +142,6 @@ string arguments/results remain supported. See the A365 guide for complete examp
 
 > For A365 token resolver patterns, baggage, and scope classes, see the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md).
 
-Python log collection respects logger levels and propagation settings. If using
-`logging.basicConfig(level=logging.INFO)`, call it before `use_microsoft_opentelemetry()`;
-`basicConfig()` has no effect once the root logger already has a handler.
-
 ### InvokeAgent semantic parameters
 
 Manual `InvokeAgentScope` instrumentation accepts Python-native request and response parameter models:

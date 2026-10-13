@@ -155,9 +155,7 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
         Additional log record processors.
     :keyword list metric_readers: Additional metric readers.
     :keyword list views: Metric views.
-    :keyword str logger_name:
-        Logger name for log collection. Defaults to the root logger when
-        omitted or empty. Use ``disable_logging=True`` to disable collection.
+    :keyword str logger_name: Logger name for log collection.
     :keyword logging_formatter: Formatter for collected logs.
     :keyword dict instrumentation_options:
         Per-library instrumentation enable/disable options.
