@@ -218,11 +218,10 @@ class TestWebSnippetInjector(unittest.TestCase):
         with patch(
             "microsoft.opentelemetry._azure_monitor._browser_sdk_loader.snippet_injector._logger"
         ) as mock_logger:
-            result = self.injector._decompress_content(content, "br")
+            with self.assertRaisesRegex(RuntimeError, "bounded brotli decompression is unavailable"):
+                self.injector._decompress_content(content, "br")
 
-            # Should log warning and return original content
             mock_logger.warning.assert_called_once()
-            self.assertEqual(result, content)
 
     def test_compress_content_gzip(self):
         """Test _compress_content with gzip encoding."""
@@ -583,12 +582,20 @@ class TestSizeCaps(unittest.TestCase):
         with self.assertRaises(ValueError):
             _bounded_decompress(bomb, "deflate")
 
-    def test_bounded_decompress_brotli_bomb_raises(self):
-        if not snippet_injector_module.HAS_BROTLI:
-            self.skipTest("brotli not installed")
-        bomb = snippet_injector_module._BROTLI_MODULE.compress(b"a" * (_MAX_DECOMPRESSED_BYTES + 1024))
-        with self.assertRaises(ValueError):
-            _bounded_decompress(bomb, "br")
+    def test_bounded_decompress_brotli_does_not_start_decoder(self):
+        with patch.object(snippet_injector_module, "_BROTLI_MODULE") as mock_brotli:
+            with self.assertRaisesRegex(RuntimeError, "bounded brotli decompression is unavailable"):
+                _bounded_decompress(b"compressed", "br")
+        mock_brotli.Decompressor.assert_not_called()
+
+    def test_brotli_injection_is_skipped(self):
+        content = b"compressed"
+        self.assertFalse(self.injector.should_inject("GET", "text/html", content, "br"))
+
+        modified, encoding = self.injector.inject_with_compression(content, "br")
+        self.assertEqual(modified, content)
+        self.assertEqual(encoding, "br")
+        self.assertIsNone(self.injector._decompressed_content_cache)
 
     def test_inject_with_compression_returns_original_on_bomb(self):
         bomb = gzip.compress(b"a" * (_MAX_DECOMPRESSED_BYTES + 1024))

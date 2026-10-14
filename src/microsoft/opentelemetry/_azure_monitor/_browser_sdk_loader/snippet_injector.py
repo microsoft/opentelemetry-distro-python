@@ -56,23 +56,13 @@ def _bounded_decompress(data: bytes, encoding: str) -> bytes:
         output += decompressor.flush()
         if len(output) > cap:
             raise ValueError("deflate-decompressed body exceeds cap")
+        if not decompressor.eof:
+            raise ValueError("incomplete deflate-compressed body")
         return bytes(output)
     elif encoding == "br":
-        if _BROTLI_MODULE is None:
-            raise RuntimeError("brotli module not available")
-        decompressor = _BROTLI_MODULE.Decompressor()
-        chunk_size = 64 * 1024
-        pieces = []
-        total = 0
-        for start in range(0, len(data), chunk_size):
-            piece = decompressor.process(data[start : start + chunk_size])
-            total += len(piece)
-            if total > cap:
-                raise ValueError("brotli-decompressed body exceeds cap")
-            pieces.append(piece)
-        if not decompressor.is_finished():
-            raise ValueError("incomplete brotli-compressed body")
-        return b"".join(pieces)
+        # Python's Brotli decoder cannot cap output during decoding. Checking
+        # the size afterward would still permit an oversized allocation.
+        raise RuntimeError("bounded brotli decompression is unavailable")
     else:
         raise ValueError(f"unsupported encoding: {encoding}")
     if len(output) > cap:
@@ -461,10 +451,7 @@ class WebSnippetInjector:
             if normalized == "gzip":
                 result = _bounded_decompress(content, "gzip")
             elif normalized == "br":
-                if not HAS_BROTLI or _BROTLI_MODULE is None:
-                    _logger.warning("brotli library not available for decompression")
-                else:
-                    result = _bounded_decompress(content, "br")
+                result = _bounded_decompress(content, "br")
             elif normalized == "deflate":
                 if not HAS_ZLIB or _ZLIB_MODULE is None:
                     _logger.warning("zlib library not available for decompression")
