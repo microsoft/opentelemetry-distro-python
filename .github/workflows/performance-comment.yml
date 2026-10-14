@@ -56,13 +56,45 @@ jobs:
           script: |
             const run = context.payload.workflow_run;
             const pullRequests = run.pull_requests ?? [];
-            if (pullRequests.length !== 1) {
-              core.warning(`Expected exactly one pull request, found ${pullRequests.length}; skipping comment.`);
+            if (pullRequests.length > 1) {
+              core.warning(`Expected at most one pull request, found ${pullRequests.length}; skipping comment.`);
               core.setOutput("number", "");
               return;
             }
 
-            const pullNumber = pullRequests[0].number;
+            let pullNumber;
+            if (pullRequests.length === 1) {
+              pullNumber = pullRequests[0].number;
+            } else {
+              const headRepository = run.head_repository;
+              const headOwner = headRepository?.owner?.login;
+              if (!headRepository?.id || !headOwner || !run.head_branch || !run.head_sha) {
+                core.warning("Workflow run is missing trusted head metadata; skipping comment.");
+                core.setOutput("number", "");
+                return;
+              }
+
+              const candidates = await github.paginate(github.rest.pulls.list, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: "all",
+                head: `${headOwner}:${run.head_branch}`,
+                per_page: 100,
+              });
+              const matches = candidates.filter((pullRequest) =>
+                pullRequest.head.sha === run.head_sha &&
+                pullRequest.head.ref === run.head_branch &&
+                pullRequest.head.repo?.id === headRepository.id
+              );
+              if (matches.length !== 1) {
+                core.warning(`Expected one PR matching the workflow head, found ${matches.length}; skipping comment.`);
+                core.setOutput("number", "");
+                return;
+              }
+
+              pullNumber = matches[0].number;
+            }
+
             const { data: pullRequest } = await github.rest.pulls.get({
               owner: context.repo.owner,
               repo: context.repo.repo,
