@@ -70,6 +70,8 @@ def _bounded_decompress(data: bytes, encoding: str) -> bytes:
             if total > cap:
                 raise ValueError("brotli-decompressed body exceeds cap")
             pieces.append(piece)
+        if not decompressor.is_finished():
+            raise ValueError("incomplete brotli-compressed body")
         return b"".join(pieces)
     else:
         raise ValueError(f"unsupported encoding: {encoding}")
