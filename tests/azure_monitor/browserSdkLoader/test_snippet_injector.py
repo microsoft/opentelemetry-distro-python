@@ -6,10 +6,17 @@
 
 import gzip
 import unittest
+import zlib
 from unittest.mock import patch
 
 from microsoft.opentelemetry._azure_monitor._browser_sdk_loader._config import BrowserSDKConfig
-from microsoft.opentelemetry._azure_monitor._browser_sdk_loader.snippet_injector import WebSnippetInjector
+from microsoft.opentelemetry._azure_monitor._browser_sdk_loader import snippet_injector as snippet_injector_module
+from microsoft.opentelemetry._azure_monitor._browser_sdk_loader.snippet_injector import (
+    WebSnippetInjector,
+    _bounded_decompress,
+    _MAX_COMPRESSED_BYTES,
+    _MAX_DECOMPRESSED_BYTES,
+)
 
 
 class TestWebSnippetInjector(unittest.TestCase):
@@ -552,6 +559,56 @@ class TestWebSnippetInjector(unittest.TestCase):
         self.assertEqual(result_encoding, "gzip")
         decompressed = gzip.decompress(result_content)
         self.assertIn(b"appInsightsSDK", decompressed)
+
+
+class TestSizeCaps(unittest.TestCase):
+    """Tests for response and decompression size limits."""
+
+    def setUp(self):
+        self.config = BrowserSDKConfig(
+            enabled=True,
+            connection_string=(
+                "InstrumentationKey=12345678-1234-1234-1234-123456789012"
+                ";IngestionEndpoint=https://test.in.applicationinsights.azure.com/"
+            ),
+        )
+        self.injector = WebSnippetInjector(self.config)
+
+    def test_should_inject_rejects_oversized_body(self):
+        oversized = b"<html><body>" + b"a" * (_MAX_COMPRESSED_BYTES + 1) + b"</body></html>"
+        with patch.object(self.injector, "_get_decompressed_content") as mock_decompress:
+            result = self.injector.should_inject("GET", "text/html", oversized)
+        self.assertFalse(result)
+        mock_decompress.assert_not_called()
+
+    def test_bounded_decompress_gzip_bomb_raises(self):
+        bomb = gzip.compress(b"a" * (_MAX_DECOMPRESSED_BYTES + 1024))
+        with self.assertRaises(ValueError):
+            _bounded_decompress(bomb, "gzip")
+
+    def test_auto_detected_gzip_bomb_is_not_cached(self):
+        bomb = gzip.compress(b"a" * (_MAX_DECOMPRESSED_BYTES + 1024))
+        self.assertEqual(self.injector._get_decompressed_content(bomb), bomb)
+        self.assertIsNone(self.injector._decompressed_content_cache)
+
+    def test_bounded_decompress_deflate_bomb_raises(self):
+        bomb = zlib.compress(b"a" * (_MAX_DECOMPRESSED_BYTES + 1024))
+        with self.assertRaises(ValueError):
+            _bounded_decompress(bomb, "deflate")
+
+    def test_bounded_decompress_brotli_bomb_raises(self):
+        if not snippet_injector_module.HAS_BROTLI:
+            self.skipTest("brotli not installed")
+        bomb = snippet_injector_module._BROTLI_MODULE.compress(b"a" * (_MAX_DECOMPRESSED_BYTES + 1024))
+        with self.assertRaises(ValueError):
+            _bounded_decompress(bomb, "br")
+
+    def test_inject_with_compression_returns_original_on_bomb(self):
+        bomb = gzip.compress(b"a" * (_MAX_DECOMPRESSED_BYTES + 1024))
+        modified, encoding = self.injector.inject_with_compression(bomb, "gzip")
+        self.assertEqual(modified, bomb)
+        self.assertEqual(encoding, "gzip")
+        self.assertIsNone(self.injector._decompressed_content_cache)
 
 
 if __name__ == "__main__":
