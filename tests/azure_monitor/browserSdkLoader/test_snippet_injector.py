@@ -5,6 +5,7 @@
 # --------------------------------------------------------------------------
 
 import gzip
+import json
 import unittest
 import zlib
 from unittest.mock import patch
@@ -247,20 +248,9 @@ class TestWebSnippetInjector(unittest.TestCase):
             mock_logger.warning.assert_called_once()
             self.assertEqual(result, content)
 
-    def test_format_config_value_string(self):
-        """Test _format_config_value with string values."""
-        result = self.injector._format_config_value("test_string")
-        self.assertEqual(result, '"test_string"')
-
-    def test_format_config_value_boolean(self):
-        """Test _format_config_value with boolean values."""
-        self.assertEqual(self.injector._format_config_value(True), "true")
-        self.assertEqual(self.injector._format_config_value(False), "false")
-
-    def test_format_config_value_numbers(self):
-        """Test _format_config_value with numeric values."""
-        self.assertEqual(self.injector._format_config_value(42), "42")
-        self.assertEqual(self.injector._format_config_value(3.14), "3.14")
+    def test_serialize_config_uses_json(self):
+        config = {"string key": "value", "enabled": True, "ratio": 3.14}
+        self.assertEqual(json.loads(self.injector._serialize_config(config)), config)
 
     def test_clear_decompression_cache(self):
         """Test _clear_decompression_cache method."""
@@ -493,8 +483,6 @@ class TestWebSnippetInjector(unittest.TestCase):
 
     def test_decompress_content_deflate(self):
         """Test _decompress_content with deflate encoding."""
-        import zlib
-
         original = b"<html><body>hello</body></html>"
         compressed = zlib.compress(original)
         result = self.injector._decompress_content(compressed, "deflate")
@@ -502,8 +490,6 @@ class TestWebSnippetInjector(unittest.TestCase):
 
     def test_compress_content_deflate(self):
         """Test _compress_content with deflate encoding."""
-        import zlib
-
         original = b"<html><body>hello</body></html>"
         result = self.injector._compress_content(original, "deflate")
         decompressed = zlib.decompress(result)
@@ -523,16 +509,17 @@ class TestWebSnippetInjector(unittest.TestCase):
         result = self.injector._compress_content(content, "deflate")
         self.assertEqual(result, content)
 
-    def test_format_config_value_dict(self):
-        """Test _format_config_value with dict value."""
-        result = self.injector._format_config_value({"key": "val"})
-        self.assertIn("key", result)
-        self.assertIn('"val"', result)
+    def test_web_snippet_escapes_script_breakout_in_connection_string(self):
+        connection_string = 'InstrumentationKey="};</script><script>alert(1)</script><script>'
+        injector = WebSnippetInjector(BrowserSDKConfig(enabled=True, connection_string=connection_string))
 
-    def test_format_config_value_other(self):
-        """Test _format_config_value with unsupported type."""
-        result = self.injector._format_config_value([1, 2, 3])
-        self.assertEqual(result, '"[1, 2, 3]"')
+        snippet = injector._get_web_snippet()
+        serialized_config = injector._serialize_config({"connectionString": connection_string})
+
+        self.assertEqual(json.loads(serialized_config)["connectionString"], connection_string)
+        self.assertNotIn(connection_string, snippet)
+        self.assertNotIn("</script><script>alert(1)</script>", snippet)
+        self.assertIn("\\u003c/script\\u003e", snippet)
 
     def test_get_decompressed_content_caching(self):
         """Test _get_decompressed_content uses cache on second call."""

@@ -7,6 +7,7 @@
 import gzip
 import importlib
 import io
+import json
 import re
 from logging import getLogger
 from typing import Any, Dict, Optional, Tuple
@@ -37,6 +38,7 @@ except ImportError:
     HAS_ZLIB = False
 
 _logger = getLogger(__name__)
+
 
 def _bounded_decompress(data: bytes, encoding: str) -> bytes:
     """Decompress data while limiting the expanded response size."""
@@ -168,7 +170,7 @@ class WebSnippetInjector:
         ]
         _mark_browser_loader_feature(self.config.enabled)
 
-    def should_inject(
+    def should_inject(  # pylint: disable=too-many-return-statements
         self,
         request_method: str,
         content_type: Optional[str],
@@ -302,7 +304,7 @@ class WebSnippetInjector:
         """
         if self._web_sdk_snippet_cache is None:
             config_dict = self.config.to_dict()
-            config_json = self._dict_to_js_object(config_dict.get("cfg", {}))
+            config_json = self._serialize_config(config_dict.get("cfg", {}))
             self._web_sdk_snippet_cache = _WEB_SDK_SNIPPET_TEMPLATE.replace("{CONFIG_PLACEHOLDER}", config_json)
         return self._web_sdk_snippet_cache
 
@@ -502,33 +504,13 @@ class WebSnippetInjector:
             _logger.warning("Failed to compress content with encoding %s: %s", encoding, ex)
         return result
 
-    def _format_config_value(self, value):
-        """Format a configuration value for JavaScript.
-
-        :param value: The value to format.
-        :type value: Any
-        :return: Formatted string for JavaScript.
-        :rtype: str
-        """
-        if isinstance(value, str):
-            return f'"{value}"'
-        if isinstance(value, bool):
-            return "true" if value else "false"
-        if isinstance(value, (int, float)):
-            return str(value)
-        if isinstance(value, dict):
-            return self._dict_to_js_object(value)
-        return f'"{str(value)}"'
-
-    def _dict_to_js_object(self, obj: Dict[str, Any]) -> str:
-        """Convert Python dict to JavaScript object literal.
-
-        :param obj: Python dictionary to convert to JavaScript object syntax.
-        :type obj: Dict[str, Any]
-        :return: JavaScript object literal as a string.
-        :rtype: str
-        """
-        items = []
-        for key, value in obj.items():
-            items.append(f"{key}: {self._format_config_value(value)}")
-        return "{" + ", ".join(items) + "}"
+    def _serialize_config(self, config: Dict[str, Any]) -> str:
+        """Serialize configuration safely for an inline HTML script."""
+        serialized = json.dumps(config, separators=(",", ":"))
+        return (
+            serialized.replace("&", "\\u0026")
+            .replace("<", "\\u003c")
+            .replace(">", "\\u003e")
+            .replace("\u2028", "\\u2028")
+            .replace("\u2029", "\\u2029")
+        )
