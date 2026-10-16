@@ -5,11 +5,19 @@
 # --------------------------------------------------------------------------
 
 import gzip
+import json
 import unittest
+import zlib
 from unittest.mock import patch
 
 from microsoft.opentelemetry._azure_monitor._browser_sdk_loader._config import BrowserSDKConfig
-from microsoft.opentelemetry._azure_monitor._browser_sdk_loader.snippet_injector import WebSnippetInjector
+from microsoft.opentelemetry._azure_monitor._browser_sdk_loader import snippet_injector as snippet_injector_module
+from microsoft.opentelemetry._azure_monitor._browser_sdk_loader.snippet_injector import (
+    WebSnippetInjector,
+    _bounded_decompress,
+    _MAX_COMPRESSED_BYTES,
+    _MAX_DECOMPRESSED_BYTES,
+)
 
 
 class TestWebSnippetInjector(unittest.TestCase):
@@ -210,11 +218,10 @@ class TestWebSnippetInjector(unittest.TestCase):
         with patch(
             "microsoft.opentelemetry._azure_monitor._browser_sdk_loader.snippet_injector._logger"
         ) as mock_logger:
-            result = self.injector._decompress_content(content, "br")
+            with self.assertRaisesRegex(RuntimeError, "bounded brotli decompression is unavailable"):
+                self.injector._decompress_content(content, "br")
 
-            # Should log warning and return original content
             mock_logger.warning.assert_called_once()
-            self.assertEqual(result, content)
 
     def test_compress_content_gzip(self):
         """Test _compress_content with gzip encoding."""
@@ -240,20 +247,9 @@ class TestWebSnippetInjector(unittest.TestCase):
             mock_logger.warning.assert_called_once()
             self.assertEqual(result, content)
 
-    def test_format_config_value_string(self):
-        """Test _format_config_value with string values."""
-        result = self.injector._format_config_value("test_string")
-        self.assertEqual(result, '"test_string"')
-
-    def test_format_config_value_boolean(self):
-        """Test _format_config_value with boolean values."""
-        self.assertEqual(self.injector._format_config_value(True), "true")
-        self.assertEqual(self.injector._format_config_value(False), "false")
-
-    def test_format_config_value_numbers(self):
-        """Test _format_config_value with numeric values."""
-        self.assertEqual(self.injector._format_config_value(42), "42")
-        self.assertEqual(self.injector._format_config_value(3.14), "3.14")
+    def test_serialize_config_uses_json(self):
+        config = {"string key": "value", "enabled": True, "ratio": 3.14}
+        self.assertEqual(json.loads(self.injector._serialize_config(config)), config)
 
     def test_clear_decompression_cache(self):
         """Test _clear_decompression_cache method."""
@@ -486,8 +482,6 @@ class TestWebSnippetInjector(unittest.TestCase):
 
     def test_decompress_content_deflate(self):
         """Test _decompress_content with deflate encoding."""
-        import zlib
-
         original = b"<html><body>hello</body></html>"
         compressed = zlib.compress(original)
         result = self.injector._decompress_content(compressed, "deflate")
@@ -495,8 +489,6 @@ class TestWebSnippetInjector(unittest.TestCase):
 
     def test_compress_content_deflate(self):
         """Test _compress_content with deflate encoding."""
-        import zlib
-
         original = b"<html><body>hello</body></html>"
         result = self.injector._compress_content(original, "deflate")
         decompressed = zlib.decompress(result)
@@ -516,16 +508,17 @@ class TestWebSnippetInjector(unittest.TestCase):
         result = self.injector._compress_content(content, "deflate")
         self.assertEqual(result, content)
 
-    def test_format_config_value_dict(self):
-        """Test _format_config_value with dict value."""
-        result = self.injector._format_config_value({"key": "val"})
-        self.assertIn("key", result)
-        self.assertIn('"val"', result)
+    def test_web_snippet_escapes_script_breakout_in_connection_string(self):
+        connection_string = 'InstrumentationKey="};</script><script>alert(1)</script><script>'
+        injector = WebSnippetInjector(BrowserSDKConfig(enabled=True, connection_string=connection_string))
 
-    def test_format_config_value_other(self):
-        """Test _format_config_value with unsupported type."""
-        result = self.injector._format_config_value([1, 2, 3])
-        self.assertEqual(result, '"[1, 2, 3]"')
+        snippet = injector._get_web_snippet()
+        serialized_config = injector._serialize_config({"connectionString": connection_string})
+
+        self.assertEqual(json.loads(serialized_config)["connectionString"], connection_string)
+        self.assertNotIn(connection_string, snippet)
+        self.assertNotIn("</script><script>alert(1)</script>", snippet)
+        self.assertIn("\\u003c/script\\u003e", snippet)
 
     def test_get_decompressed_content_caching(self):
         """Test _get_decompressed_content uses cache on second call."""
@@ -552,6 +545,64 @@ class TestWebSnippetInjector(unittest.TestCase):
         self.assertEqual(result_encoding, "gzip")
         decompressed = gzip.decompress(result_content)
         self.assertIn(b"appInsightsSDK", decompressed)
+
+
+class TestSizeCaps(unittest.TestCase):
+    """Tests for response and decompression size limits."""
+
+    def setUp(self):
+        self.config = BrowserSDKConfig(
+            enabled=True,
+            connection_string=(
+                "InstrumentationKey=12345678-1234-1234-1234-123456789012"
+                ";IngestionEndpoint=https://test.in.applicationinsights.azure.com/"
+            ),
+        )
+        self.injector = WebSnippetInjector(self.config)
+
+    def test_should_inject_rejects_oversized_body(self):
+        oversized = b"<html><body>" + b"a" * (_MAX_COMPRESSED_BYTES + 1) + b"</body></html>"
+        with patch.object(self.injector, "_get_decompressed_content") as mock_decompress:
+            result = self.injector.should_inject("GET", "text/html", oversized)
+        self.assertFalse(result)
+        mock_decompress.assert_not_called()
+
+    def test_bounded_decompress_gzip_bomb_raises(self):
+        bomb = gzip.compress(b"a" * (_MAX_DECOMPRESSED_BYTES + 1024))
+        with self.assertRaises(ValueError):
+            _bounded_decompress(bomb, "gzip")
+
+    def test_auto_detected_gzip_bomb_is_not_cached(self):
+        bomb = gzip.compress(b"a" * (_MAX_DECOMPRESSED_BYTES + 1024))
+        self.assertEqual(self.injector._get_decompressed_content(bomb), bomb)
+        self.assertIsNone(self.injector._decompressed_content_cache)
+
+    def test_bounded_decompress_deflate_bomb_raises(self):
+        bomb = zlib.compress(b"a" * (_MAX_DECOMPRESSED_BYTES + 1024))
+        with self.assertRaises(ValueError):
+            _bounded_decompress(bomb, "deflate")
+
+    def test_bounded_decompress_brotli_does_not_start_decoder(self):
+        with patch.object(snippet_injector_module, "_BROTLI_MODULE") as mock_brotli:
+            with self.assertRaisesRegex(RuntimeError, "bounded brotli decompression is unavailable"):
+                _bounded_decompress(b"compressed", "br")
+        mock_brotli.Decompressor.assert_not_called()
+
+    def test_brotli_injection_is_skipped(self):
+        content = b"compressed"
+        self.assertFalse(self.injector.should_inject("GET", "text/html", content, "br"))
+
+        modified, encoding = self.injector.inject_with_compression(content, "br")
+        self.assertEqual(modified, content)
+        self.assertEqual(encoding, "br")
+        self.assertIsNone(self.injector._decompressed_content_cache)
+
+    def test_inject_with_compression_returns_original_on_bomb(self):
+        bomb = gzip.compress(b"a" * (_MAX_DECOMPRESSED_BYTES + 1024))
+        modified, encoding = self.injector.inject_with_compression(bomb, "gzip")
+        self.assertEqual(modified, bomb)
+        self.assertEqual(encoding, "gzip")
+        self.assertIsNone(self.injector._decompressed_content_cache)
 
 
 if __name__ == "__main__":

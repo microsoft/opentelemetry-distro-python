@@ -10,10 +10,10 @@ name: Performance Comment
 # Security model:
 #   * The artifact from the PR-context workflow is treated as untrusted
 #     input. We only consume the JSON benchmark outputs (`base.json` /
-#     `pr.json`) and the PR number, and we regenerate `report.md` here
-#     using the base repository's checked-out `perf.compare` so the
-#     markdown posted under the writable token is never attacker-supplied.
-#   * The PR number is validated as a positive integer before being used.
+#     `pr.json`), and we regenerate `report.md` here using the base
+#     repository's checked-out `perf.compare`.
+#   * The comment target comes only from trusted `workflow_run` metadata.
+#     Its current head must still match the SHA that produced the artifact.
 
 on:
   workflow_run:
@@ -51,20 +51,62 @@ jobs:
       - name: Resolve PR number
         id: pr
         if: steps.download.outcome == 'success'
-        run: |
-          set -euo pipefail
-          pr=""
-          if [ -f perf-results/pr-number.txt ]; then
-            pr="$(tr -d '[:space:]' < perf-results/pr-number.txt)"
-          fi
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const run = context.payload.workflow_run;
+            const pullRequests = run.pull_requests ?? [];
+            if (pullRequests.length > 1) {
+              core.warning(`Expected at most one pull request, found ${pullRequests.length}; skipping comment.`);
+              core.setOutput("number", "");
+              return;
+            }
 
-          if ! [[ "$pr" =~ ^[1-9][0-9]*$ ]]; then
-            echo "pr-number.txt missing or not a positive integer (got: '${pr}'); skipping comment." >&2
-            echo "number=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
+            let pullNumber;
+            if (pullRequests.length === 1) {
+              pullNumber = pullRequests[0].number;
+            } else {
+              const headRepository = run.head_repository;
+              const headOwner = headRepository?.owner?.login;
+              if (!headRepository?.id || !headOwner || !run.head_branch || !run.head_sha) {
+                core.warning("Workflow run is missing trusted head metadata; skipping comment.");
+                core.setOutput("number", "");
+                return;
+              }
 
-          echo "number=$pr" >> "$GITHUB_OUTPUT"
+              const candidates = await github.paginate(github.rest.pulls.list, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                state: "all",
+                head: `${headOwner}:${run.head_branch}`,
+                per_page: 100,
+              });
+              const matches = candidates.filter((pullRequest) =>
+                pullRequest.head.sha === run.head_sha &&
+                pullRequest.head.ref === run.head_branch &&
+                pullRequest.head.repo?.id === headRepository.id
+              );
+              if (matches.length !== 1) {
+                core.warning(`Expected one PR matching the workflow head, found ${matches.length}; skipping comment.`);
+                core.setOutput("number", "");
+                return;
+              }
+
+              pullNumber = matches[0].number;
+            }
+
+            const { data: pullRequest } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pullNumber,
+            });
+            if (pullRequest.head.sha !== run.head_sha) {
+              core.warning(`PR #${pullNumber} no longer points to workflow SHA ${run.head_sha}; skipping comment.`);
+              core.setOutput("number", "");
+              return;
+            }
+
+            core.setOutput("number", pullNumber);
 
       - name: Set up Python
         if: steps.pr.outputs.number != ''
