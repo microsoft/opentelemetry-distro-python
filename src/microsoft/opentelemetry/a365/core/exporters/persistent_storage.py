@@ -127,30 +127,51 @@ def _restrict_windows_directory_permissions(directory: Path) -> None:
         raise PermissionError(f"Could not restrict durable queue permissions: {detail}")
 
 
-def _ensure_private_directory(directory: Path) -> None:
-    """Create the directory with mode 0700, or validate ownership if it exists."""
-    if directory.exists():
-        if os.name == "nt":
-            _restrict_windows_directory_permissions(directory)
-            return
-        # Use a non-symlink-following lstat so a symlinked queue directory
-        # cannot redirect telemetry writes outside a private, caller-owned
-        # location or defeat the ownership check via its target.
-        st = os.lstat(directory)
-        if stat.S_ISLNK(st.st_mode):
-            raise PermissionError(f"Durable queue directory must not be a symlink: {directory}")
-        if st.st_uid != getattr(os, "getuid")():
-            raise PermissionError(f"Durable queue directory has unsafe ownership: {directory}")
-        os.chmod(directory, 0o700)
-        return
-    # Create parents first (no mode enforcement needed for intermediate dirs),
-    # then create the final directory with explicit mode so the kernel sets it
-    # before any child entry can appear. chmod follows to override a restrictive umask.
-    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+def _ensure_private_directory(directory: Path, *, create: bool = True) -> os.stat_result | None:
+    """Create private Unix components without following links or repairing existing paths."""
     if os.name == "nt":
-        _restrict_windows_directory_permissions(directory)
-        return
-    os.chmod(directory, 0o700)
+        if create:
+            directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+            _restrict_windows_directory_permissions(directory)
+        return None
+
+    path = directory.absolute()
+    if ".." in path.parts:
+        raise PermissionError(f"Durable queue directory must not contain parent traversal: {directory}")
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY") | getattr(os, "O_NOFOLLOW")
+    fd = os.open(path.anchor, flags)
+    try:
+        for component in path.parts[1:]:
+            parent = os.fstat(fd)
+            if parent.st_uid not in (0, getattr(os, "geteuid")()):
+                raise PermissionError(f"Durable queue parent has unsafe ownership: {directory}")
+            # Sticky system temp directories may contain private per-user queues;
+            # other writable parents permit replacement of the queue path.
+            if parent.st_mode & 0o022 and not parent.st_mode & stat.S_ISVTX:
+                raise PermissionError(f"Durable queue parent has unsafe permissions: {directory}")
+            if create:
+                try:
+                    os.mkdir(component, mode=0o700, dir_fd=fd)
+                except FileExistsError:
+                    pass
+                else:
+                    # Only SDK-created entries are changed. mkdir never grants
+                    # group/other access; this restores owner bits removed by umask.
+                    os.chmod(component, 0o700, dir_fd=fd, follow_symlinks=False)
+            entry = os.stat(component, dir_fd=fd, follow_symlinks=False)
+            if stat.S_ISLNK(entry.st_mode):
+                raise PermissionError(f"Durable queue path must not contain a symlink: {directory}")
+            child_fd = os.open(component, flags, dir_fd=fd)
+            os.close(fd)
+            fd = child_fd
+        result = os.fstat(fd)
+        if result.st_uid != getattr(os, "geteuid")():
+            raise PermissionError(f"Durable queue directory has unsafe ownership: {directory}")
+        if stat.S_IMODE(result.st_mode) != 0o700:
+            raise PermissionError(f"Durable queue directory has unsafe permissions (require 0700): {directory}")
+        return result
+    finally:
+        os.close(fd)
 
 
 class PersistentStorage:
@@ -162,14 +183,15 @@ class PersistentStorage:
         capacity_bytes: int = _DEFAULT_CAPACITY_BYTES,
         retention_seconds: float = _DEFAULT_RETENTION_SECONDS,
     ) -> None:
-        self._directory = Path(directory) if directory is not None else _resolve_default_directory()
+        self._directory = (Path(directory) if directory is not None else _resolve_default_directory()).absolute()
         self._capacity_bytes = capacity_bytes
         self._retention_seconds = retention_seconds
         self._lock = threading.RLock()
 
-        _ensure_private_directory(self._directory)
+        self._directory_stat = _ensure_private_directory(self._directory)
 
         self.database_path = self._directory / "queue.db"
+        self._validate_storage()
         # isolation_level=None → autocommit; all transactions are explicit.
         self._conn = sqlite3.connect(str(self.database_path), check_same_thread=False, isolation_level=None)
         if os.name != "nt":
@@ -242,6 +264,28 @@ class PersistentStorage:
             if sidecar.exists():
                 os.chmod(sidecar, 0o600)
 
+    def _validate_storage(self) -> None:
+        """Fail closed before SQLite accesses an unsafe or replaced Unix path."""
+        if os.name == "nt":
+            return
+        current = _ensure_private_directory(self._directory, create=False)
+        if (
+            current is None
+            or self._directory_stat is None
+            or (current.st_dev, current.st_ino) != (self._directory_stat.st_dev, self._directory_stat.st_ino)
+        ):
+            raise PermissionError(f"Durable queue directory was replaced: {self._directory}")
+        for suffix in ("", "-wal", "-shm", "-journal"):
+            path = Path(f"{self.database_path}{suffix}")
+            try:
+                entry = path.lstat()
+            except FileNotFoundError:
+                continue
+            if stat.S_ISLNK(entry.st_mode):
+                raise PermissionError(f"Durable queue file must not be a symlink: {path}")
+            if not stat.S_ISREG(entry.st_mode) or entry.st_uid != getattr(os, "geteuid")() or entry.st_nlink != 1:
+                raise PermissionError(f"Durable queue file has unsafe type, ownership or links: {path}")
+
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
@@ -250,6 +294,7 @@ class PersistentStorage:
         """Persist a record. Returns False (and logs) if storage fails."""
         with self._lock:
             try:
+                self._validate_storage()
                 now = time.time()
                 expire_before = now - self._retention_seconds
 
@@ -297,7 +342,7 @@ class PersistentStorage:
                 )
                 self._conn.execute("COMMIT")
                 return True
-            except sqlite3.Error as exc:
+            except (sqlite3.Error, OSError) as exc:
                 _logger.error("PersistentStorage.store failed: %s", exc)
                 try:
                     self._conn.execute("ROLLBACK")
@@ -309,6 +354,7 @@ class PersistentStorage:
         """Atomically lease up to *limit* unleased records."""
         with self._lock:
             try:
+                self._validate_storage()
                 now = time.time()
                 expire_before = now - self._retention_seconds
                 lease_until = now + lease_seconds
@@ -377,7 +423,7 @@ class PersistentStorage:
 
                 self._conn.execute("COMMIT")
                 return records
-            except sqlite3.Error as exc:
+            except (sqlite3.Error, OSError) as exc:
                 _logger.error("PersistentStorage.claim failed: %s", exc)
                 try:
                     self._conn.execute("ROLLBACK")
@@ -389,12 +435,13 @@ class PersistentStorage:
         """Delete a record by id. Returns False if not found or on error."""
         with self._lock:
             try:
+                self._validate_storage()
                 self._conn.execute("BEGIN IMMEDIATE")
                 cur = self._conn.execute("DELETE FROM durable_records WHERE id = ?", (record_id,))
                 found = cur.rowcount > 0
                 self._conn.execute("COMMIT")
                 return found
-            except sqlite3.Error as exc:
+            except (sqlite3.Error, OSError) as exc:
                 _logger.error("PersistentStorage.delete failed: %s", exc)
                 try:
                     self._conn.execute("ROLLBACK")
@@ -418,6 +465,7 @@ class PersistentStorage:
         """Release a lease so the record becomes claimable again."""
         with self._lock:
             try:
+                self._validate_storage()
                 self._conn.execute("BEGIN IMMEDIATE")
                 cur = self._conn.execute(
                     "UPDATE durable_records SET lease_until = NULL WHERE id = ?",
@@ -426,7 +474,7 @@ class PersistentStorage:
                 found = cur.rowcount > 0
                 self._conn.execute("COMMIT")
                 return found
-            except sqlite3.Error as exc:
+            except (sqlite3.Error, OSError) as exc:
                 _logger.error("PersistentStorage.release failed: %s", exc)
                 try:
                     self._conn.execute("ROLLBACK")

@@ -817,6 +817,29 @@ class TestAgent365ExporterDurableDelivery(unittest.TestCase):
 class TestAgent365ExporterStorageDirectory(unittest.TestCase):
     """End-to-end behavior of the storage_directory option and no-leak checks."""
 
+    @unittest.skipIf(os.name == "nt", "POSIX permissions")
+    @patch.dict(os.environ, {}, clear=True)
+    def test_unsafe_directory_disables_storage_with_error_and_no_fallback(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            storage_dir = Path(tmp) / "queue"
+            storage_dir.mkdir(mode=0o755)
+            storage_dir.chmod(0o755)
+            exporter = _Agent365Exporter(
+                token_resolver=lambda a, t: "token",
+                storage_directory=storage_dir,
+                enable_durable_delivery=True,
+            )
+            try:
+                with self.assertLogs(exporter_module.logger, level="ERROR") as logs:
+                    exporter._ensure_durable_initialized()
+                self.assertIn("Durable delivery disabled", "\n".join(logs.output))
+                self.assertFalse(exporter._enable_durable_delivery)
+                self.assertIsNone(exporter._storage)
+                self.assertIsNone(exporter._replay)
+                self.assertFalse((storage_dir / "queue.db").exists())
+            finally:
+                exporter.shutdown()
+
     @patch.dict(os.environ, {}, clear=True)
     def test_storage_directory_is_honored_end_to_end(self):
         with tempfile.TemporaryDirectory() as tmp:

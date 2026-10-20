@@ -84,7 +84,7 @@ def raw_record_exists(storage: PersistentStorage, record_id: int) -> bool:
 
 
 def _create_legacy_v1_database(database_path):
-    database_path.parent.mkdir(parents=True, exist_ok=True)
+    database_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     conn = sqlite3.connect(str(database_path))
     try:
         conn.execute("""
@@ -332,6 +332,169 @@ def test_storage_permissions_are_private(tmp_path):
 
 
 @pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
+@pytest.mark.parametrize("mask", [0o000, 0o022, 0o077, 0o777])
+def test_missing_directory_components_are_private_under_umask(tmp_path, mask):
+    parent = tmp_path / "configured-parent"
+    parent.mkdir(mode=0o755)
+    original_mode = stat.S_IMODE(parent.stat().st_mode)
+    previous = os.umask(mask)
+    try:
+        storage = PersistentStorage(parent / "sdk" / "queue")
+    finally:
+        os.umask(previous)
+    try:
+        assert stat.S_IMODE(parent.stat().st_mode) == original_mode
+        assert stat.S_IMODE((parent / "sdk").stat().st_mode) == 0o700
+        assert stat.S_IMODE(storage._directory.stat().st_mode) == 0o700
+        assert storage.store(_new_record("private"))
+    finally:
+        storage.close()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
+@pytest.mark.parametrize("mode", [0o755, 0o750, 0o770, 0o777, 0o1700])
+def test_rejects_unsafe_existing_directory_without_chmod(tmp_path, mode):
+    queue = tmp_path / "queue"
+    queue.mkdir()
+    queue.chmod(mode)
+    with pytest.raises(PermissionError, match="permissions"):
+        PersistentStorage(queue)
+    assert stat.S_IMODE(queue.stat().st_mode) == mode
+    assert not (queue / "queue.db").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlinks")
+@pytest.mark.parametrize("dangling", [False, True])
+def test_rejects_symlinked_parent_before_creating_children(tmp_path, dangling):
+    target = tmp_path / "target"
+    if not dangling:
+        target.mkdir(mode=0o700)
+    link = tmp_path / "link"
+    link.symlink_to(target, target_is_directory=True)
+    with pytest.raises((PermissionError, NotADirectoryError), match="symlink|directory"):
+        PersistentStorage(link / "sdk" / "queue")
+    assert not (target / "sdk").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
+def test_rejects_writable_nonsticky_parent_without_chmod(tmp_path):
+    parent = tmp_path / "shared"
+    parent.mkdir()
+    parent.chmod(0o777)
+    with pytest.raises(PermissionError, match="permissions"):
+        PersistentStorage(parent / "queue")
+    assert stat.S_IMODE(parent.stat().st_mode) == 0o777
+    assert not (parent / "queue").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlinks")
+@pytest.mark.parametrize("name", ["queue.db", "queue.db-wal", "queue.db-shm", "queue.db-journal"])
+def test_rejects_symlinked_database_files_before_sqlite_open(tmp_path, name):
+    queue = tmp_path / "queue"
+    queue.mkdir(mode=0o700)
+    target = tmp_path / "unrelated"
+    target.write_bytes(b"must not change")
+    target.chmod(0o644)
+    (queue / name).symlink_to(target)
+    with pytest.raises(PermissionError, match="symlink"):
+        PersistentStorage(queue)
+    assert target.read_bytes() == b"must not change"
+    assert stat.S_IMODE(target.stat().st_mode) == 0o644
+    if name != "queue.db":
+        assert not (queue / "queue.db").exists()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
+@pytest.mark.parametrize("operation", ["store", "claim", "delete", "release"])
+def test_permissions_changed_after_open_fail_closed(tmp_path, caplog, operation):
+    queue = tmp_path / "queue"
+    storage = PersistentStorage(queue)
+    assert storage.store(_new_record("queued"))
+    queue.chmod(0o755)
+    try:
+        result: bool | list[DurableRecord]
+        if operation == "store":
+            result = storage.store(_new_record("must not persist"))
+        elif operation == "claim":
+            result = storage.claim(limit=10, lease_seconds=30)
+        else:
+            result = getattr(storage, operation)(1)
+        assert result == ([] if operation == "claim" else False)
+        assert f"PersistentStorage.{operation} failed" in caplog.text
+        assert stat.S_IMODE(queue.stat().st_mode) == 0o755
+    finally:
+        queue.chmod(0o700)
+        storage.close()
+    reopened = PersistentStorage(queue)
+    try:
+        assert [r.payload for r in reopened.claim(10, 30)] == ["queued"]
+    finally:
+        reopened.close()
+
+
+def test_restart_replays_existing_safe_queue(tmp_path):
+    queue = tmp_path / "queue"
+    storage = PersistentStorage(queue)
+    assert storage.store(_new_record("survives restart"))
+    database_path = storage.database_path
+    storage.close()
+    restarted = PersistentStorage(queue)
+    try:
+        assert restarted.database_path == database_path
+        records = restarted.claim(10, 30)
+        assert [r.payload for r in records] == ["survives restart"]
+        assert restarted.delete(records[0].record_id)
+        assert not restarted.claim(10, 30)
+    finally:
+        restarted.close()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
+def test_restart_rejects_unsafe_queue_without_touching_records(tmp_path):
+    queue = tmp_path / "queue"
+    storage = PersistentStorage(queue)
+    assert storage.store(_new_record("retained"))
+    storage.close()
+    before = (queue / "queue.db").read_bytes()
+    queue.chmod(0o755)
+    with pytest.raises(PermissionError, match="permissions"):
+        PersistentStorage(queue)
+    assert (queue / "queue.db").read_bytes() == before
+    assert stat.S_IMODE(queue.stat().st_mode) == 0o755
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX symlinks")
+@pytest.mark.parametrize("replacement", ["symlink", "directory"])
+def test_replaced_directory_blocks_writes_and_replay(tmp_path, caplog, replacement):
+    queue = tmp_path / "queue"
+    moved = tmp_path / "moved"
+    storage = PersistentStorage(queue)
+    assert storage.store(_new_record("retained"))
+    queue.rename(moved)
+    if replacement == "symlink":
+        queue.symlink_to(moved, target_is_directory=True)
+    else:
+        queue.mkdir(mode=0o700)
+    try:
+        assert not storage.store(_new_record("must not persist"))
+        assert not storage.claim(10, 30)
+        assert "PersistentStorage.store failed" in caplog.text
+        assert "PersistentStorage.claim failed" in caplog.text
+    finally:
+        if replacement == "symlink":
+            queue.unlink()
+        else:
+            queue.rmdir()
+        moved.rename(queue)
+        storage.close()
+    restarted = PersistentStorage(queue)
+    try:
+        assert [r.payload for r in restarted.claim(10, 30)] == ["retained"]
+    finally:
+        restarted.close()
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
 def test_wal_and_shm_sidecars_are_private(tmp_path):
     """The DB and its WAL/SHM sidecars must be mode 0600 after journal init.
 
@@ -442,7 +605,9 @@ def test_rejects_directory_owned_by_another_uid(tmp_path):
 
     foreign_uid = getattr(os, "getuid")() + 1
 
-    real_stat = os.lstat(tmp_path)
+    target_dir = tmp_path / "queue_foreign"
+    target_dir.mkdir(mode=0o700)
+    real_stat = target_dir.stat()
     mock_result = types.SimpleNamespace(
         st_uid=foreign_uid,
         st_mode=real_stat.st_mode,
@@ -450,11 +615,14 @@ def test_rejects_directory_owned_by_another_uid(tmp_path):
         st_mtime=real_stat.st_mtime,
     )
 
-    target_dir = tmp_path / "queue_foreign"
-    target_dir.mkdir(parents=True, exist_ok=True)
+    original_fstat = os.fstat
 
-    # Ownership is validated with a non-symlink-following lstat.
-    with patch.object(_mod.os, "lstat", return_value=mock_result):
+    def fstat(fd):
+        result = original_fstat(fd)
+        return mock_result if result.st_ino == real_stat.st_ino else result
+
+    # Ownership is checked on the directory opened without following links.
+    with patch.object(_mod.os, "fstat", side_effect=fstat):
         with pytest.raises(PermissionError, match="unsafe ownership"):
             PersistentStorage(target_dir)
 

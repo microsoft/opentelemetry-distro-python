@@ -129,7 +129,11 @@ use_microsoft_opentelemetry(
 )
 ```
 
-> **Security note:** Stored OTLP payloads are unencrypted. When sensitive-data capture is enabled (`enable_sensitive_data=True`), payloads may include prompts, completions, or tool arguments. The exporter restricts the queue directory to the current user and administrators on Windows; on POSIX systems it enforces mode `0700` on the directory and `0600` on the SQLite database and sidecar files.
+> **Security note:** Stored OTLP payloads are unencrypted. When sensitive-data capture is enabled (`enable_sensitive_data=True`), payloads may include prompts, completions, or tool arguments. The exporter restricts the queue directory to the current user and administrators on Windows. On Unix, it creates missing directory components with owner-only access (`0700`), including under permissive or restrictive umasks, and restricts the SQLite database and sidecars to `0600`.
+
+On Unix, an existing queue directory must already belong to the effective user and have mode `0700`. The SDK rejects unsafe existing permissions rather than changing them. It rejects symlinks anywhere in the queue path (including database and journal files), foreign-owned parents other than root-owned parents, and group/other-writable parents unless protected by the sticky bit (for example, `/tmp`). Existing shared temporary directories and configured parents are never chmodded. Configure a dedicated directory rather than a shared directory itself; prepare its ownership and permissions as the service account before starting the SDK.
+
+The default location remains stable: `$XDG_STATE_HOME/a365-durable-queue/<digest>` or `~/.local/state/a365-durable-queue/<digest>` on Unix (a private subdirectory under the system temporary directory if the home cannot be resolved), and `%LOCALAPPDATA%\a365-durable-queue\<digest>` on Windows. The digest depends on the user, Python executable, and working directory. Safe existing queues are reopened and replayed after restart without relocation. Unix path checks are repeated before persistence, replay claims, and queue updates; an unsafe or replaced directory blocks these operations and emits an error. Initialization failure logs that durable delivery is disabled, with no fallback to another insecure location. These checks protect against other local users; they do not isolate telemetry from administrators, root, or processes running as the same account. This behavior applies to the Agent365 queue, not Azure Monitor's separately implemented offline storage.
 
 ## Auto-Instrumented Libraries
 
