@@ -1,747 +1,281 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-"""Tests for PersistentStorage (Task 2)."""
+"""Agent365's adapter to Azure Monitor offline storage."""
 
 from __future__ import annotations
 
-import inspect
+import json
 import os
-import sqlite3
 import stat
-import subprocess
 import time
-from unittest.mock import call, patch
+from dataclasses import asdict, replace
+from pathlib import Path
+from unittest.mock import patch
 
 import pytest
+from azure.monitor.opentelemetry.exporter._storage import LocalFileStorage, StorageExportResult
 
 from microsoft.opentelemetry.a365.core.exporters.durable_delivery import IdentityKey
-from microsoft.opentelemetry.a365.core.exporters.persistent_storage import (
-    DurableRecord,
-    PersistentStorage,
-)
+from microsoft.opentelemetry.a365.core.exporters.persistent_storage import DurableRecord, PersistentStorage
 
-KEY = IdentityKey(
-    tenant_id="t1",
-    agent_id="a1",
-    agentic_user_id=None,
-    use_s2s_endpoint=False,
-)
-LEGACY_URL = "https://example.test"
+KEY = IdentityKey("tenant", "agent", "user", False)
+MODULE = "microsoft.opentelemetry.a365.core.exporters.persistent_storage"
 
 
-def _new_record(payload: str, key: IdentityKey = KEY) -> DurableRecord:
-    return DurableRecord.new(key, payload)
+def _record(payload='{"resourceSpans":[]}'):
+    return DurableRecord.new(KEY, payload)
 
 
-def _schema_version_for(columns: set[str]) -> int:
-    return 1 if "url" in columns else 2
-
-
-def _table_columns(storage: PersistentStorage) -> set[str]:
-    rows = storage._conn.execute("PRAGMA table_info(durable_records)").fetchall()
-    return {row[1] for row in rows}
-
-
-def insert_raw_record(
-    storage: PersistentStorage,
-    *,
-    created_at: float | None = None,
-    **overrides,
-) -> int:
-    columns = _table_columns(storage)
-    row = {
-        "schema_version": _schema_version_for(columns),
-        "tenant_id": KEY.tenant_id,
-        "agent_id": KEY.agent_id,
-        "agentic_user_id": KEY.agentic_user_id,
-        "use_s2s_endpoint": int(KEY.use_s2s_endpoint),
-        "payload": '{"raw":true}',
-        "created_at": time.time() - 1.0 if created_at is None else created_at,
-        "lease_until": None,
-        "retry_count": 0,
-    }
-    if "url" in columns:
-        row["url"] = LEGACY_URL
-    row.update(overrides)
-    names = list(row)
-    placeholders = ", ".join("?" for _ in names)
-    sql = f"INSERT INTO durable_records ({', '.join(names)}) VALUES ({placeholders})"
-    with storage._lock:
-        storage._conn.execute("BEGIN IMMEDIATE")
-        cur = storage._conn.execute(sql, tuple(row[name] for name in names))
-        storage._conn.execute("COMMIT")
-    return int(cur.lastrowid)
-
-
-def raw_record_exists(storage: PersistentStorage, record_id: int) -> bool:
-    with storage._lock:
-        row = storage._conn.execute(
-            "SELECT COUNT(*) FROM durable_records WHERE id = ?",
-            (record_id,),
-        ).fetchone()
-    return bool(row[0])
-
-
-def _create_legacy_v1_database(database_path):
-    database_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    conn = sqlite3.connect(str(database_path))
+def test_uses_real_azure_monitor_provider_in_isolated_namespace(tmp_path):
+    storage = PersistentStorage(tmp_path)
     try:
-        conn.execute("""
-            CREATE TABLE durable_records (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                schema_version INTEGER NOT NULL,
-                tenant_id TEXT NOT NULL,
-                agent_id TEXT NOT NULL,
-                agentic_user_id TEXT,
-                use_s2s_endpoint INTEGER NOT NULL,
-                url TEXT NOT NULL,
-                payload TEXT NOT NULL,
-                created_at REAL NOT NULL,
-                lease_until REAL,
-                retry_count INTEGER NOT NULL DEFAULT 0
-            )
-            """)
-        conn.execute(
-            """
-            INSERT INTO durable_records (
-                schema_version, tenant_id, agent_id, agentic_user_id,
-                use_s2s_endpoint, url, payload, created_at, lease_until, retry_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                1,
-                "legacy-tenant",
-                "legacy-agent",
-                "legacy-user",
-                1,
-                "https://legacy.example.test",
-                '{"legacy":true}',
-                time.time() - 5.0,
-                None,
-                3,
-            ),
-        )
-        conn.commit()
+        assert isinstance(storage._provider, LocalFileStorage)
+        assert storage.directory == tmp_path / "a365"
+        assert storage.store(_record())
+        files = list(storage.directory.glob("*.blob"))
+        assert len(files) == 1
+        envelope = json.loads(files[0].read_text(encoding="utf-8"))
+        assert envelope["payload"] == _record().payload
+        assert envelope["tenant_id"] == "tenant"
+        assert "url" not in envelope
+        assert not (tmp_path / "queue.db").exists()
     finally:
-        conn.close()
+        storage.close()
 
 
-# ---------------------------------------------------------------------------
-# Transaction safety: isolation_level=None (autocommit mode)
-# ---------------------------------------------------------------------------
+def test_same_root_does_not_mix_azure_monitor_and_agent365_records(tmp_path):
+    monitor = LocalFileStorage(str(tmp_path))
+    try:
+        assert monitor.put([{"azure_monitor": True}], lease_period=0) == StorageExportResult.LOCAL_FILE_BLOB_SUCCESS
+        with PersistentStorage(tmp_path) as storage:
+            assert not storage.claim(10, 30)
+            assert storage.store(_record())
+            assert [blob.get() for blob in monitor.gets()] == [({"azure_monitor": True},)]
+            assert len(storage.claim(10, 30)) == 1
+    finally:
+        monitor.close()
 
 
-def test_connection_is_in_autocommit_mode(tmp_path):
-    """The connection must use isolation_level=None so transactions are explicit."""
-    storage = PersistentStorage(tmp_path, capacity_bytes=1024 * 1024, retention_seconds=3600)
-    assert storage._conn.isolation_level is None
-    storage.close()
+def test_restart_replays_same_identity_and_payload(tmp_path):
+    original = _record()
+    with PersistentStorage(tmp_path) as storage:
+        assert storage.store(original)
+    with PersistentStorage(tmp_path) as restarted:
+        records = restarted.claim(10, 30)
+        assert len(records) == 1
+        assert replace(records[0], record_id=None, lease_until=None) == original
+        assert restarted.delete(records[0].record_id)
+        assert not restarted.claim(10, 30)
 
 
-# ---------------------------------------------------------------------------
-# claim() prunes expired rows during the transaction
-# ---------------------------------------------------------------------------
+def test_leases_coordinate_two_instances_and_release(tmp_path):
+    with PersistentStorage(tmp_path) as first, PersistentStorage(tmp_path) as second:
+        assert first.store(_record())
+        claimed = first.claim(10, 30)
+        assert len(claimed) == 1
+        assert not second.claim(10, 30)
+        assert first.release(claimed[0].record_id)
+        reclaimed = second.claim(10, 30)
+        assert len(reclaimed) == 1
+        assert second.delete(reclaimed[0].record_id)
+        assert not first.claim(10, 30)
 
 
-def test_claim_prunes_expired_rows(tmp_path):
-    """Expired records stored before a claim call must be deleted by claim itself."""
-    storage = PersistentStorage(tmp_path, capacity_bytes=1024 * 1024, retention_seconds=0)
-    insert_raw_record(storage, created_at=0.0, payload='{"stale":true}')
-
-    # claim must prune the expired row and return nothing
-    claimed = storage.claim(limit=10, lease_seconds=30)
-    assert not claimed
-
-    # Row must actually be gone
-    with storage._lock:
-        row = storage._conn.execute("SELECT COUNT(*) FROM durable_records").fetchone()
-    assert row[0] == 0
-    storage.close()
+def test_expired_lease_survives_restart(tmp_path):
+    with PersistentStorage(tmp_path) as storage:
+        assert storage.store(_record())
+        assert len(storage.claim(1, 0)) == 1
+    with PersistentStorage(tmp_path) as restarted:
+        assert len(restarted.claim(1, 30)) == 1
 
 
-def test_initialization_migrates_v1_schema_and_preserves_records(tmp_path):
-    queue_dir = tmp_path / "queue"
-    _create_legacy_v1_database(queue_dir / "queue.db")
+def test_claim_limit_and_unknown_handles(tmp_path):
+    with PersistentStorage(tmp_path) as storage:
+        for i in range(5):
+            assert storage.store(_record(str(i)))
+        assert len(storage.claim(3, 30)) == 3
+        assert len(storage.claim(3, 30)) == 2
+        assert not storage.delete(-1)
+        assert not storage.release(-1)
 
-    storage = PersistentStorage(queue_dir, capacity_bytes=1024 * 1024, retention_seconds=3600)
-    columns = _table_columns(storage)
 
-    assert "url" not in columns
-    claimed = storage.claim(limit=10, lease_seconds=30)
-    assert len(claimed) == 1
-    assert claimed[0].schema_version == 2
-    assert claimed[0].tenant_id == "legacy-tenant"
-    assert claimed[0].agent_id == "legacy-agent"
-    assert claimed[0].agentic_user_id == "legacy-user"
-    assert claimed[0].use_s2s_endpoint is True
-    assert claimed[0].payload == '{"legacy":true}'
-    assert claimed[0].retry_count == 3
-    storage.close()
+def test_retention_discards_stale_records(tmp_path):
+    with PersistentStorage(tmp_path, retention_seconds=10) as storage:
+        assert storage.store(replace(_record("stale"), created_at=time.time() - 100))
+        assert storage.store(_record("live"))
+        assert [r.payload for r in storage.claim(10, 30)] == ["live"]
 
 
 @pytest.mark.parametrize(
-    ("column", "value"),
+    "overrides",
     [
-        ("schema_version", 999),
-        ("tenant_id", ""),
-        ("agent_id", ""),
-        ("payload", ""),
+        {"schema_version": 999},
+        {"tenant_id": ""},
+        {"agent_id": " "},
+        {"payload": ""},
+        {"created_at": "invalid"},
+        {"created_at": float("inf")},
+        {"use_s2s_endpoint": "false"},
+        {"agentic_user_id": {}},
     ],
 )
-def test_claim_deletes_invalid_records_and_continues_to_valid_later_record(tmp_path, column, value):
-    storage = PersistentStorage(tmp_path, capacity_bytes=1024 * 1024, retention_seconds=3600)
-    invalid_id = insert_raw_record(storage, **{column: value})
-    valid = _new_record('{"resourceSpans":[]}')
-
-    assert storage.store(valid)
-
-    claimed = storage.claim(limit=1, lease_seconds=30)
-
-    assert [record.payload for record in claimed] == [valid.payload]
-    assert raw_record_exists(storage, invalid_id) is False
-    storage.close()
+def test_invalid_envelope_is_logged_and_dropped_without_blocking_valid_records(tmp_path, caplog, overrides):
+    with PersistentStorage(tmp_path) as storage:
+        envelope = asdict(_record())
+        envelope.update(overrides)
+        assert storage._provider.put([envelope], lease_period=0) == StorageExportResult.LOCAL_FILE_BLOB_SUCCESS
+        assert storage.store(_record("valid"))
+        assert [r.payload for r in storage.claim(1, 30)] == ["valid"]
+        assert "dropped invalid durable record" in caplog.text
+        assert not storage.claim(1, 30)
 
 
-# ---------------------------------------------------------------------------
-# Round-trip
-# ---------------------------------------------------------------------------
+def test_unreadable_blob_is_logged_and_retained_until_expiry(tmp_path, caplog):
+    with PersistentStorage(tmp_path) as storage:
+        assert storage.store(_record())
+        blob = next(storage.directory.glob("*.blob"))
+        blob.write_text("not json", encoding="utf-8")
+        assert not storage.claim(1, 30)
+        assert "failed to read durable record" in caplog.text
+        assert len(list(storage.directory.iterdir())) == 1
 
 
-def test_store_claim_delete_round_trip(tmp_path):
-    storage = PersistentStorage(tmp_path, capacity_bytes=1024 * 1024, retention_seconds=3600)
-    record = _new_record('{"resourceSpans":[]}')
-    assert storage.store(record)
-    claimed = storage.claim(limit=10, lease_seconds=30)
-    assert [item.payload for item in claimed] == [record.payload]
-    assert storage.delete(claimed[0].record_id)
-    assert not storage.claim(limit=10, lease_seconds=30)
-    storage.close()
+def test_transient_read_failure_never_deletes_undelivered_telemetry(tmp_path, caplog):
+    with PersistentStorage(tmp_path) as storage:
+        assert storage.store(_record("retained"))
+        with patch("builtins.open", side_effect=PermissionError("temporary read failure")):
+            assert not storage.claim(1, 30)
+        assert "failed to read durable record" in caplog.text
+        assert len(list(storage.directory.iterdir())) == 1
+        assert [r.payload for r in storage.claim(1, 30)] == ["retained"]
 
 
-# ---------------------------------------------------------------------------
-# Lease release
-# ---------------------------------------------------------------------------
+def test_capacity_is_reclaimed_after_delete(tmp_path, caplog):
+    with PersistentStorage(tmp_path, capacity_bytes=1024) as storage:
+        count = 0
+        while count < 100 and storage.store(_record("x" * 400)):
+            count += 1
+        assert 0 < count < 100
+        assert "PersistentStorage.store failed" in caplog.text
+        for record in storage.claim(100, 30):
+            assert storage.delete(record.record_id)
+        assert storage.store(_record("x" * 400))
 
 
-def test_release_makes_record_claimable_again(tmp_path):
-    storage = PersistentStorage(tmp_path, capacity_bytes=1024 * 1024, retention_seconds=3600)
-    record = _new_record('{"payload":1}')
-    assert storage.store(record)
-
-    claimed = storage.claim(limit=10, lease_seconds=30)
-    assert len(claimed) == 1
-
-    # While leased, claim returns nothing
-    assert not storage.claim(limit=10, lease_seconds=30)
-
-    # After release the record is available again
-    assert storage.release(claimed[0].record_id)
-    reclaimed = storage.claim(limit=10, lease_seconds=30)
-    assert len(reclaimed) == 1
-    assert reclaimed[0].payload == record.payload
-    storage.close()
+def test_oversized_record_is_rejected(tmp_path, caplog):
+    with PersistentStorage(tmp_path, capacity_bytes=1) as storage:
+        assert not storage.store(_record())
+        assert "capacity" in caplog.text
+        assert not list(storage.directory.iterdir())
 
 
-# ---------------------------------------------------------------------------
-# Expired-record cleanup
-# ---------------------------------------------------------------------------
+@pytest.mark.parametrize("result", [StorageExportResult.CLIENT_STORAGE_DISABLED, "disk full"])
+def test_upstream_write_failure_is_logged(tmp_path, caplog, result):
+    with PersistentStorage(tmp_path) as storage:
+        with patch.object(storage._provider, "put", return_value=result):
+            assert not storage.store(_record())
+        assert "PersistentStorage.store failed" in caplog.text
 
 
-def test_expired_records_are_cleaned_up(tmp_path):
-    storage = PersistentStorage(tmp_path, capacity_bytes=1024 * 1024, retention_seconds=0)
-    # Insert the to-be-expired row directly with an unambiguously-past
-    # created_at (matching the insert_raw_record convention used by
-    # test_claim_prunes_expired_rows above) instead of two back-to-back
-    # DurableRecord.new()/store() calls. time.time() has ~15ms resolution on
-    # Windows, so two calls made microseconds apart can return the identical
-    # value; with retention_seconds=0 that made "created_at < expire_before"
-    # a tie (record.created_at == the claim's own now-clock read), leaving
-    # the "expired" record un-pruned and intermittently failing this test.
-    insert_raw_record(storage, created_at=0.0, payload='{"payload":2}')
-
-    # Store a second, live record to trigger the cleanup path alongside it.
-    record2 = _new_record('{"payload":3}')
-    assert storage.store(record2)
-
-    # Expired records must not be returned by claim
-    claimed = storage.claim(limit=10, lease_seconds=30)
-    for item in claimed:
-        assert item.payload != '{"payload":2}'
-    storage.close()
+def test_silent_upstream_delete_failure_is_reported(tmp_path, caplog):
+    with PersistentStorage(tmp_path) as storage:
+        assert storage.store(_record())
+        claimed = storage.claim(1, 30)
+        with patch("azure.monitor.opentelemetry.exporter._storage.os.remove", side_effect=PermissionError("denied")):
+            assert not storage.delete(claimed[0].record_id)
+        assert "PersistentStorage.delete failed" in caplog.text
+        assert storage.delete(claimed[0].record_id)
 
 
-# ---------------------------------------------------------------------------
-# Capacity rejection
-# ---------------------------------------------------------------------------
+def test_provider_setup_failure_raises_for_exporter_nonfatal_disable(tmp_path):
+    with patch(
+        "azure.monitor.opentelemetry.exporter._storage.LocalFileStorage._check_and_set_folder_permissions",
+        return_value=False,
+    ):
+        with pytest.raises(OSError, match="Azure Monitor"):
+            PersistentStorage(tmp_path)
 
 
-def test_store_rejects_when_capacity_exceeded(tmp_path):
-    storage = PersistentStorage(tmp_path, capacity_bytes=1, retention_seconds=3600)
-    record = _new_record("x" * 100)
-    # Must return False and not raise
-    result = storage.store(record)
-    assert result is False
-    storage.close()
+@pytest.mark.parametrize("root", ["", "  ", 123])
+def test_invalid_configuration_is_rejected_at_storage_initialization(root):
+    with pytest.raises(ValueError, match="storage_directory"):
+        PersistentStorage(root)
 
 
-def test_store_reclaims_capacity_after_fill_delete_refill(tmp_path):
-    """Capacity accounting must use live pages, not the file high-water mark.
-
-    Regression: with ``page_count * page_size`` accounting, filling the queue to
-    its cap and then claiming/deleting every record left the freed (freelist)
-    pages counted as "used", because SQLite does not shrink the file on delete.
-    The queue was therefore permanently wedged and rejected all new records.
-    Live-page accounting — ``(page_count - freelist_count) * page_size`` — must
-    reclaim the freed space so new records can be stored again.
-    """
-    storage = PersistentStorage(tmp_path, capacity_bytes=64 * 1024, retention_seconds=3600)
-    payload = "x" * 4000
-
-    # Fill until the capacity cap rejects a store.
-    stored = 0
-    while stored < 500 and storage.store(_new_record(payload)):
-        stored += 1
-    # A store was actually rejected (we reached the cap, not the loop guard).
-    assert 0 < stored < 500
-
-    # Claim and delete every stored record.
-    while True:
-        claimed = storage.claim(limit=100, lease_seconds=300)
-        if not claimed:
-            break
-        for rec in claimed:
-            assert storage.delete(rec.record_id)
-
-    # The freed space must be reclaimed so new records can be stored again.
-    assert storage.store(_new_record(payload)) is True
-    storage.close()
+def test_file_root_fails_without_fallback(tmp_path):
+    root = tmp_path / "file"
+    root.write_text("unchanged", encoding="utf-8")
+    with pytest.raises(OSError, match="Azure Monitor"):
+        PersistentStorage(root)
+    assert root.read_text(encoding="utf-8") == "unchanged"
 
 
-# ---------------------------------------------------------------------------
-# POSIX permissions
-# ---------------------------------------------------------------------------
+def test_default_directory_uses_azure_monitor_resolver(tmp_path):
+    with patch(f"{MODULE}._get_storage_directory", return_value=str(tmp_path / "default")) as resolve:
+        with PersistentStorage() as storage:
+            assert storage.directory == tmp_path / "default"
+            assert storage.store(_record())
+        resolve.assert_called_once_with("agent365")
 
 
-@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
-def test_storage_permissions_are_private(tmp_path):
-    storage = PersistentStorage(tmp_path / "queue")
-    assert stat.S_IMODE((tmp_path / "queue").stat().st_mode) == 0o700
-    assert stat.S_IMODE(storage.database_path.stat().st_mode) == 0o600
-    storage.close()
+def test_does_not_open_or_migrate_sqlite_backlogs(tmp_path, caplog):
+    database = tmp_path / "queue.db"
+    database.write_bytes(b"old SQLite backlog")
+    with PersistentStorage(tmp_path) as storage:
+        assert not storage.claim(10, 30)
+        assert storage.store(_record())
+    assert database.read_bytes() == b"old SQLite backlog"
+    assert "Legacy Agent365 SQLite backlog" in caplog.text
 
 
-@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
-@pytest.mark.parametrize("mask", [0o000, 0o022, 0o077, 0o777])
-def test_missing_directory_components_are_private_under_umask(tmp_path, mask):
-    parent = tmp_path / "configured-parent"
-    parent.mkdir(mode=0o755)
-    original_mode = stat.S_IMODE(parent.stat().st_mode)
+@pytest.mark.skipif(os.name == "nt", reason="Unix filesystem permissions")
+@pytest.mark.parametrize("mask", [0o000, 0o022, 0o077])
+def test_real_unix_permissions_come_from_provider_without_changing_parent(tmp_path, mask):
+    parent_mode = stat.S_IMODE(tmp_path.stat().st_mode)
     previous = os.umask(mask)
     try:
-        storage = PersistentStorage(parent / "sdk" / "queue")
+        with PersistentStorage(tmp_path) as storage:
+            assert storage.store(_record())
+            assert stat.S_IMODE(storage.directory.stat().st_mode) == 0o700
+            assert stat.S_IMODE(next(storage.directory.glob("*.blob")).stat().st_mode) == 0o600
+            assert stat.S_IMODE(tmp_path.stat().st_mode) == parent_mode
     finally:
         os.umask(previous)
-    try:
-        assert stat.S_IMODE(parent.stat().st_mode) == original_mode
-        assert stat.S_IMODE((parent / "sdk").stat().st_mode) == 0o700
-        assert stat.S_IMODE(storage._directory.stat().st_mode) == 0o700
-        assert storage.store(_new_record("private"))
-    finally:
-        storage.close()
 
 
-@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
-@pytest.mark.parametrize("mode", [0o755, 0o750, 0o770, 0o777, 0o1700])
-def test_rejects_unsafe_existing_directory_without_chmod(tmp_path, mode):
-    queue = tmp_path / "queue"
-    queue.mkdir()
-    queue.chmod(mode)
-    with pytest.raises(PermissionError, match="permissions"):
-        PersistentStorage(queue)
-    assert stat.S_IMODE(queue.stat().st_mode) == mode
-    assert not (queue / "queue.db").exists()
+@pytest.mark.skipif(os.name == "nt", reason="Unix provider permissions")
+def test_provider_repairs_existing_owned_cache_but_not_configured_parent(tmp_path):
+    tmp_path.chmod(0o750)
+    cache = tmp_path / "a365"
+    cache.mkdir()
+    cache.chmod(0o755)
+    with PersistentStorage(tmp_path) as storage:
+        assert storage.store(_record())
+        assert stat.S_IMODE(cache.stat().st_mode) == 0o700
+        assert stat.S_IMODE(tmp_path.stat().st_mode) == 0o750
 
 
-@pytest.mark.skipif(os.name == "nt", reason="POSIX symlinks")
-@pytest.mark.parametrize("dangling", [False, True])
-def test_rejects_symlinked_parent_before_creating_children(tmp_path, dangling):
+@pytest.mark.skipif(os.name == "nt", reason="Unix provider symlink protection")
+def test_provider_rejects_symlinked_cache_without_changing_target(tmp_path):
     target = tmp_path / "target"
-    if not dangling:
-        target.mkdir(mode=0o700)
-    link = tmp_path / "link"
-    link.symlink_to(target, target_is_directory=True)
-    with pytest.raises((PermissionError, NotADirectoryError), match="symlink|directory"):
-        PersistentStorage(link / "sdk" / "queue")
-    assert not (target / "sdk").exists()
-
-
-@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
-def test_rejects_writable_nonsticky_parent_without_chmod(tmp_path):
-    parent = tmp_path / "shared"
-    parent.mkdir()
-    parent.chmod(0o777)
-    with pytest.raises(PermissionError, match="permissions"):
-        PersistentStorage(parent / "queue")
-    assert stat.S_IMODE(parent.stat().st_mode) == 0o777
-    assert not (parent / "queue").exists()
-
-
-@pytest.mark.skipif(os.name == "nt", reason="POSIX symlinks")
-@pytest.mark.parametrize("name", ["queue.db", "queue.db-wal", "queue.db-shm", "queue.db-journal"])
-def test_rejects_symlinked_database_files_before_sqlite_open(tmp_path, name):
-    queue = tmp_path / "queue"
-    queue.mkdir(mode=0o700)
-    target = tmp_path / "unrelated"
-    target.write_bytes(b"must not change")
-    target.chmod(0o644)
-    (queue / name).symlink_to(target)
-    with pytest.raises(PermissionError, match="symlink"):
-        PersistentStorage(queue)
-    assert target.read_bytes() == b"must not change"
-    assert stat.S_IMODE(target.stat().st_mode) == 0o644
-    if name != "queue.db":
-        assert not (queue / "queue.db").exists()
-
-
-@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
-@pytest.mark.parametrize("operation", ["store", "claim", "delete", "release"])
-def test_permissions_changed_after_open_fail_closed(tmp_path, caplog, operation):
-    queue = tmp_path / "queue"
-    storage = PersistentStorage(queue)
-    assert storage.store(_new_record("queued"))
-    queue.chmod(0o755)
-    try:
-        result: bool | list[DurableRecord]
-        if operation == "store":
-            result = storage.store(_new_record("must not persist"))
-        elif operation == "claim":
-            result = storage.claim(limit=10, lease_seconds=30)
-        else:
-            result = getattr(storage, operation)(1)
-        assert result == ([] if operation == "claim" else False)
-        assert f"PersistentStorage.{operation} failed" in caplog.text
-        assert stat.S_IMODE(queue.stat().st_mode) == 0o755
-    finally:
-        queue.chmod(0o700)
-        storage.close()
-    reopened = PersistentStorage(queue)
-    try:
-        assert [r.payload for r in reopened.claim(10, 30)] == ["queued"]
-    finally:
-        reopened.close()
-
-
-def test_restart_replays_existing_safe_queue(tmp_path):
-    queue = tmp_path / "queue"
-    storage = PersistentStorage(queue)
-    assert storage.store(_new_record("survives restart"))
-    database_path = storage.database_path
-    storage.close()
-    restarted = PersistentStorage(queue)
-    try:
-        assert restarted.database_path == database_path
-        records = restarted.claim(10, 30)
-        assert [r.payload for r in records] == ["survives restart"]
-        assert restarted.delete(records[0].record_id)
-        assert not restarted.claim(10, 30)
-    finally:
-        restarted.close()
-
-
-@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
-def test_restart_rejects_unsafe_queue_without_touching_records(tmp_path):
-    queue = tmp_path / "queue"
-    storage = PersistentStorage(queue)
-    assert storage.store(_new_record("retained"))
-    storage.close()
-    before = (queue / "queue.db").read_bytes()
-    queue.chmod(0o755)
-    with pytest.raises(PermissionError, match="permissions"):
-        PersistentStorage(queue)
-    assert (queue / "queue.db").read_bytes() == before
-    assert stat.S_IMODE(queue.stat().st_mode) == 0o755
-
-
-@pytest.mark.skipif(os.name == "nt", reason="POSIX symlinks")
-@pytest.mark.parametrize("replacement", ["symlink", "directory"])
-def test_replaced_directory_blocks_writes_and_replay(tmp_path, caplog, replacement):
-    queue = tmp_path / "queue"
-    moved = tmp_path / "moved"
-    storage = PersistentStorage(queue)
-    assert storage.store(_new_record("retained"))
-    queue.rename(moved)
-    if replacement == "symlink":
-        queue.symlink_to(moved, target_is_directory=True)
-    else:
-        queue.mkdir(mode=0o700)
-    try:
-        assert not storage.store(_new_record("must not persist"))
-        assert not storage.claim(10, 30)
-        assert "PersistentStorage.store failed" in caplog.text
-        assert "PersistentStorage.claim failed" in caplog.text
-    finally:
-        if replacement == "symlink":
-            queue.unlink()
-        else:
-            queue.rmdir()
-        moved.rename(queue)
-        storage.close()
-    restarted = PersistentStorage(queue)
-    try:
-        assert [r.payload for r in restarted.claim(10, 30)] == ["retained"]
-    finally:
-        restarted.close()
-
-
-@pytest.mark.skipif(os.name == "nt", reason="POSIX permissions")
-def test_wal_and_shm_sidecars_are_private(tmp_path):
-    """The DB and its WAL/SHM sidecars must be mode 0600 after journal init.
-
-    WAL mode creates ``queue.db-wal`` and ``queue.db-shm`` sidecars that would
-    otherwise inherit the process umask; they can contain the same OTLP payloads
-    as the DB and must be locked to the owner.
-    """
-    storage = PersistentStorage(tmp_path / "queue")
-    try:
-        for name in ("queue.db", "queue.db-wal", "queue.db-shm"):
-            sidecar = tmp_path / "queue" / name
-            assert sidecar.exists(), name
-            assert stat.S_IMODE(sidecar.stat().st_mode) == 0o600, name
-    finally:
-        storage.close()
-
-
-def test_restrict_file_permissions_locks_db_and_sidecars(tmp_path, monkeypatch):
-    """The helper chmods the DB and any existing WAL/SHM sidecars to 0600.
-
-    Runs on Windows (mocks only ``os.chmod``, not ``os.name``, so ``pathlib`` is
-    unaffected) to make the sidecar hardening verifiable off-POSIX; the real
-    end-to-end modes are checked by the POSIX-only test above.
-    """
-    import microsoft.opentelemetry.a365.core.exporters.persistent_storage as _mod
-
-    storage = PersistentStorage(tmp_path / "queue")
-    try:
-        # Journal init created queue.db plus its -wal/-shm sidecars.
-        for name in ("queue.db", "queue.db-wal", "queue.db-shm"):
-            assert (tmp_path / "queue" / name).exists(), name
-
-        recorded: dict[str, int] = {}
-        monkeypatch.setattr(_mod.os, "chmod", lambda p, m: recorded.__setitem__(os.path.basename(str(p)), m))
-        storage._restrict_file_permissions()
-
-        assert recorded.get("queue.db") == 0o600
-        assert recorded.get("queue.db-wal") == 0o600
-        assert recorded.get("queue.db-shm") == 0o600
-    finally:
-        storage.close()
-
-
-# ---------------------------------------------------------------------------
-# Windows permissions
-# ---------------------------------------------------------------------------
-
-
-def test_windows_directory_permissions_restrict_access_to_admins_and_current_user(tmp_path, monkeypatch):
-    import microsoft.opentelemetry.a365.core.exporters.persistent_storage as _mod
-
-    monkeypatch.setenv("SYSTEMROOT", r"C:\Windows")
-    monkeypatch.setenv("USERDOMAIN", "CONTOSO")
-    monkeypatch.setenv("USERNAME", "alice")
-
-    with patch("subprocess.run", return_value=subprocess.CompletedProcess([], 0)) as run:
-        _mod._restrict_windows_directory_permissions(tmp_path)
-
-    common_options = {
-        "check": False,
-        "stdout": subprocess.DEVNULL,
-        "stderr": subprocess.PIPE,
-        "text": True,
-    }
-    assert run.call_args_list == [
-        call(
-            [r"C:\Windows\System32\icacls.exe", str(tmp_path), "/reset", "/T"],
-            **common_options,
-        ),
-        call(
-            [
-                r"C:\Windows\System32\icacls.exe",
-                str(tmp_path),
-                "/inheritance:r",
-                "/grant:r",
-                "*S-1-5-32-544:(OI)(CI)F",
-                r"CONTOSO\alice:(OI)(CI)F",
-            ],
-            **common_options,
-        ),
-    ]
-
-
-def test_windows_directory_permissions_fail_closed_when_icacls_fails(tmp_path, monkeypatch):
-    import microsoft.opentelemetry.a365.core.exporters.persistent_storage as _mod
-
-    monkeypatch.setenv("USERDOMAIN", "CONTOSO")
-    monkeypatch.setenv("USERNAME", "alice")
-
-    results = [
-        subprocess.CompletedProcess([], 0),
-        subprocess.CompletedProcess([], 5, stderr="Access is denied."),
-    ]
-    with patch("subprocess.run", side_effect=results):
-        with pytest.raises(PermissionError, match="Access is denied"):
-            _mod._restrict_windows_directory_permissions(tmp_path)
-
-
-# ---------------------------------------------------------------------------
-# Unsafe ownership rejected
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.skipif(os.name == "nt", reason="POSIX ownership check")
-def test_rejects_directory_owned_by_another_uid(tmp_path):
-    import types
-    import microsoft.opentelemetry.a365.core.exporters.persistent_storage as _mod
-
-    foreign_uid = getattr(os, "getuid")() + 1
-
-    target_dir = tmp_path / "queue_foreign"
-    target_dir.mkdir(mode=0o700)
-    real_stat = target_dir.stat()
-    mock_result = types.SimpleNamespace(
-        st_uid=foreign_uid,
-        st_mode=real_stat.st_mode,
-        st_size=real_stat.st_size,
-        st_mtime=real_stat.st_mtime,
-    )
-
-    original_fstat = os.fstat
-
-    def fstat(fd):
-        result = original_fstat(fd)
-        return mock_result if result.st_ino == real_stat.st_ino else result
-
-    # Ownership is checked on the directory opened without following links.
-    with patch.object(_mod.os, "fstat", side_effect=fstat):
-        with pytest.raises(PermissionError, match="unsafe ownership"):
-            PersistentStorage(target_dir)
-
-
-@pytest.mark.skipif(os.name == "nt", reason="POSIX symlink rejection")
-def test_rejects_symlinked_directory(tmp_path):
-    """A symlinked queue directory must be rejected, not silently followed."""
-    real_dir = tmp_path / "real"
-    real_dir.mkdir()
-    link_dir = tmp_path / "link"
-    os.symlink(real_dir, link_dir, target_is_directory=True)
-
-    with pytest.raises(PermissionError, match="symlink"):
-        PersistentStorage(link_dir)
-
-
-def test_default_directory_prefers_local_state_even_if_missing(tmp_path):
-    """On POSIX without XDG_STATE_HOME, prefer ~/.local/state (to be created)
-    rather than falling back to the temp dir merely because it does not exist."""
-    import microsoft.opentelemetry.a365.core.exporters.persistent_storage as _mod
-
-    fake_home = tmp_path / "home"
-    fake_home.mkdir()
-    local_state = fake_home / ".local" / "state"
-    assert not local_state.exists()
-
-    env = {k: v for k, v in os.environ.items() if k != "XDG_STATE_HOME"}
-    with (
-        patch.object(_mod.sys, "platform", "linux"),
-        patch.dict(os.environ, env, clear=True),
-        patch.object(_mod.Path, "home", return_value=fake_home),
-    ):
-        resolved = _mod._resolve_default_directory()
-
-    # The resolved base must be under ~/.local/state, not the temp directory.
-    assert str(resolved).startswith(str(local_state))
-
-
-def test_default_directory_falls_back_to_tmp_when_home_unusable(tmp_path):
-    """When the home directory cannot be resolved, fall back to the temp dir."""
-    import microsoft.opentelemetry.a365.core.exporters.persistent_storage as _mod
-
-    env = {k: v for k, v in os.environ.items() if k != "XDG_STATE_HOME"}
-    with (
-        patch.object(_mod.sys, "platform", "linux"),
-        patch.dict(os.environ, env, clear=True),
-        patch.object(_mod.Path, "home", side_effect=RuntimeError("no home")),
-    ):
-        resolved = _mod._resolve_default_directory()
-
-    assert str(resolved).startswith(str(_mod.tempfile.gettempdir()))
-
-
-def test_default_directory_honors_xdg_state_home(tmp_path):
-    """XDG_STATE_HOME, when set, takes precedence over ~/.local/state."""
-    import microsoft.opentelemetry.a365.core.exporters.persistent_storage as _mod
-
-    xdg = tmp_path / "xdg"
-    with patch.object(_mod.sys, "platform", "linux"), patch.dict(os.environ, {"XDG_STATE_HOME": str(xdg)}, clear=False):
-        resolved = _mod._resolve_default_directory()
-
-    assert str(resolved).startswith(str(xdg))
-
-
-# ---------------------------------------------------------------------------
-# Multiple claims respect limit
-# ---------------------------------------------------------------------------
-
-
-def test_claim_respects_limit(tmp_path):
-    storage = PersistentStorage(tmp_path, capacity_bytes=1024 * 1024, retention_seconds=3600)
-    for i in range(5):
-        storage.store(_new_record(f'{{"i":{i}}}'))
-
-    claimed = storage.claim(limit=3, lease_seconds=30)
-    assert len(claimed) == 3
-    storage.close()
-
-
-# ---------------------------------------------------------------------------
-# DurableRecord.new round-trips IdentityKey fields
-# ---------------------------------------------------------------------------
-
-
-def test_durable_record_new_fields():
-    key = IdentityKey(
-        tenant_id="myTenant",
-        agent_id="myAgent",
-        agentic_user_id="user42",
-        use_s2s_endpoint=True,
-    )
-    assert list(inspect.signature(DurableRecord.new).parameters) == ["key", "payload"]
-    rec = DurableRecord.new(key, '{"data":1}')
-    assert rec.tenant_id == "myTenant"
-    assert rec.agent_id == "myAgent"
-    assert rec.agentic_user_id == "user42"
-    assert rec.use_s2s_endpoint is True
-    assert not hasattr(rec, "url")
-    assert rec.payload == '{"data":1}'
-    assert rec.record_id is None  # not yet persisted
-
-
-# ---------------------------------------------------------------------------
-# delete returns False for unknown id
-# ---------------------------------------------------------------------------
-
-
-def test_delete_unknown_record_id(tmp_path):
-    storage = PersistentStorage(tmp_path, capacity_bytes=1024 * 1024, retention_seconds=3600)
-    assert storage.delete(99999) is False
-    storage.close()
-
-
-# ---------------------------------------------------------------------------
-# release returns False for unknown id
-# ---------------------------------------------------------------------------
-
-
-def test_release_unknown_record_id(tmp_path):
-    storage = PersistentStorage(tmp_path, capacity_bytes=1024 * 1024, retention_seconds=3600)
-    assert storage.release(99999) is False
-    storage.close()
+    target.mkdir(mode=0o755)
+    (tmp_path / "a365").symlink_to(target, target_is_directory=True)
+    before = target.stat().st_mode
+    with pytest.raises(OSError, match="Azure Monitor"):
+        PersistentStorage(tmp_path)
+    assert target.stat().st_mode == before
+    assert not list(target.iterdir())
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows provider ACLs")
+def test_windows_uses_upstream_acl_handling(tmp_path):
+    with patch("azure.monitor.opentelemetry.exporter._storage.subprocess.run") as run:
+        run.return_value.returncode = 0
+        with PersistentStorage(tmp_path) as storage:
+            assert storage.store(_record())
+        args = run.call_args.args[0]
+        assert Path(args[0]).name == "icacls.exe"
+        assert args[1] == str(tmp_path / "a365")
+        assert "/inheritance:r" in args
+        assert "/grant" in args

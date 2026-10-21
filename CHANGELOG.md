@@ -1,4 +1,23 @@
 # Release History
+
+# Unreleased
+### Breaking Changes
+- Agent365 offline delivery now reuses Azure Monitor's JSON-blob storage provider,
+  file leases, Unix permission handling, and Windows ACL handling instead of a
+  separate SQLite implementation. Explicit roots use an isolated `a365` child;
+  implicit paths use Azure Monitor's resolver with an Agent365 namespace.
+  This changes cache layout, format, and default locations on all platforms,
+  including Linux and macOS. Drain existing SQLite backlogs with the previous
+  SDK before upgrading; no automatic migration or legacy replay is performed.
+  Provision a private service-account-owned root (normally `0700` on Unix),
+  review ACLs and ancestors, and protect against path replacement. Upstream
+  cache permission enforcement remains enabled.
+
+### Bugs Fixed
+- Invalid Agent365 storage configuration or provider initialization failure logs
+  a nonfatal error and disables only offline buffering/replay, preserving online
+  export. Explicit offline disablement bypasses storage initialization.
+
 # 1.5.0 (2026-10-20)
 ### Features Added
 - Add privacy-safe Model Observation attributes to `InferenceScope`, including the canonical served response model, cache read/write input-token counts, lowercase operation names, and numeric endpoint ports. Attributes can be supplied when the scope starts or recorded after the response is available. ([#289](https://github.com/microsoft/opentelemetry-distro-python/pull/289))

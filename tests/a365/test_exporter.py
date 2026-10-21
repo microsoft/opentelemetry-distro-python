@@ -384,6 +384,7 @@ class TestAgent365ExporterActiveReplayShutdown(unittest.TestCase):
     """
 
     def _make_durable_exporter_with_pending_record(self, storage_dir):
+        storage_dir.mkdir(parents=True, exist_ok=True)
         exporter = _Agent365Exporter(
             token_resolver=lambda a, t: "token",
             storage_directory=storage_dir,
@@ -817,43 +818,85 @@ class TestAgent365ExporterDurableDelivery(unittest.TestCase):
 class TestAgent365ExporterStorageDirectory(unittest.TestCase):
     """End-to-end behavior of the storage_directory option and no-leak checks."""
 
-    @unittest.skipIf(os.name == "nt", "POSIX permissions")
     @patch.dict(os.environ, {}, clear=True)
-    def test_unsafe_directory_disables_storage_with_error_and_no_fallback(self):
+    def test_invalid_roots_disable_only_offline_delivery(self):
         with tempfile.TemporaryDirectory() as tmp:
-            storage_dir = Path(tmp) / "queue"
-            storage_dir.mkdir(mode=0o755)
-            storage_dir.chmod(0o755)
-            exporter = _Agent365Exporter(
-                token_resolver=lambda a, t: "token",
-                storage_directory=storage_dir,
-                enable_durable_delivery=True,
-            )
-            try:
-                with self.assertLogs(exporter_module.logger, level="ERROR") as logs:
-                    exporter._ensure_durable_initialized()
-                self.assertIn("Durable delivery disabled", "\n".join(logs.output))
-                self.assertFalse(exporter._enable_durable_delivery)
-                self.assertIsNone(exporter._storage)
-                self.assertIsNone(exporter._replay)
-                self.assertFalse((storage_dir / "queue.db").exists())
-            finally:
-                exporter.shutdown()
+            root = Path(tmp)
+            file_root = root / "file"
+            file_root.touch()
+            for storage_dir in ("", "  ", 123, file_root):
+                with self.subTest(storage_directory=storage_dir):
+                    exporter = _Agent365Exporter(
+                        token_resolver=lambda a, t: "token",
+                        storage_directory=storage_dir,
+                        enable_durable_delivery=True,
+                    )
+                    exporter._post_once = MagicMock(return_value=_delivered())  # type: ignore[method-assign]
+                    try:
+                        with self.assertLogs(exporter_module.logger, level="ERROR") as logs:
+                            self.assertIs(exporter.export([_make_span()]), SpanExportResult.SUCCESS)
+                        self.assertIn("Durable delivery disabled", "\n".join(logs.output))
+                        self.assertFalse(exporter._enable_durable_delivery)
+                        self.assertIsNone(exporter._storage)
+                        self.assertIsNone(exporter._replay)
+                        with patch.object(exporter_module, "PersistentStorage") as storage:
+                            self.assertIs(exporter.export([_make_span()]), SpanExportResult.SUCCESS)
+                            storage.assert_not_called()
+                        exporter._post_once.return_value = _retryable(30)
+                        self.assertIs(exporter.export([_make_span()]), SpanExportResult.FAILURE)
+                    finally:
+                        exporter.shutdown()
+            self.assertEqual([p.name for p in root.iterdir()], ["file"])
+
+    @patch.dict(os.environ, {}, clear=True)
+    def test_storage_initialization_failure_keeps_online_export_running(self):
+        exporter = _Agent365Exporter(token_resolver=lambda a, t: "token")
+        exporter._post_once = MagicMock(return_value=_delivered())  # type: ignore[method-assign]
+        try:
+            with (
+                patch.object(exporter_module, "PersistentStorage", side_effect=OSError("disk unavailable")) as storage,
+                self.assertLogs(exporter_module.logger, level="ERROR") as logs,
+            ):
+                self.assertIs(exporter.export([_make_span()]), SpanExportResult.SUCCESS)
+                self.assertIs(exporter.export([_make_span()]), SpanExportResult.SUCCESS)
+                storage.assert_called_once()
+            self.assertIn("disk unavailable", "\n".join(logs.output))
+            self.assertIsNone(exporter._storage)
+            self.assertIsNone(exporter._replay)
+        finally:
+            exporter.shutdown()
 
     @patch.dict(os.environ, {}, clear=True)
     def test_storage_directory_is_honored_end_to_end(self):
         with tempfile.TemporaryDirectory() as tmp:
             storage_dir = Path(tmp) / "queue"
+            storage_dir.mkdir()
             exporter = _Agent365Exporter(
                 token_resolver=lambda a, t: "token",
                 storage_directory=storage_dir,
                 enable_durable_delivery=True,
             )
             exporter._ensure_durable_initialized()
-            # The durable queue database lives under the requested directory.
-            self.assertEqual(exporter._storage.database_path.parent, storage_dir)
-            self.assertTrue((storage_dir / "queue.db").exists())
+            self.assertEqual(exporter._storage.directory, storage_dir / "a365")
+            self.assertTrue((storage_dir / "a365").is_dir())
             exporter.shutdown()
+
+    def test_explicit_disablement_bypasses_invalid_storage_configuration(self):
+        for root in (None, "", " ", "relative-root"):
+            with self.subTest(root=root):
+                exporter = _Agent365Exporter(
+                    token_resolver=lambda a, t: "token",
+                    storage_directory=root,
+                    enable_durable_delivery=False,
+                )
+                exporter._post_once = MagicMock(return_value=_delivered())  # type: ignore[method-assign]
+                try:
+                    with patch.object(exporter_module, "PersistentStorage") as storage:
+                        self.assertIs(exporter.export([_make_span()]), SpanExportResult.SUCCESS)
+                        storage.assert_not_called()
+                        self.assertIsNone(exporter._replay)
+                finally:
+                    exporter.shutdown()
 
     @patch.dict(os.environ, {}, clear=True)
     def test_no_disk_writes_when_durable_delivery_disabled(self):

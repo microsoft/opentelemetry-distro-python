@@ -43,7 +43,7 @@ use_microsoft_opentelemetry(
 | `a365_exporter_timeout_ms` | `int` | `30000` | — | Timeout for a single A365 export operation in milliseconds. |
 | `a365_max_export_batch_size` | `int` | `512` | — | Maximum batch size for a single A365 export operation. |
 | `a365_exporter_disable_offline_storage` | `bool` | `False` | — | Disable durable offline storage. When `True`, failed exports are not persisted to disk and at-least-once delivery is not guaranteed. Defaults to `False` (storage enabled). |
-| `a365_exporter_storage_directory` | `str` | `None` | — | Custom directory for durable offline storage. When `None`, a platform default path is used. Choose a path that only the current user or service account can read, because stored OTLP payloads may contain prompts or completions when sensitive-data capture is enabled. |
+| `a365_exporter_storage_directory` | `str` | `None` | — | Root for an isolated `a365` cache using Azure Monitor's offline storage provider. `None` uses Azure Monitor's default path resolver with an Agent365 namespace. The provider manages cache permissions; customers must protect its ancestors. See [offline storage](#durable-delivery-offline-storage) for security and upgrade guidance. |
 
 ### Resource / Service Name
 
@@ -95,18 +95,31 @@ Key defaults and limits:
 |---|---|
 | Enabled by default | Yes (when exporter is active) |
 | Retention window | 2 days |
-| Maximum storage size | 50 MB |
+| Maximum storage size | 50 MiB (upstream capacity check before each write; one write can cross the limit) |
 | Storage path | Platform default (see below) |
 
-The default path is a sub-directory of the platform's local app data folder,
-derived from the user, executable, and working directory. Processes for the
-same application can share the SQLite queue; leases coordinate replay across
-those processes.
+Agent365 uses the **same `LocalFileStorage` provider as Azure Monitor**, not a
+separate SQLite queue. The provider owns atomic JSON-blob writes, rename-based
+leases, expiration, capacity checks, maintenance, and platform permissions.
+Agent365 only adapts identity envelopes and its authenticated replay protocol.
+Processes using the same cache can coordinate replay through those file leases.
+
+For an explicitly configured root, records live in `<root>/a365/`. This separate
+namespace prevents either exporter from interpreting the other's records, even
+when both are configured with the same root. With no configured root, Agent365
+calls Azure Monitor's `_get_storage_directory("agent365")`: the resulting cache is
+under the system temporary directory, in
+`Microsoft-AzureMonitor-<hash>/opentelemetry-python-agent365`. The upstream hash
+includes the namespace, user, process name, and application directory. Reusing
+the same resulting path preserves blob replay across restarts. Temporary-directory
+cleanup by the operating system can remove queued records; configure persistent
+storage when restart durability must survive that cleanup.
 
 **Replay behavior:**
 
 - Each queued record stores only its identity (tenant, agent, agentic user, S2S flag) and payload — not a fixed URL. On replay, the exporter reconstructs the export endpoint from the exporter's *current* configuration and re-resolves a fresh bearer token, so records queued before an endpoint or credential change are still delivered correctly, and any endpoint that would not resolve to HTTPS is rejected rather than replayed.
 - Records that are permanently rejected by the service (e.g. `400 Bad Request`) or that fail internal validation (unsupported schema version, blank tenant/agent id, or blank payload — "poison" records) are discarded from the durable queue instead of being retried forever.
+- Unreadable blobs are logged and retained for retry or retention expiry. The provider does not distinguish malformed JSON from transient read errors, so an unreadable blob is not treated as a proven poison record.
 - `shutdown()` is drain-safe: it signals the background replay loop to stop and blocks until any in-flight replay send actually finishes before closing the durable store and HTTP session, so an in-progress send is never left holding a closed resource and no accepted span is dropped mid-flight. Concurrent `shutdown()` callers all wait for that same cleanup to complete.
 
 **To disable durable storage** (no disk writes, best-effort delivery only):
@@ -129,11 +142,40 @@ use_microsoft_opentelemetry(
 )
 ```
 
-> **Security note:** Stored OTLP payloads are unencrypted. When sensitive-data capture is enabled (`enable_sensitive_data=True`), payloads may include prompts, completions, or tool arguments. The exporter restricts the queue directory to the current user and administrators on Windows. On Unix, it creates missing directory components with owner-only access (`0700`), including under permissive or restrictive umasks, and restricts the SQLite database and sidecars to `0600`.
+> **Security note:** Stored OTLP payloads are unencrypted. With sensitive-data capture enabled (`enable_sensitive_data=True`), payloads may include prompts, completions, or tool arguments. Do not configure a shared temporary directory such as `/tmp` as a customer storage root: a predictable child in a shared parent can be replaced or precreated. Normally provision a private, service-account-owned `0700` root and review its ACLs, ancestors, and protection against path replacement. Cache permissions do not isolate data from root, administrators, or other processes using the same account.
 
-On Unix, an existing queue directory must already belong to the effective user and have mode `0700`. The SDK rejects unsafe existing permissions rather than changing them. It rejects symlinks anywhere in the queue path (including database and journal files), foreign-owned parents other than root-owned parents, and group/other-writable parents unless protected by the sticky bit (for example, `/tmp`). Existing shared temporary directories and configured parents are never chmodded. Configure a dedicated directory rather than a shared directory itself; prepare its ownership and permissions as the service account before starting the SDK.
+The implementation inspected is Azure Monitor Python exporter **1.0.0b58**, pinned
+in `uv.lock`, at commit
+[`83907dc9ed2eb8c742b353b5f2cf276e039026da`](https://github.com/Azure/azure-sdk-for-python/blob/83907dc9ed2eb8c742b353b5f2cf276e039026da/sdk/monitor/azure-monitor-opentelemetry-exporter/azure/monitor/opentelemetry/exporter/_storage.py).
+Unlike the .NET provider, this Python provider creates its cache directory and,
+on Linux/macOS, opens the final directory without following a symlink, checks
+that the owner is the current user or root, and applies `0700` with `fchmod`.
+It creates blob temporary files exclusively with mode `0600` before renaming
+them. On Windows it grants the current user and administrators access and
+removes inherited ACLs using `icacls`. Agent365 neither duplicates nor bypasses
+these upstream protections. Configured parents are not chmodded by Agent365;
+upstream creation of missing ancestors follows ordinary filesystem defaults.
+These are provider behaviors, not a guarantee that every ancestor, ACL, or
+subsequent path replacement is secure. The earlier issue-specific path/permission
+enforcement is not retained.
 
-The default location remains stable: `$XDG_STATE_HOME/a365-durable-queue/<digest>` or `~/.local/state/a365-durable-queue/<digest>` on Unix (a private subdirectory under the system temporary directory if the home cannot be resolved), and `%LOCALAPPDATA%\a365-durable-queue\<digest>` on Windows. The digest depends on the user, Python executable, and working directory. Safe existing queues are reopened and replayed after restart without relocation. Unix path checks are repeated before persistence, replay claims, and queue updates; an unsafe or replaced directory blocks these operations and emits an error. Initialization failure logs that durable delivery is disabled, with no fallback to another insecure location. These checks protect against other local users; they do not isolate telemetry from administrators, root, or processes running as the same account. This behavior applies to the Agent365 queue, not Azure Monitor's separately implemented offline storage.
+Storage is initialized lazily on first export. Invalid configuration (including
+blank paths), provider setup failure, or an initialization exception logs an
+error and disables **only offline buffering and replay**; online export continues.
+An explicitly configured path never falls back to another location on failure.
+Explicit disablement bypasses storage initialization altogether.
+
+**Breaking change and existing backlogs (all platforms):** the SQLite format,
+explicit-root layout, and implicit default location have changed. Existing
+`queue.db`, `queue.db-wal`, and `queue.db-shm` files are **not** opened, converted,
+deleted, or automatically migrated. Before upgrading, restore connectivity and
+drain the old queue using the previous SDK and original configuration, then shut
+down all writers cleanly. Verify delivery before retiring the old directory.
+If draining cannot be completed, retain a secured, coherent SQLite backup
+(including any necessary WAL/SHM state) for controlled recovery with the previous
+SDK; copying or renaming SQLite files into the new blob cache does not migrate
+them. A detected `queue.db` in an explicitly configured root produces a warning.
+No old implicit temporary/home-directory backlog is discovered automatically.
 
 ## Auto-Instrumented Libraries
 

@@ -122,17 +122,17 @@ class TestA365ExporterOptionsOfflineStorage(unittest.TestCase):
         opts = Agent365ExporterOptions(storage_directory="C:\\telemetry")
         self.assertEqual(opts.storage_directory, "C:\\telemetry")
 
-    def test_empty_storage_directory_raises_value_error(self):
+    def test_empty_storage_directory_is_deferred_until_storage_initialization(self):
         from microsoft.opentelemetry.a365.core.exporters.agent365_exporter_options import Agent365ExporterOptions
 
-        with self.assertRaises(ValueError):
-            Agent365ExporterOptions(storage_directory="")
+        opts = Agent365ExporterOptions(storage_directory="")
+        self.assertEqual(opts.storage_directory, "")
 
-    def test_whitespace_storage_directory_raises_value_error(self):
+    def test_explicit_disablement_accepts_unused_blank_storage_directory(self):
         from microsoft.opentelemetry.a365.core.exporters.agent365_exporter_options import Agent365ExporterOptions
 
-        with self.assertRaises(ValueError):
-            Agent365ExporterOptions(storage_directory="   ")
+        opts = Agent365ExporterOptions(disable_offline_storage=True, storage_directory="   ")
+        self.assertTrue(opts.disable_offline_storage)
 
 
 class TestCreateA365ComponentsOfflineStorage(unittest.TestCase):
@@ -173,11 +173,20 @@ class TestCreateA365ComponentsOfflineStorage(unittest.TestCase):
         self.assertIsNone(kwargs["storage_directory"])
 
     @patch.dict(os.environ, {"ENABLE_A365_OBSERVABILITY_EXPORTER": "true"})
-    def test_empty_storage_directory_rejected_end_to_end(self):
-        """An explicitly empty storage directory must raise ValueError rather
-        than silently defaulting to the platform path."""
-        with self.assertRaises(ValueError):
-            create_a365_components(storage_directory="")
+    def test_empty_storage_directory_disables_only_buffering_end_to_end(self):
+        from microsoft.opentelemetry.a365.core.exporters.agent365_exporter import logger
+
+        handlers = create_a365_components(token_resolver=lambda a, t: "token", storage_directory="")
+        exporter = handlers.span_processors[0].span_exporter
+        try:
+            with self.assertLogs(logger, level="ERROR") as logs:
+                exporter._ensure_durable_initialized()
+            self.assertIn("Durable delivery disabled", "\n".join(logs.output))
+            self.assertFalse(exporter._enable_durable_delivery)
+            self.assertIsNone(exporter._storage)
+        finally:
+            for processor in handlers.span_processors:
+                processor.shutdown()
 
 
 if __name__ == "__main__":

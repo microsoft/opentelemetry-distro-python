@@ -138,7 +138,7 @@ string arguments/results remain supported. See the A365 guide for complete examp
 | `a365_exporter_timeout_ms` | `int` | `30000` | Timeout for a single A365 export operation (ms). |
 | `a365_max_export_batch_size` | `int` | `512` | Maximum batch size for a single A365 export operation. |
 | `a365_exporter_disable_offline_storage` | `bool` | `False` | Disable durable offline storage. When `True`, failed exports are not persisted to disk. |
-| `a365_exporter_storage_directory` | `str` | `None` | Custom directory for durable offline storage. On Unix, existing queue directories must be owned by the effective user with mode `0700`; unsafe or symlinked paths are rejected, not repaired. Payloads may contain prompts or completions when sensitive-data capture is enabled. See the [storage security requirements](A365_DOCUMENTATION.md#durable-delivery-offline-storage). |
+| `a365_exporter_storage_directory` | `str` | `None` | Root for an isolated `a365` cache using Azure Monitor's offline storage provider and permission handling. `None` uses its default path resolver with an Agent365 namespace. Payloads are unencrypted; protect the root and ancestors. Existing SQLite backlogs require draining before upgrade. See [storage security and migration](A365_DOCUMENTATION.md#durable-delivery-offline-storage). |
 
 > For A365 token resolver patterns, baggage, and scope classes, see the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md).
 
