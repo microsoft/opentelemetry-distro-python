@@ -233,7 +233,7 @@ def test_invalid_configuration_is_rejected_at_storage_initialization(root):
 def test_file_root_fails_without_fallback(tmp_path):
     root = tmp_path / "file"
     root.write_text("unchanged", encoding="utf-8")
-    with pytest.raises(OSError, match="Azure Monitor"):
+    with pytest.raises(OSError, match="Azure Monitor|storage root"):
         PersistentStorage(root)
     assert root.read_text(encoding="utf-8") == "unchanged"
 
@@ -281,6 +281,75 @@ def test_provider_repairs_existing_owned_cache_but_not_configured_parent(tmp_pat
         assert storage.store(_record())
         assert stat.S_IMODE(cache.stat().st_mode) == 0o700
         assert stat.S_IMODE(tmp_path.stat().st_mode) == 0o750
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Unix configured-root validation")
+def test_configured_root_symlink_is_rejected_before_creating_cache(tmp_path):
+    target = tmp_path / "target"
+    target.mkdir(mode=0o750)
+    root = tmp_path / "root"
+    root.symlink_to(target, target_is_directory=True)
+    before = target.stat().st_mode
+    with pytest.raises(PermissionError, match="storage root"):
+        with PersistentStorage(root):
+            pass
+    assert root.is_symlink()
+    assert target.stat().st_mode == before
+    assert not list(target.iterdir())
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Unix configured-root ownership")
+@pytest.mark.parametrize("existing", [False, True], ids=["created", "existing"])
+def test_foreign_owned_configured_root_is_rejected_before_creating_cache(tmp_path, existing):
+    root = tmp_path / "root"
+    if existing:
+        root.mkdir(mode=0o750)
+    real_lstat = Path.lstat
+
+    def foreign_owner(path):
+        info = real_lstat(path)
+        if path == root:
+            fields = list(info)
+            fields[4] = os.getuid() + 1  # pylint: disable=no-member
+            return os.stat_result(fields)
+        return info
+
+    with patch.object(Path, "lstat", new=foreign_owner):
+        with pytest.raises(PermissionError, match="storage root"):
+            with PersistentStorage(root):
+                pass
+    assert not (root / "a365").exists()
+    assert stat.S_IMODE(root.stat().st_mode) == (0o750 if existing else 0o700)
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Unix configured-root permissions")
+@pytest.mark.parametrize("mode", [0o770, 0o707])
+def test_writable_configured_root_is_rejected_without_permission_repair(tmp_path, mode):
+    tmp_path.chmod(mode)
+    with pytest.raises(PermissionError, match="storage root"):
+        with PersistentStorage(tmp_path):
+            pass
+    assert stat.S_IMODE(tmp_path.stat().st_mode) == mode
+    assert not list(tmp_path.iterdir())
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Unix root and cache creation")
+@pytest.mark.parametrize("mask", [0o000, 0o022, 0o077])
+def test_new_configured_root_and_cache_are_private_and_survive_restart(tmp_path, mask):
+    root = tmp_path / "new"
+    parent_mode = tmp_path.stat().st_mode
+    previous = os.umask(mask)
+    try:
+        with PersistentStorage(root) as storage:
+            assert stat.S_IMODE(root.stat().st_mode) == 0o700
+            assert stat.S_IMODE(storage.directory.stat().st_mode) == 0o700
+            assert storage.store(_record("persisted"))
+            assert stat.S_IMODE(next(storage.directory.glob("*.blob")).stat().st_mode) == 0o600
+        with PersistentStorage(root) as restarted:
+            assert [record.payload for record in restarted.claim(1, 30)] == ["persisted"]
+    finally:
+        os.umask(previous)
+    assert tmp_path.stat().st_mode == parent_mode
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Unix provider symlink protection")

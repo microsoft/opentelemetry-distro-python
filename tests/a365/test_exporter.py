@@ -849,6 +849,29 @@ class TestAgent365ExporterStorageDirectory(unittest.TestCase):
             self.assertEqual([p.name for p in root.iterdir()], ["file"])
 
     @patch.dict(os.environ, {}, clear=True)
+    @unittest.skipIf(os.name == "nt", "Unix configured-root validation")
+    def test_symlinked_root_disables_only_offline_delivery(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "target"
+            target.mkdir(mode=0o750)
+            root = Path(tmp) / "root"
+            root.symlink_to(target, target_is_directory=True)
+            before = target.stat().st_mode
+            exporter = _Agent365Exporter(token_resolver=lambda a, t: "token", storage_directory=root)
+            exporter._post_once = MagicMock(return_value=_delivered())  # type: ignore[method-assign]
+            try:
+                with self.assertLogs(exporter_module.logger, level="ERROR") as logs:
+                    self.assertIs(exporter.export([_make_span()]), SpanExportResult.SUCCESS)
+                self.assertIn("storage root", "\n".join(logs.output))
+                self.assertFalse(exporter._enable_durable_delivery)
+                self.assertIsNone(exporter._storage)
+                self.assertIsNone(exporter._replay)
+            finally:
+                exporter.shutdown()
+            self.assertEqual(target.stat().st_mode, before)
+            self.assertEqual(list(target.iterdir()), [])
+
+    @patch.dict(os.environ, {}, clear=True)
     def test_storage_initialization_failure_keeps_online_export_running(self):
         exporter = _Agent365Exporter(token_resolver=lambda a, t: "token")
         exporter._post_once = MagicMock(return_value=_delivered())  # type: ignore[method-assign]

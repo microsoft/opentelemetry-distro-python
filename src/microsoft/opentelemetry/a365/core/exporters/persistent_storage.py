@@ -8,6 +8,9 @@ from __future__ import annotations
 import json
 import logging
 import math
+import os
+import stat
+import sys
 import threading
 import time
 from dataclasses import asdict, dataclass, field
@@ -69,9 +72,23 @@ class PersistentStorage:
     ) -> None:
         if directory is not None and (not isinstance(directory, (str, Path)) or not str(directory).strip()):
             raise ValueError("storage_directory must be a non-empty string path, Path, or None")
-        self.directory = (
-            Path(_get_storage_directory("agent365")) if directory is None else Path(directory).absolute() / "a365"
-        )
+        if directory is None:
+            self.directory = Path(_get_storage_directory("agent365"))
+        else:
+            root = Path(directory).absolute()
+            if sys.platform != "win32":
+                try:
+                    root_stat = root.lstat()
+                except FileNotFoundError:
+                    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    root_stat = root.lstat()
+                if not stat.S_ISDIR(root_stat.st_mode):
+                    raise PermissionError(f"Agent365 storage root must be a directory, not a file or symlink: {root}")
+                if root_stat.st_uid not in (os.getuid(), 0):  # pylint: disable=no-member
+                    raise PermissionError(f"Agent365 storage root must be owned by the current user or root: {root}")
+                if root_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+                    raise PermissionError(f"Agent365 storage root must not be group- or world-writable: {root}")
+            self.directory = root / "a365"
         self._capacity_bytes = capacity_bytes
         self._retention_seconds = retention_seconds
         self._lock = threading.RLock()

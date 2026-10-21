@@ -12,6 +12,10 @@
   Provision a private service-account-owned root (normally `0700` on Unix),
   review ACLs and ancestors, and protect against path replacement. Upstream
   cache permission enforcement remains enabled.
+- Explicit Agent365 roots on Linux/macOS must not be symlinks, foreign-owned
+  (other than root), or group/world-writable. Invalid roots disable offline
+  delivery without changing their permissions. Missing roots are created with
+  mode `0700` subject to umask and validated before cache initialization.
 
 ### Bugs Fixed
 - Invalid Agent365 storage configuration or provider initialization failure logs

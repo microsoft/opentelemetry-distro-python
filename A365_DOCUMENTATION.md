@@ -153,11 +153,22 @@ that the owner is the current user or root, and applies `0700` with `fchmod`.
 It creates blob temporary files exclusively with mode `0600` before renaming
 them. On Windows it grants the current user and administrators access and
 removes inherited ACLs using `icacls`. Agent365 neither duplicates nor bypasses
-these upstream protections. Configured parents are not chmodded by Agent365;
-upstream creation of missing ancestors follows ordinary filesystem defaults.
-These are provider behaviors, not a guarantee that every ancestor, ACL, or
-subsequent path replacement is secure. The earlier issue-specific path/permission
-enforcement is not retained.
+these upstream cache protections.
+
+On Linux/macOS, Agent365 additionally checks the explicitly configured root
+before initializing the provider on its `a365` child. The root must be a real
+directory (not a symlink), owned by the current user or root, and not writable
+by group or others. Unsafe roots disable offline delivery without permission
+repair. A missing root is created with mode `0700` (subject to umask) and checked
+after creation as well. Existing root permissions are preserved; upstream
+checks and permission enforcement still apply to the existing or newly created
+`a365` child. Windows behavior and the implicit default resolver are unchanged.
+Creation of missing ancestors follows ordinary filesystem defaults.
+
+These point-in-time checks do not validate ancestor ownership, ACLs, or
+protection against subsequent path replacement. Customers remain responsible
+for provisioning and protecting the entire path; the checks are not a
+confidentiality guarantee.
 
 Storage is initialized lazily on first export. Invalid configuration (including
 blank paths), provider setup failure, or an initialization exception logs an
