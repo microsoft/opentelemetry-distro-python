@@ -10,6 +10,7 @@ import os
 import stat
 import time
 from dataclasses import asdict, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -124,8 +125,13 @@ def test_invalid_envelope_is_logged_and_dropped_without_blocking_valid_records(t
     with PersistentStorage(tmp_path) as storage:
         envelope = asdict(_record())
         envelope.update(overrides)
-        assert storage._provider.put([envelope], lease_period=0) == StorageExportResult.LOCAL_FILE_BLOB_SUCCESS
-        assert storage.store(_record("valid"))
+        # Force invalid-first ordering even with a coarse-resolution Windows clock.
+        with (
+            patch("azure.monitor.opentelemetry.exporter._storage._now", return_value=datetime.now(timezone.utc)),
+            patch("azure.monitor.opentelemetry.exporter._storage.random.getrandbits", side_effect=[0, 1]),
+        ):
+            assert storage._provider.put([envelope], lease_period=0) == StorageExportResult.LOCAL_FILE_BLOB_SUCCESS
+            assert storage.store(_record("valid"))
         assert [r.payload for r in storage.claim(1, 30)] == ["valid"]
         assert "dropped invalid durable record" in caplog.text
         assert not storage.claim(1, 30)
