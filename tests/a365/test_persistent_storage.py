@@ -137,6 +137,27 @@ def test_invalid_envelope_is_logged_and_dropped_without_blocking_valid_records(t
         assert not storage.claim(1, 30)
 
 
+@pytest.mark.parametrize("created_at", [10**400, -(10**400)], ids=["positive", "negative"])
+def test_oversized_timestamp_does_not_interrupt_replay_batch(tmp_path, caplog, created_at):
+    with PersistentStorage(tmp_path) as storage:
+        envelope = asdict(_record())
+        envelope["created_at"] = created_at
+        with (
+            patch("azure.monitor.opentelemetry.exporter._storage._now", return_value=datetime.now(timezone.utc)),
+            patch("azure.monitor.opentelemetry.exporter._storage.random.getrandbits", side_effect=[0, 1, 2]),
+        ):
+            assert storage.store(_record("before"))
+            assert storage._provider.put([envelope], lease_period=0) == StorageExportResult.LOCAL_FILE_BLOB_SUCCESS
+            assert storage.store(_record("after"))
+        claimed = storage.claim(2, 30)
+        assert [record.payload for record in claimed] == ["before", "after"]
+        assert "dropped invalid durable record" in caplog.text
+        for record in claimed:
+            assert storage.delete(record.record_id)
+        assert not storage.claim(2, 30)
+        assert not list(storage.directory.iterdir())
+
+
 def test_unreadable_blob_is_logged_and_retained_until_expiry(tmp_path, caplog):
     with PersistentStorage(tmp_path) as storage:
         assert storage.store(_record())

@@ -143,7 +143,7 @@ class PersistentStorage:
                     if len(data) != 1 or not isinstance(data[0], dict):
                         raise ValueError("expected one Agent365 identity envelope")
                     record = self._decode_record(data[0])
-                except (ValueError, TypeError, KeyError) as exc:
+                except (ValueError, TypeError, KeyError, OverflowError) as exc:
                     _logger.warning("PersistentStorage.claim dropped invalid durable record: %s", exc)
                     self._delete_blob(leased)
                     continue

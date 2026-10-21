@@ -17,6 +17,8 @@
 - Invalid Agent365 storage configuration or provider initialization failure logs
   a nonfatal error and disables only offline buffering/replay, preserving online
   export. Explicit offline disablement bypasses storage initialization.
+- Malformed durable records with oversized numeric timestamps are logged and
+  discarded without interrupting replay of valid records in the same batch.
 
 # 1.5.0 (2026-10-20)
 ### Features Added
