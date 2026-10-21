@@ -168,14 +168,29 @@ Explicit disablement bypasses storage initialization altogether.
 **Breaking change and existing backlogs (all platforms):** the SQLite format,
 explicit-root layout, and implicit default location have changed. Existing
 `queue.db`, `queue.db-wal`, and `queue.db-shm` files are **not** opened, converted,
-deleted, or automatically migrated. Before upgrading, restore connectivity and
+deleted, or automatically migrated. **Required before upgrading:** restore connectivity and
 drain the old queue using the previous SDK and original configuration, then shut
 down all writers cleanly. Verify delivery before retiring the old directory.
+This is a customer-managed upgrade prerequisite, not an SDK migration step.
 If draining cannot be completed, retain a secured, coherent SQLite backup
 (including any necessary WAL/SHM state) for controlled recovery with the previous
 SDK; copying or renaming SQLite files into the new blob cache does not migrate
 them. A detected `queue.db` in an explicitly configured root produces a warning.
 No old implicit temporary/home-directory backlog is discovered automatically.
+
+To locate a previous implicit queue, inspect the old SDK's service environment.
+On Unix, its normal parent was `$XDG_STATE_HOME/a365-durable-queue` when
+`XDG_STATE_HOME` was nonempty, otherwise `~/.local/state/a365-durable-queue`. On
+Windows, it was `%LOCALAPPDATA%\a365-durable-queue`, with a system-temporary
+fallback when `LOCALAPPDATA` was unset. Unix also used a temporary fallback if
+the home directory could not be resolved and `XDG_STATE_HOME` was unset.
+Each queue was in a child named by the first 16 hexadecimal characters of
+`sha256((getpass.getuser() + sys.executable + str(Path.cwd())).encode())`.
+Changes to the service account, Python executable, or working directory can
+leave multiple old queue directories. Identify them before upgrading and use
+the previous SDK in the original environment to drain them; do not assume that
+successful replay of new JSON blobs proves recovery of an old SQLite backlog.
+Reusing an old directory alone does not convert its SQLite records.
 
 ## Auto-Instrumented Libraries
 
