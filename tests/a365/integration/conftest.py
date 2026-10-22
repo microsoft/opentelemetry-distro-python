@@ -69,7 +69,7 @@ def azure_openai_config() -> dict[str, Any]:
     api_key = os.getenv("AZURE_OPENAI_API_KEY")
     endpoint = os.getenv("AZURE_OPENAI_ENDPOINT")
     deployment = os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o-mini")
-    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-08-01-preview")
+    api_version = os.getenv("AZURE_OPENAI_API_VERSION", "2024-07-18")
 
     if not api_key or not endpoint:
         pytest.skip("Integration tests require AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT")
