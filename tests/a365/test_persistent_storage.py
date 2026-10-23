@@ -45,15 +45,58 @@ def test_uses_real_azure_monitor_provider_in_isolated_namespace(tmp_path):
         storage.close()
 
 
-def test_same_root_does_not_mix_azure_monitor_and_agent365_records(tmp_path):
-    monitor = LocalFileStorage(str(tmp_path))
+def test_sibling_roots_keep_exporter_replay_and_deletion_separate(tmp_path):
+    monitor = LocalFileStorage(str(tmp_path / "AzureMonitor"))
     try:
         assert monitor.put([{"azure_monitor": True}], lease_period=0) == StorageExportResult.LOCAL_FILE_BLOB_SUCCESS
-        with PersistentStorage(tmp_path) as storage:
+        with PersistentStorage(tmp_path / "Agent365") as storage:
             assert not storage.claim(10, 30)
             assert storage.store(_record())
-            assert [blob.get() for blob in monitor.gets()] == [({"azure_monitor": True},)]
-            assert len(storage.claim(10, 30)) == 1
+            claimed = storage.claim(10, 30)
+            assert [record.payload for record in claimed] == [_record().payload]
+            assert storage.delete(claimed[0].record_id)
+            monitor_blobs = list(monitor.gets())
+            assert [blob.get() for blob in monitor_blobs] == [({"azure_monitor": True},)]
+            assert storage.store(_record("retained"))
+            leased = monitor_blobs[0].lease(30)
+            assert leased is not None
+            leased.delete()
+            assert not list(monitor.gets())
+            assert [record.payload for record in storage.claim(10, 30)] == ["retained"]
+    finally:
+        monitor.close()
+
+
+@pytest.mark.parametrize("full_cache", ["agent365", "azure_monitor"])
+def test_sibling_roots_keep_exporter_capacity_independent(full_cache, tmp_path):
+    monitor_directory = tmp_path / "AzureMonitor"
+    monitor = LocalFileStorage(str(monitor_directory), max_size=1024)
+    try:
+        with PersistentStorage(tmp_path / "Agent365", capacity_bytes=1024) as storage:
+            monitor_payload = {"azure_monitor": "x" * 512}
+            record = _record("x" * 512)
+            for _ in range(10):
+                if full_cache == "agent365":
+                    stored = storage.store(record)
+                else:
+                    stored = (
+                        monitor.put([monitor_payload], lease_period=0) == StorageExportResult.LOCAL_FILE_BLOB_SUCCESS
+                    )
+                if not stored:
+                    break
+            else:
+                pytest.fail("cache did not reach its configured capacity")
+
+            full_directory = storage.directory if full_cache == "agent365" else monitor_directory
+            assert sum(blob.stat().st_size for blob in full_directory.glob("*.blob")) >= 1024
+            if full_cache == "agent365":
+                assert len(storage.claim(10, 30)) > 0
+                assert monitor.put([monitor_payload], lease_period=0) == StorageExportResult.LOCAL_FILE_BLOB_SUCCESS
+                assert [blob.get() for blob in monitor.gets()] == [(monitor_payload,)]
+            else:
+                assert len(list(monitor.gets())) > 0
+                assert storage.store(record)
+                assert [claimed.payload for claimed in storage.claim(10, 30)] == [record.payload]
     finally:
         monitor.close()
 

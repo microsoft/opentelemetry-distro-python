@@ -213,6 +213,8 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
         storage and permission handling. ``None`` selects Azure Monitor's
         default path resolver with an Agent365 namespace. Stored payloads
         are unencrypted; provision private parents for sensitive telemetry.
+        Configure separate sibling roots for Agent365 and Azure Monitor;
+        shared or overlapping cache paths are unsupported and are not rejected.
     :keyword bool enable_console:
         Enable console exporter for traces, metrics, and logs (development
         only).  Mirrors ``ExportTarget.Console`` from the .NET distro.

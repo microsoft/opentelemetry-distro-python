@@ -43,7 +43,7 @@ use_microsoft_opentelemetry(
 | `a365_exporter_timeout_ms` | `int` | `30000` | — | Timeout for a single A365 export operation in milliseconds. |
 | `a365_max_export_batch_size` | `int` | `512` | — | Maximum batch size for a single A365 export operation. |
 | `a365_exporter_disable_offline_storage` | `bool` | `False` | — | Disable durable offline storage. When `True`, failed exports are not persisted to disk and at-least-once delivery is not guaranteed. Defaults to `False` (storage enabled). |
-| `a365_exporter_storage_directory` | `str` | `None` | — | Root for an isolated `a365` cache using Azure Monitor's offline storage provider. `None` uses Azure Monitor's default path resolver with an Agent365 namespace. The provider manages cache permissions; customers must protect its ancestors. See [offline storage](#durable-delivery-offline-storage) for security and upgrade guidance. |
+| `a365_exporter_storage_directory` | `str` | `None` | — | Root for an `a365` cache using Azure Monitor's offline storage provider. Configure separate sibling roots for A365 and Azure Monitor; shared or overlapping cache paths are unsupported and are not rejected automatically. `None` uses Azure Monitor's default path resolver with an Agent365 namespace. See [offline storage](#durable-delivery-offline-storage) for security and upgrade guidance. |
 
 ### Resource / Service Name
 
@@ -104,10 +104,19 @@ leases, expiration, capacity checks, maintenance, and platform permissions.
 Agent365 only adapts identity envelopes and its authenticated replay protocol.
 Processes using the same cache can coordinate replay through those file leases.
 
-For an explicitly configured root, records live in `<root>/a365/`. This separate
-namespace prevents either exporter from interpreting the other's records, even
-when both are configured with the same root. With no configured root, Agent365
-calls Azure Monitor's `_get_storage_directory("agent365")`: the resulting cache is
+For an explicitly configured root, Agent365 records live in `<root>/a365/`.
+Azure Monitor uses its configured storage directory directly. When both
+exporters are enabled, configure **separate sibling roots**, as in the example
+below, so neither effective cache directory contains the other. Reusing the
+same root does not isolate capacity: Azure Monitor recursively counts files
+in its directory, including an `a365` child. Configurations that resolve to
+the same effective cache directory can also cause either exporter to claim
+or delete the other's incompatible records. **Shared or overlapping cache paths
+are unsupported and are not detected or rejected automatically.** Customers
+must keep their resolved paths separate, including any filesystem aliases.
+
+With no configured root, Agent365 calls Azure Monitor's
+`_get_storage_directory("agent365")`: the resulting cache is
 under the system temporary directory, in
 `Microsoft-AzureMonitor-<hash>/opentelemetry-python-agent365`. The upstream hash
 includes the namespace, user, process name, and application directory. Reusing
@@ -132,15 +141,26 @@ use_microsoft_opentelemetry(
 )
 ```
 
-**To specify a custom storage directory:**
+**To configure both exporters with separate storage roots:**
 
 ```python
 use_microsoft_opentelemetry(
     enable_a365=True,
     a365_enable_observability_exporter=True,
-    a365_exporter_storage_directory="/var/lib/my-agent/telemetry",
+    enable_azure_monitor=True,
+    a365_exporter_storage_directory=r"C:\MyApp\Telemetry\Agent365",
+    azure_monitor_exporter_storage_directory=r"C:\MyApp\Telemetry\AzureMonitor",
 )
 ```
+
+The resulting cache directories are `C:\MyApp\Telemetry\Agent365\a365` and
+`C:\MyApp\Telemetry\AzureMonitor`. On Unix, use absolute sibling roots such as
+`/var/lib/my-agent/telemetry/Agent365` and
+`/var/lib/my-agent/telemetry/AzureMonitor`, provisioned with appropriate
+service-account ownership and permissions. Configure the Azure Monitor
+connection string or credential as usual. The same independent exporter-root
+configuration is supported by the .NET SDK; Python's existing `a365` child
+layout and provider permission handling remain unchanged.
 
 > **Security note:** Stored OTLP payloads are unencrypted. With sensitive-data capture enabled (`enable_sensitive_data=True`), payloads may include prompts, completions, or tool arguments. Do not configure a shared temporary directory such as `/tmp` as a customer storage root: a predictable child in a shared parent can be replaced or precreated. Normally provision a private, service-account-owned `0700` root and review its ACLs, ancestors, and protection against path replacement. Cache permissions do not isolate data from root, administrators, or other processes using the same account.
 

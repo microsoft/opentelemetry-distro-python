@@ -61,7 +61,8 @@ class PersistentStorage:
     """Adapt Agent365 replay to Azure Monitor's files, leases and permissions.
 
     Each blob holds one identity envelope. Configured roots get an ``a365``
-    child so Azure Monitor and Agent365 never replay each other's payloads.
+    child. Use separate sibling roots for Azure Monitor and Agent365;
+    shared or overlapping cache paths are unsupported and are not rejected.
     """
 
     def __init__(

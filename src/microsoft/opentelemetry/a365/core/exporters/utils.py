@@ -661,6 +661,8 @@ def create_a365_components(
     :param storage_directory: Root for an Agent365-only ``a365`` cache subdirectory.
         When None, Azure Monitor's default path resolver selects an Agent365 namespace.
         Invalid configuration disables only offline delivery, with an error log.
+        Use separate sibling roots for Agent365 and Azure Monitor;
+        shared or overlapping cache paths are unsupported and are not rejected.
 
     All other configuration is read from environment variables:
       - ``ENABLE_A365_OBSERVABILITY_EXPORTER`` -- must be true for the HTTP exporter

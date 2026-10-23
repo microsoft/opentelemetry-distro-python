@@ -4,8 +4,11 @@
 ### Breaking Changes
 - Agent365 offline delivery now reuses Azure Monitor's JSON-blob storage provider,
   file leases, Unix permission handling, and Windows ACL handling instead of a
-  separate SQLite implementation. Explicit roots use an isolated `a365` child;
+  separate SQLite implementation. Explicit roots use an `a365` child;
   implicit paths use Azure Monitor's resolver with an Agent365 namespace.
+  When both exporters are enabled, configure separate sibling storage roots
+  for independent capacity and replay. Shared or overlapping cache paths are
+  unsupported and are not detected or rejected automatically.
   This changes cache layout, format, and default locations on all platforms,
   including Linux and macOS. Drain existing SQLite backlogs with the previous
   SDK before upgrading; no automatic migration or legacy replay is performed.

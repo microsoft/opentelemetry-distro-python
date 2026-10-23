@@ -65,6 +65,8 @@ class Agent365ExporterOptions:
                 None selects Azure Monitor's default path resolver with an Agent365
                 namespace. Invalid configuration is logged during lazy initialization
                 and disables only offline delivery. Defaults to None.
+                Use separate sibling roots for Agent365 and Azure Monitor;
+                shared or overlapping cache paths are unsupported and are not rejected.
         """
         self.cluster_category = cluster_category
         self.token_resolver = token_resolver
