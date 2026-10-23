@@ -1,6 +1,6 @@
 # Release History
-
 # Unreleased
+
 ### Breaking Changes
 - Agent365 offline delivery now reuses Azure Monitor's JSON-blob storage provider,
   file leases, Unix permission handling, and Windows ACL handling instead of a
@@ -26,6 +26,8 @@
   export. Explicit offline disablement bypasses storage initialization.
 - Malformed durable records with oversized numeric timestamps are logged and
   discarded without interrupting replay of valid records in the same batch.
+### Other Changes
+- Update the `AZURE_OPENAI_API_VERSION` fallback version in integration tests
 
 # 1.5.0 (2026-10-20)
 ### Features Added
