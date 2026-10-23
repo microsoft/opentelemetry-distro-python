@@ -76,7 +76,7 @@ class PersistentStorage:
         if directory is None:
             self.directory = Path(_get_storage_directory("agent365"))
         else:
-            root = Path(directory).absolute()
+            root = Path(os.path.abspath(directory))
             if sys.platform != "win32":
                 try:
                     root_stat = root.lstat()
@@ -96,11 +96,11 @@ class PersistentStorage:
         self._closed = False
         self._next_record_id = 0
         self._claimed: dict[int, tuple[LocalFileBlob, float]] = {}
-        if directory is not None and (Path(directory) / "queue.db").exists():
+        if directory is not None and (self.directory.parent / "queue.db").exists():
             _logger.warning(
                 "Legacy Agent365 SQLite backlog exists at %s; it is not migrated or replayed by "
                 "Azure Monitor file storage. Drain it with the previous SDK before upgrading.",
-                Path(directory) / "queue.db",
+                self.directory.parent / "queue.db",
             )
         self._provider = LocalFileStorage(
             str(self.directory),

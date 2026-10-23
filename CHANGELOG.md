@@ -26,6 +26,9 @@
   export. Explicit offline disablement bypasses storage initialization.
 - Malformed durable records with oversized numeric timestamps are logged and
   discarded without interrupting replay of valid records in the same batch.
+- Normalize configured Agent365 roots with the storage provider's `abspath`
+  rules before validation, so symlinks followed by `..` cannot redirect the
+  checks to a different root. Legacy-backlog warnings use the same root.
 ### Other Changes
 - Update the `AZURE_OPENAI_API_VERSION` fallback version in integration tests
 

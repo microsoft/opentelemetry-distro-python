@@ -289,6 +289,15 @@ def test_default_directory_uses_azure_monitor_resolver(tmp_path):
         resolve.assert_called_once_with("agent365")
 
 
+def test_configured_root_uses_provider_normalization(tmp_path):
+    (tmp_path / "unused").mkdir()
+    root = tmp_path / "unused" / ".." / "root"
+    with PersistentStorage(root) as storage:
+        assert storage.directory == tmp_path / "root" / "a365"
+        assert storage.store(_record())
+        assert [record.payload for record in storage.claim(1, 30)] == [_record().payload]
+
+
 def test_does_not_open_or_migrate_sqlite_backlogs(tmp_path, caplog):
     database = tmp_path / "queue.db"
     database.write_bytes(b"old SQLite backlog")
@@ -339,6 +348,45 @@ def test_configured_root_symlink_is_rejected_before_creating_cache(tmp_path):
     assert root.is_symlink()
     assert target.stat().st_mode == before
     assert not list(target.iterdir())
+
+
+@pytest.mark.skipif(os.name == "nt", reason="Unix configured-root validation")
+@pytest.mark.parametrize("normalized_mode", [0o700, 0o777], ids=["private", "writable"])
+def test_symlink_dot_dot_validates_provider_root(tmp_path, caplog, normalized_mode):
+    base = tmp_path / "base"
+    base.mkdir()
+    normalized_root = base / "root"
+    normalized_root.mkdir()
+    normalized_root.chmod(normalized_mode)
+    target = tmp_path / "target"
+    target.mkdir()
+    (target / "child").mkdir()
+    traversed_root = target / "root"
+    traversed_root.mkdir()
+    traversed_root.chmod(0o777 if normalized_mode == 0o700 else 0o700)
+    (base / "link").symlink_to(target / "child", target_is_directory=True)
+    configured_root = base / "link" / ".." / "root"
+
+    if normalized_mode == 0o777:
+        with pytest.raises(PermissionError, match="storage root"):
+            with PersistentStorage(configured_root):
+                pass
+        assert not (normalized_root / "a365").exists()
+    else:
+        legacy_database = normalized_root / "queue.db"
+        legacy_database.write_bytes(b"old SQLite backlog")
+        with PersistentStorage(configured_root) as storage:
+            assert storage.directory == normalized_root / "a365"
+            assert storage.store(_record("persisted"))
+        assert "Legacy Agent365 SQLite backlog" in caplog.text
+        assert str(legacy_database) in caplog.text
+        assert legacy_database.read_bytes() == b"old SQLite backlog"
+        with PersistentStorage(normalized_root) as restarted:
+            assert [record.payload for record in restarted.claim(1, 30)] == ["persisted"]
+
+    assert not (traversed_root / "a365").exists()
+    assert stat.S_IMODE(normalized_root.stat().st_mode) == normalized_mode
+    assert stat.S_IMODE(traversed_root.stat().st_mode) == (0o777 if normalized_mode == 0o700 else 0o700)
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Unix configured-root ownership")

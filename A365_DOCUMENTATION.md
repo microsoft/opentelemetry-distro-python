@@ -176,7 +176,9 @@ removes inherited ACLs using `icacls`. Agent365 neither duplicates nor bypasses
 these upstream cache protections.
 
 On Linux/macOS, Agent365 additionally checks the explicitly configured root
-before initializing the provider on its `a365` child. The root must be a real
+before initializing the provider on its `a365` child. The configured path is
+normalized with `os.path.abspath`, matching the provider, before root validation
+and legacy-backlog detection. The root must be a real
 directory (not a symlink), owned by the current user or root, and not writable
 by group or others. Unsafe roots disable offline delivery without permission
 repair. A missing root is created with mode `0700` (subject to umask) and checked
