@@ -25,7 +25,7 @@ _logger = logging.getLogger(__name__)
 
 _MAX_RECORDS_PER_PASS = 10
 # A pass leases all records before sending them sequentially. Keep every lease
-# valid for the worst-case full pass so another process sharing the SQLite
+# valid for the worst-case full pass so another process sharing the file
 # queue cannot reclaim a record while this coordinator is still sending it.
 _LEASE_SECONDS = (_MAX_RECORDS_PER_PASS * A365_HTTP_TIMEOUT_SECONDS) + 5.0
 
