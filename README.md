@@ -142,6 +142,69 @@ string arguments/results remain supported. See the A365 guide for complete examp
 
 > For A365 token resolver patterns, baggage, and scope classes, see the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md).
 
+### Azure Monitor multi-endpoint routing (preview)
+
+This opt-in requires an Azure Monitor exporter build that supports multi-endpoint
+routing. The distro's current minimum exporter dependency does not yet include it.
+Set `APPLICATIONINSIGHTS_EXPERIMENTAL_FEATURES` to include `multi_endpoint_routing`
+before calling `use_microsoft_opentelemetry` or constructing any Azure Monitor
+exporter. The exporter reads this comma-separated list directly; no routing-specific
+distro argument is needed. Routing is disabled unless selected. Names are
+case-insensitive and surrounding whitespace is ignored. Unknown names are ignored
+with a warning. The selection is shared across exporters and is fixed when the
+first exporter is constructed; restart the process to change it.
+
+```powershell
+$env:APPLICATIONINSIGHTS_EXPERIMENTAL_FEATURES = "multi_endpoint_routing"
+# Multiple features can be enabled together:
+$env:APPLICATIONINSIGHTS_EXPERIMENTAL_FEATURES = "gen_ai_input_output_limit_increase,multi_endpoint_routing"
+```
+
+```python
+from microsoft.opentelemetry import use_microsoft_opentelemetry
+from opentelemetry import trace
+
+use_microsoft_opentelemetry(
+    enable_azure_monitor=True,
+    azure_monitor_enable_live_metrics=False,
+    azure_monitor_enable_performance_counters=False,
+)
+
+with trace.get_tracer(__name__).start_as_current_span(
+    "routed-operation",
+    attributes={
+        "microsoft.instrumentation_key": "<destination-instrumentation-key>",
+        "microsoft.ingestion_endpoint": "https://<destination-ingestion-host>/",
+    },
+):
+    pass
+```
+
+Set both destination attributes on each span, log record, or metric measurement.
+Span events inherit their parent span's destination. Invalid or missing destinations
+are dropped, not sent to a host connection string. The distro does not add routing
+attributes automatically. Resource-derived cloud role and instance tags are unchanged.
+
+For AAD destinations, pass `azure_monitor_exporter_credential` and set
+`microsoft.ingestion_auth` to `"aad"` on the telemetry item. Other items use key-only
+authentication. A host connection string is optional in routing mode; the example
+disables Live Metrics and performance counters rather than configuring host-only
+features without one.
+
+To run the network-isolated end-to-end tests against a sibling local exporter checkout
+in PowerShell, use a Python environment with this distro's test dependencies:
+
+```powershell
+$env:PYTHONPATH = "$PWD\src;$PWD\..\azure-sdk-for-python\sdk\monitor\azure-monitor-opentelemetry-exporter"
+python -m pytest tests\azure_monitor\test_multi_endpoint_routing.py -q
+```
+
+These tests use real distro providers and exporter pipelines with a fake HTTP transport;
+they do not send telemetry to Azure. They skip when the exporter build has no routing support.
+
+For a runnable demonstration using actual local HTTPS requests, made-up instrumentation
+keys, and saved JSON envelopes, see the [local routing demo](samples/distro/multi_endpoint_routing/README.md).
+
 ### InvokeAgent semantic parameters
 
 Manual `InvokeAgentScope` instrumentation accepts Python-native request and response parameter models:
