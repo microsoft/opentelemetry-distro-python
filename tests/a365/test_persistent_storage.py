@@ -5,10 +5,14 @@
 
 from __future__ import annotations
 
+import errno
 import json
+import multiprocessing
 import os
 import stat
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +20,8 @@ from unittest.mock import patch
 
 import pytest
 from azure.monitor.opentelemetry.exporter._storage import LocalFileStorage, StorageExportResult
+from azure.monitor.opentelemetry.exporter.statsbeat.customer import _state as storage_state
+from azure.monitor.opentelemetry.exporter.statsbeat.customer._utils import track_dropped_items_from_storage
 
 from microsoft.opentelemetry.a365.core.exporters.durable_delivery import IdentityKey
 from microsoft.opentelemetry.a365.core.exporters.persistent_storage import DurableRecord, PersistentStorage
@@ -124,6 +130,113 @@ def test_leases_coordinate_two_instances_and_release(tmp_path):
         assert len(reclaimed) == 1
         assert second.delete(reclaimed[0].record_id)
         assert not first.claim(10, 30)
+
+
+def _claim_concurrently(directory, barrier):
+    with PersistentStorage(directory) as storage:
+        barrier.wait(timeout=60)
+        return [record.payload for record in storage.claim(1000, 120)]
+
+
+def _claim_in_process(directory, barrier, results):
+    results.put(_claim_concurrently(directory, barrier))
+
+
+@pytest.mark.parametrize("record_count", [1, 200])
+def test_concurrent_threads_claim_each_blob_once(tmp_path, record_count, caplog):
+    expected = [str(index) for index in range(record_count)]
+    with PersistentStorage(tmp_path) as storage:
+        for payload in expected:
+            assert storage.store(_record(payload))
+
+    barrier = threading.Barrier(8)
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = [executor.submit(_claim_concurrently, tmp_path, barrier) for _ in range(8)]
+        claimed = [payload for future in futures for payload in future.result(timeout=90)]
+
+    assert sorted(claimed) == sorted(expected)
+    assert "failed to read durable record" not in caplog.text
+    with PersistentStorage(tmp_path) as storage:
+        assert not storage.claim(1000, 120)
+
+
+@pytest.mark.parametrize("record_count", [1, 200])
+def test_concurrent_processes_claim_each_blob_once(tmp_path, record_count):
+    expected = [str(index) for index in range(record_count)]
+    with PersistentStorage(tmp_path) as storage:
+        for payload in expected:
+            assert storage.store(_record(payload))
+
+    context = multiprocessing.get_context("spawn")
+    barrier = context.Barrier(8)
+    results = context.Queue()
+    processes = [context.Process(target=_claim_in_process, args=(tmp_path, barrier, results)) for _ in range(8)]
+    try:
+        for process in processes:
+            process.start()
+        claimed = [payload for _ in processes for payload in results.get(timeout=90)]
+        for process in processes:
+            process.join(timeout=30)
+            assert process.exitcode == 0
+        assert sorted(claimed) == sorted(expected)
+    finally:
+        for process in processes:
+            if process.is_alive():
+                process.terminate()
+            process.join(timeout=30)
+        results.close()
+        results.join_thread()
+    with PersistentStorage(tmp_path) as storage:
+        assert not storage.claim(1000, 120)
+
+
+def test_claim_limit_releases_coordination_for_another_thread(tmp_path):
+    with PersistentStorage(tmp_path) as first, PersistentStorage(tmp_path) as second:
+        assert first.store(_record("first"))
+        assert first.store(_record("second"))
+        claimed = first.claim(1, 120)
+        with ThreadPoolExecutor(max_workers=1) as executor:
+            other = executor.submit(second.claim, 1, 120).result(timeout=10)
+        assert sorted(record.payload for record in claimed + other) == ["first", "second"]
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows claim coordination")
+def test_windows_lock_failure_disables_storage_without_polluting_monitor_state(tmp_path, caplog):
+    with (
+        patch("ctypes.WinDLL") as kernel,
+        patch.dict(storage_state._LOCAL_STORAGE_SETUP_STATE, {"READONLY": False, "EXCEPTION_OCCURRED": ""}),
+    ):
+        kernel.return_value.CreateMutexW.return_value = None
+        with pytest.raises(OSError, match="Azure Monitor"):
+            PersistentStorage(tmp_path)
+        assert storage_state.get_local_storage_setup_state_exception() == ""
+        assert "storage lock could not be created" in caplog.text
+
+
+@pytest.mark.parametrize("error_number", [errno.EACCES, errno.EROFS])
+@pytest.mark.parametrize("monitor_error", ["", "Azure Monitor setup failed"])
+def test_agent365_setup_failure_does_not_change_azure_monitor_sdkstats(tmp_path, error_number, monitor_error):
+    monitor = LocalFileStorage(str(tmp_path / "AzureMonitor"))
+    try:
+        with patch.dict(
+            storage_state._LOCAL_STORAGE_SETUP_STATE,
+            {"READONLY": False, "EXCEPTION_OCCURRED": monitor_error},
+        ):
+            with patch(
+                "azure.monitor.opentelemetry.exporter._storage.os.makedirs",
+                side_effect=OSError(error_number, "Agent365 setup failed"),
+            ):
+                with pytest.raises(OSError, match="Azure Monitor"):
+                    PersistentStorage(tmp_path)
+            result = monitor.put([{"azure_monitor": True}], lease_period=0)
+            assert result == StorageExportResult.LOCAL_FILE_BLOB_SUCCESS
+            with patch("azure.monitor.opentelemetry.exporter.statsbeat.customer._utils.track_dropped_items") as dropped:
+                track_dropped_items_from_storage(result, [object()])
+            assert storage_state.get_local_storage_setup_state_exception() == monitor_error
+            assert not storage_state.get_local_storage_setup_state_readonly()
+            assert dropped.call_count == (1 if monitor_error else 0)
+    finally:
+        monitor.close()
 
 
 def test_expired_lease_survives_restart(tmp_path):
@@ -260,7 +373,7 @@ def test_silent_upstream_delete_failure_is_reported(tmp_path, caplog):
 
 def test_provider_setup_failure_raises_for_exporter_nonfatal_disable(tmp_path):
     with patch(
-        "azure.monitor.opentelemetry.exporter._storage.LocalFileStorage._check_and_set_folder_permissions",
+        f"{MODULE}._Agent365LocalFileStorage._check_and_set_folder_permissions",
         return_value=False,
     ):
         with pytest.raises(OSError, match="Azure Monitor"):

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import math
@@ -13,9 +14,11 @@ import stat
 import sys
 import threading
 import time
+from collections.abc import Callable, Generator, Iterator
+from contextlib import closing, contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from types import TracebackType
+from types import FunctionType, TracebackType
 
 from azure.monitor.opentelemetry.exporter._storage import LocalFileBlob, LocalFileStorage, StorageExportResult
 from azure.monitor.opentelemetry.exporter.export._base import _get_storage_directory
@@ -26,6 +29,78 @@ _logger = logging.getLogger(__name__)
 _DEFAULT_CAPACITY_BYTES = 50 * 1024 * 1024
 _DEFAULT_RETENTION_SECONDS = 2 * 24 * 3600
 _SCHEMA_VERSION = 2
+
+
+@contextmanager
+def _storage_lock(directory: str) -> Iterator[bool]:
+    if sys.platform != "win32":
+        yield True
+        return
+
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+    kernel32.CreateMutexW.restype = wintypes.HANDLE
+    kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel32.WaitForSingleObject.restype = wintypes.DWORD
+    kernel32.ReleaseMutex.argtypes = [wintypes.HANDLE]
+    kernel32.ReleaseMutex.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    identity = os.fsencode(os.path.normcase(os.path.realpath(directory)))
+    name = "Global\\Microsoft.Agent365.Storage." + hashlib.sha256(identity).hexdigest()
+    handle = kernel32.CreateMutexW(None, False, name)
+    if not handle:
+        _logger.error("Agent365 storage lock could not be created: %s", ctypes.WinError(ctypes.get_last_error()))
+        yield False
+        return
+    acquired = False
+    try:
+        result = kernel32.WaitForSingleObject(handle, 30_000)
+        # WAIT_ABANDONED also grants ownership after a consumer process exits.
+        acquired = result in (0, 0x80)
+        if not acquired:
+            _logger.error(
+                "Agent365 storage lock acquisition failed: result=%s, error=%s", result, ctypes.get_last_error()
+            )
+        yield acquired
+    finally:
+        if acquired and not kernel32.ReleaseMutex(handle):
+            _logger.error("Agent365 storage lock release failed: %s", ctypes.WinError(ctypes.get_last_error()))
+        if not kernel32.CloseHandle(handle):
+            _logger.error("Agent365 storage lock close failed: %s", ctypes.WinError(ctypes.get_last_error()))
+
+
+class _Agent365LocalFileStorage(LocalFileStorage):
+    def _check_and_set_folder_permissions(self) -> bool:
+        # Rebind only this invocation's diagnostics, never Azure Monitor's globals.
+        # Execute the upstream permission implementation unchanged.
+        check = LocalFileStorage._check_and_set_folder_permissions
+        namespace = dict(check.__globals__)
+        namespace["set_local_storage_setup_state_exception"] = lambda error: _logger.error(
+            "Agent365 storage setup failed: %s", error
+        )
+        namespace["set_local_storage_setup_state_readonly"] = lambda: _logger.error(
+            "Agent365 storage setup failed: read-only filesystem"
+        )
+        isolated_check: Callable[[_Agent365LocalFileStorage], bool] = FunctionType(
+            check.__code__, namespace, check.__name__, check.__defaults__, check.__closure__
+        )
+        if not isolated_check(self):  # pylint: disable=not-callable
+            return False
+        with _storage_lock(self._path) as acquired:
+            return acquired
+
+    def gets(self) -> Generator[LocalFileBlob, None, None]:
+        # Windows can rename the same source through concurrent open handles.
+        # Hold the mutex across enumeration AND the caller's lease/read, including
+        # enumeration by the upstream maintenance task.
+        with _storage_lock(self._path) as acquired:
+            if acquired:
+                yield from super().gets()
 
 
 @dataclass(frozen=True)
@@ -102,7 +177,7 @@ class PersistentStorage:
                 "Azure Monitor file storage. Drain it with the previous SDK before upgrading.",
                 self.directory.parent / "queue.db",
             )
-        self._provider = LocalFileStorage(
+        self._provider = _Agent365LocalFileStorage(
             str(self.directory),
             max_size=capacity_bytes,
             retention_period=math.ceil(retention_seconds),
@@ -133,15 +208,15 @@ class PersistentStorage:
             return True
 
     def claim(self, limit: int, lease_seconds: float) -> list[DurableRecord]:
-        """Lease blobs atomically using the upstream rename-based lease."""
-        with self._lock:
+        """Lease blobs with serialized Windows enumeration and lease transitions."""
+        with self._lock, closing(self._provider.gets()) as blobs:
             if self._closed:
                 _logger.error("PersistentStorage.claim failed: storage is closed")
                 return []
             now = time.time()
             self._claimed = {key: entry for key, entry in self._claimed.items() if entry[1] > now}
             records: list[DurableRecord] = []
-            for blob in self._provider.gets():
+            for blob in blobs:
                 if len(records) >= limit:
                     break
                 leased = blob.lease(math.ceil(lease_seconds))
@@ -226,7 +301,9 @@ class PersistentStorage:
 
     def delete(self, record_id: int) -> bool:
         """Delete a claimed blob, reporting upstream's otherwise-silent failure."""
-        with self._lock:
+        with self._lock, _storage_lock(str(self.directory)) as acquired:
+            if not acquired:
+                return False
             entry = self._claimed.get(record_id)
             if entry is None:
                 return False
@@ -237,7 +314,9 @@ class PersistentStorage:
 
     def release(self, record_id: int) -> bool:
         """Expire a claimed blob's lease so another replay pass can claim it."""
-        with self._lock:
+        with self._lock, _storage_lock(str(self.directory)) as acquired:
+            if not acquired:
+                return False
             entry = self._claimed.get(record_id)
             if entry is None:
                 return False

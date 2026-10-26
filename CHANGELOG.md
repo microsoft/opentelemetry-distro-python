@@ -29,6 +29,11 @@
 - Normalize configured Agent365 roots with the storage provider's `abspath`
   rules before validation, so symlinks followed by `..` cannot redirect the
   checks to a different root. Legacy-backlog warnings use the same root.
+- Serialize Agent365 cache enumeration and lease transitions across Windows
+  threads and processes, including storage maintenance, to prevent concurrent
+  consumers from claiming the same record.
+- Isolate Agent365 storage setup diagnostics from Azure Monitor's process-global
+  customer SDKStats state while preserving upstream permission enforcement.
 ### Other Changes
 - Update the `AZURE_OPENAI_API_VERSION` fallback version in integration tests
 
