@@ -290,6 +290,26 @@ class TestEnableKwargsPassthrough(unittest.TestCase):
     """Tests that azure_monitor_ kwargs are remapped and passed through."""
 
     @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    @patch.dict(
+        "os.environ",
+        {"APPLICATIONINSIGHTS_EXPERIMENTAL_FEATURES": "gen_ai_input_output_limit_increase,multi_endpoint_routing"},
+    )
+    def test_multi_endpoint_routing_uses_exporter_feature_environment(self, append_mock):
+        use_microsoft_opentelemetry(enable_azure_monitor=True)
+        otel_kwargs, azure_kwargs = append_mock.call_args[0]
+        self.assertNotIn("enable_multi_endpoint_routing", azure_kwargs)
+        self.assertNotIn("enable_multi_endpoint_routing", otel_kwargs)
+        self.assertNotIn("azure_monitor_enable_multi_endpoint_routing", azure_kwargs)
+        self.assertNotIn("azure_monitor_enable_multi_endpoint_routing", otel_kwargs)
+
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
+    def test_multi_endpoint_routing_not_supplied_by_default(self, append_mock):
+        use_microsoft_opentelemetry(enable_azure_monitor=True)
+        otel_kwargs, azure_kwargs = append_mock.call_args[0]
+        self.assertNotIn("enable_multi_endpoint_routing", azure_kwargs)
+        self.assertNotIn("azure_monitor_enable_multi_endpoint_routing", otel_kwargs)
+
+    @patch("microsoft.opentelemetry._distro._append_azure_monitor_components", return_value=(None, None, None))
     def test_enable_live_metrics_passed_through(self, append_mock):
         """azure_monitor_enable_live_metrics is remapped and forwarded."""
         use_microsoft_opentelemetry(

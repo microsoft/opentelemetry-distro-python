@@ -1,8 +1,12 @@
 # Release History
 # Unreleased
-
 ### Other Changes
 - Update the `AZURE_OPENAI_API_VERSION` fallback version in integration tests
+  ([#302](https://github.com/microsoft/opentelemetry-distro-python/pull/302))
+### Features Added
+- Support Azure Monitor multi-endpoint routing through `multi_endpoint_routing` in
+  `APPLICATIONINSIGHTS_EXPERIMENTAL_FEATURES`, set before initializing the distro.
+  This opt-in requires exporter version >= 1.0.0b59 that supports multi-endpoint routing.
 
 # 1.5.0 (2026-10-20)
 ### Features Added
