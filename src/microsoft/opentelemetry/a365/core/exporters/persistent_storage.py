@@ -294,7 +294,12 @@ class PersistentStorage:
     @staticmethod
     def _delete_blob(blob: LocalFileBlob) -> bool:
         blob.delete()
-        if Path(blob.fullpath).exists():
+        try:
+            exists = Path(blob.fullpath).exists()
+        except OSError as exc:
+            _logger.error("PersistentStorage.delete failed: could not check blob %s: %s", blob.fullpath, exc)
+            return False
+        if exists:
             _logger.error("PersistentStorage.delete failed: blob was not removed: %s", blob.fullpath)
             return False
         return True

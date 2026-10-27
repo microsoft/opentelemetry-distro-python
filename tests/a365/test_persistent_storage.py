@@ -371,6 +371,40 @@ def test_silent_upstream_delete_failure_is_reported(tmp_path, caplog):
         assert storage.delete(claimed[0].record_id)
 
 
+@pytest.mark.parametrize("error_type", [PermissionError, OSError])
+def test_delete_stat_failure_is_logged_and_reported(tmp_path, caplog, error_type):
+    with PersistentStorage(tmp_path) as storage:
+        assert storage.store(_record())
+        claimed = storage.claim(1, 30)
+        with patch.object(Path, "exists", side_effect=error_type("directory access changed")):
+            assert not storage.delete(claimed[0].record_id)
+        assert "PersistentStorage.delete failed" in caplog.text
+        assert "directory access changed" in caplog.text
+        assert storage.delete(claimed[0].record_id)
+
+
+@pytest.mark.parametrize("error_type", [PermissionError, OSError])
+def test_delete_stat_failure_does_not_interrupt_replay_batch(tmp_path, caplog, error_type):
+    with PersistentStorage(tmp_path) as storage:
+        envelope = asdict(_record("invalid"))
+        envelope["tenant_id"] = ""
+        with (
+            patch("azure.monitor.opentelemetry.exporter._storage._now", return_value=datetime.now(timezone.utc)),
+            patch("azure.monitor.opentelemetry.exporter._storage.random.getrandbits", side_effect=[0, 1, 2]),
+        ):
+            assert storage.store(_record("before"))
+            assert storage._provider.put([envelope], lease_period=0) == StorageExportResult.LOCAL_FILE_BLOB_SUCCESS
+            assert storage.store(_record("after"))
+        with patch.object(Path, "exists", side_effect=error_type("directory access changed")):
+            claimed = storage.claim(2, 30)
+        assert [record.payload for record in claimed] == ["before", "after"]
+        assert "PersistentStorage.delete failed" in caplog.text
+        assert "directory access changed" in caplog.text
+        for record in claimed:
+            assert storage.delete(record.record_id)
+        assert not storage.claim(2, 30)
+
+
 def test_provider_setup_failure_raises_for_exporter_nonfatal_disable(tmp_path):
     with patch(
         f"{MODULE}._Agent365LocalFileStorage._check_and_set_folder_permissions",
@@ -503,11 +537,20 @@ def test_symlink_dot_dot_validates_provider_root(tmp_path, caplog, normalized_mo
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Unix configured-root ownership")
-@pytest.mark.parametrize("existing", [False, True], ids=["created", "existing"])
-def test_foreign_owned_configured_root_is_rejected_before_creating_cache(tmp_path, existing):
+@pytest.mark.parametrize(
+    ("existing", "mask"),
+    [(False, 0o022), (True, 0o022), (True, 0o077)],
+    ids=["created", "existing-022", "existing-077"],
+)
+def test_foreign_owned_configured_root_is_rejected_before_creating_cache(tmp_path, existing, mask):
     root = tmp_path / "root"
     if existing:
-        root.mkdir(mode=0o750)
+        previous = os.umask(mask)
+        try:
+            root.mkdir(mode=0o750)
+        finally:
+            os.umask(previous)
+    expected_mode = stat.S_IMODE(root.stat().st_mode) if existing else 0o700
     real_lstat = Path.lstat
 
     def foreign_owner(path):
@@ -523,7 +566,7 @@ def test_foreign_owned_configured_root_is_rejected_before_creating_cache(tmp_pat
             with PersistentStorage(root):
                 pass
     assert not (root / "a365").exists()
-    assert stat.S_IMODE(root.stat().st_mode) == (0o750 if existing else 0o700)
+    assert stat.S_IMODE(root.stat().st_mode) == expected_mode
 
 
 @pytest.mark.skipif(os.name == "nt", reason="Unix configured-root permissions")

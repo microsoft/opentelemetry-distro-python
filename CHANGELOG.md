@@ -34,6 +34,8 @@
   consumers from claiming the same record.
 - Isolate Agent365 storage setup diagnostics from Azure Monitor's process-global
   customer SDKStats state while preserving upstream permission enforcement.
+- Log blob deletion-check filesystem errors without interrupting replay of
+  other valid Agent365 records in the same batch.
 ### Other Changes
 - Update the `AZURE_OPENAI_API_VERSION` fallback version in integration tests
 
