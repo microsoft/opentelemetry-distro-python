@@ -96,7 +96,7 @@ class _Agent365Exporter(SpanExporter):
         cluster_category: str = "prod",
         use_s2s_endpoint: bool = False,
         max_payload_bytes: int = DEFAULT_MAX_PAYLOAD_BYTES,
-        storage_directory: Optional[Path] = None,
+        storage_directory: Optional[str | Path] = None,
         enable_durable_delivery: bool = True,
     ):
         if token_resolver is None and contextual_token_resolver is None:

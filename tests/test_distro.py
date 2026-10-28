@@ -1101,19 +1101,27 @@ class TestA365OfflineStorageKwargs(unittest.TestCase):
         self.assertIsNone(exporter_kwargs["storage_directory"])
 
     @patch("microsoft.opentelemetry.a365.core.exporters.utils._create_default_token_resolver")
-    def test_empty_storage_directory_raises_value_error(self, default_resolver_mock):
-        """An explicitly empty storage_directory must raise ValueError rather
-        than silently defaulting to the platform path."""
+    def test_empty_storage_directory_disables_only_buffering(self, default_resolver_mock):
+        from microsoft.opentelemetry.a365.core.exporters.agent365_exporter import logger
+
         default_resolver_mock.return_value = lambda aid, tid: "token"
-        with patch("microsoft.opentelemetry.a365.core.exporters.agent365_exporter._Agent365Exporter"):
-            otel_kwargs = {"span_processors": []}
-            with self.assertRaises(ValueError):
-                _append_a365_components(
-                    True,
-                    otel_kwargs,
-                    enable_observability_exporter=True,
-                    storage_directory="",
-                )
+        otel_kwargs = {"span_processors": []}
+        _append_a365_components(
+            True,
+            otel_kwargs,
+            enable_observability_exporter=True,
+            storage_directory="",
+        )
+        exporter = otel_kwargs["span_processors"][-1].span_exporter
+        try:
+            with self.assertLogs(logger, level="ERROR") as logs:
+                exporter._ensure_durable_initialized()
+            self.assertIn("Durable delivery disabled", "\n".join(logs.output))
+            self.assertFalse(exporter._enable_durable_delivery)
+            self.assertIsNone(exporter._storage)
+        finally:
+            for processor in otel_kwargs["span_processors"]:
+                processor.shutdown()
 
 
 class TestA365Components(unittest.TestCase):
