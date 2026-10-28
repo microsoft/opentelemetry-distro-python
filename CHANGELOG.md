@@ -1,6 +1,10 @@
 # Release History
 # Unreleased
 
+### Features Added
+- Add typed Agent365 execute-tool transfers with explicit control modes, agent/human/workflow
+  targets, and separate target-agent attributes (microsoft/opentelemetry-distro-dotnet#157).
+
 ### Other Changes
 - Update the `AZURE_OPENAI_API_VERSION` fallback version in integration tests
 

@@ -74,6 +74,7 @@ from microsoft.opentelemetry.a365.core.span_details import SpanDetails
 from microsoft.opentelemetry.a365.core.spans_scopes.output_scope import OutputScope
 from microsoft.opentelemetry.a365.core.tool_call_details import ToolCallDetails
 from microsoft.opentelemetry.a365.core.tool_type import ToolType
+from microsoft.opentelemetry.a365.core.transfer_details import TransferDetails, TransferMode, TransferTargetType
 
 __all__ = [
     # Base scope class
@@ -98,6 +99,9 @@ __all__ = [
     "CallerDetails",
     "UserDetails",
     "ToolCallDetails",
+    "TransferDetails",
+    "TransferMode",
+    "TransferTargetType",
     "Channel",
     "Request",
     "Response",
