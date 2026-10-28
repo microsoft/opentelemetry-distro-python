@@ -2,8 +2,8 @@
 # Unreleased
 
 ### Features Added
-- Add typed Agent365 execute-tool transfers with explicit control modes, agent/human/workflow
-  targets, and separate target-agent attributes (microsoft/opentelemetry-distro-dotnet#157).
+- Add handoff details to Agent365 tool spans, including the transfer mode and target agent, human, or workflow.
+  ([#309](https://github.com/microsoft/opentelemetry-distro-python/pull/309))
 
 ### Breaking Changes
 - Agent365 offline delivery now reuses Azure Monitor's JSON-blob storage provider,
