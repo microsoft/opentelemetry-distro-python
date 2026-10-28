@@ -316,7 +316,18 @@ def test_execute_tool_preserves_hostname_only_endpoints(monkeypatch):
 
 @pytest.mark.parametrize(
     "url",
-    ["relative/path", "//tools.example.test/api", "https:///api", "https://tools.example.test:invalid/api"],
+    [
+        pytest.param("", id="empty"),
+        pytest.param(" \t\r\n", id="whitespace-only"),
+        pytest.param("relative/path", id="relative-path"),
+        pytest.param("//tools.example.test/api", id="missing-scheme"),
+        pytest.param("https:///api", id="missing-host"),
+        pytest.param("https://:8443/api", id="port-without-host"),
+        pytest.param("https://[::1/api", id="malformed-ipv6"),
+        pytest.param("https://tools.example.test:invalid/api", id="nonnumeric-port"),
+        pytest.param("https://tools.example.test:-1/api", id="negative-port"),
+        pytest.param("https://tools.example.test:65536/api", id="out-of-range-port"),
+    ],
 )
 def test_service_endpoint_rejects_invalid_absolute_urls(url):
     from microsoft.opentelemetry.a365.core import ServiceEndpoint
