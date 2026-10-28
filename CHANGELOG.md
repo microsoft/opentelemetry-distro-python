@@ -2,9 +2,8 @@
 # Unreleased
 
 ### Features Added
-- Record `url.full` on Agent365 execute-tool spans when a full endpoint URL is supplied.
-  Add `ServiceEndpoint.from_url()` while preserving hostname/port-only endpoints
-  ([#311](https://github.com/microsoft/opentelemetry-distro-python/pull/311)).
+- Record full endpoint URLs on Agent365 tool spans with `ServiceEndpoint.from_url()`.
+  ([#311](https://github.com/microsoft/opentelemetry-distro-python/pull/311))
 
 ### Other Changes
 - Update the `AZURE_OPENAI_API_VERSION` fallback version in integration tests
