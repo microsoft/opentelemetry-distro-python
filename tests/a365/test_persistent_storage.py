@@ -371,12 +371,12 @@ def test_silent_upstream_delete_failure_is_reported(tmp_path, caplog):
         assert storage.delete(claimed[0].record_id)
 
 
-@pytest.mark.parametrize("error_type", [PermissionError, OSError])
+@pytest.mark.parametrize("error_type", [PermissionError, NotADirectoryError, OSError])
 def test_delete_stat_failure_is_logged_and_reported(tmp_path, caplog, error_type):
     with PersistentStorage(tmp_path) as storage:
         assert storage.store(_record())
         claimed = storage.claim(1, 30)
-        with patch.object(Path, "exists", side_effect=error_type("directory access changed")):
+        with patch.object(Path, "stat", side_effect=error_type("directory access changed")):
             assert not storage.delete(claimed[0].record_id)
         assert "PersistentStorage.delete failed" in caplog.text
         assert "directory access changed" in caplog.text
@@ -395,7 +395,7 @@ def test_delete_stat_failure_does_not_interrupt_replay_batch(tmp_path, caplog, e
             assert storage.store(_record("before"))
             assert storage._provider.put([envelope], lease_period=0) == StorageExportResult.LOCAL_FILE_BLOB_SUCCESS
             assert storage.store(_record("after"))
-        with patch.object(Path, "exists", side_effect=error_type("directory access changed")):
+        with patch.object(Path, "stat", side_effect=error_type("directory access changed")):
             claimed = storage.claim(2, 30)
         assert [record.payload for record in claimed] == ["before", "after"]
         assert "PersistentStorage.delete failed" in caplog.text

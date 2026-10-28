@@ -35,7 +35,8 @@
 - Isolate Agent365 storage setup diagnostics from Azure Monitor's process-global
   customer SDKStats state while preserving upstream permission enforcement.
 - Log blob deletion-check filesystem errors without interrupting replay of
-  other valid Agent365 records in the same batch.
+  other valid Agent365 records in the same batch. Verify deletion with `stat()`
+  so Python 3.14 does not silently treat access failures as missing blobs.
 ### Other Changes
 - Update the `AZURE_OPENAI_API_VERSION` fallback version in integration tests
 
