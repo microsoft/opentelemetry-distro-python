@@ -1,6 +1,10 @@
 # Release History
 # Unreleased
 
+### Bugs Fixed
+- Propagate `Request.session_id` directly to Agent365 execute-tool and inference spans,
+  even without a baggage processor (microsoft/opentelemetry-distro-dotnet#116).
+
 ### Other Changes
 - Update the `AZURE_OPENAI_API_VERSION` fallback version in integration tests
 

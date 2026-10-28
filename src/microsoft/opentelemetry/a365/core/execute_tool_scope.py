@@ -20,6 +20,7 @@ from microsoft.opentelemetry.a365.core.constants import (
     GEN_AI_TOOL_TYPE_KEY,
     SERVER_ADDRESS_KEY,
     SERVER_PORT_KEY,
+    SESSION_ID_KEY,
     USER_EMAIL_KEY,
     USER_ID_KEY,
     USER_NAME_KEY,
@@ -146,6 +147,7 @@ class ExecuteToolScope(OpenTelemetryScope):
         self.set_tag_maybe(GEN_AI_TOOL_CALL_ID_KEY, tool_call_id)
         self.set_tag_maybe(GEN_AI_TOOL_DESCRIPTION_KEY, description)
         self.set_tag_maybe(GEN_AI_CONVERSATION_ID_KEY, request.conversation_id)
+        self.set_tag_maybe(SESSION_ID_KEY, request.session_id)
 
         if endpoint:
             self.set_tag_maybe(SERVER_ADDRESS_KEY, endpoint.hostname)

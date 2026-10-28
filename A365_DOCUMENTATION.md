@@ -458,6 +458,12 @@ Supported semantic attributes:
 
 ### ExecuteToolScope
 
+Pass `Request(session_id="session-123")` to correlate execute-tool and inference
+spans using `microsoft.session.id`, as with invoke-agent spans. The session ID is
+recorded directly from the request without requiring a baggage builder or span
+processor. Omitting it leaves the attribute unset, and `conversation_id` remains
+an independent correlation field.
+
 ```python
 from microsoft.opentelemetry.a365.core import ExecuteToolScope, ToolCallDetails, Request
 
