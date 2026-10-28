@@ -91,6 +91,7 @@ def _queue_size(storage) -> int:
 
 def test_restart_replays_persisted_record_with_fresh_token(tmp_path):
     storage_dir = tmp_path / "queue"
+    storage_dir.mkdir()
 
     # --- Instance A: a retryable send persists the payload, then shuts down. ---
     exporter_a = _Agent365Exporter(
@@ -137,6 +138,7 @@ def test_restart_replays_persisted_record_with_fresh_token(tmp_path):
 
 def test_restart_replays_using_current_exporter_endpoint_settings(tmp_path):
     storage_dir = tmp_path / "queue"
+    storage_dir.mkdir()
 
     exporter_a = _Agent365Exporter(
         token_resolver=lambda a, t: "stale-token",
@@ -179,6 +181,7 @@ def test_restart_replays_using_current_exporter_endpoint_settings(tmp_path):
 
 def test_restart_replays_record_persisted_after_token_failure(tmp_path):
     storage_dir = tmp_path / "queue"
+    storage_dir.mkdir()
 
     # --- Instance A: token resolution fails, so the payload is persisted. ---
     exporter_a = _Agent365Exporter(
@@ -220,6 +223,7 @@ def test_shutdown_blocks_until_active_replay_send_completes_then_removes_record(
     for the next restart instead of cleanly removed.
     """
     storage_dir = tmp_path / "queue"
+    storage_dir.mkdir()
 
     exporter_a = _Agent365Exporter(
         token_resolver=lambda a, t: "token",
