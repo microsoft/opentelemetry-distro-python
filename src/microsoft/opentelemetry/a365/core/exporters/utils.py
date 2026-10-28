@@ -635,22 +635,11 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return val in ("true", "1", "yes", "on")
 
 
-def coerce_storage_directory(value: Optional[str | Path]) -> Optional[Path]:
-    """Normalize a ``storage_directory`` option to a ``Path`` or ``None``.
-
-    ``None`` selects the platform default path. An explicitly empty or
-    whitespace-only string is rejected with :class:`ValueError` so it is never
-    silently treated as "use the default".
-    """
-    if value is None:
-        return None
-    if isinstance(value, Path):
-        return value
-    if isinstance(value, str):
-        if not value.strip():
-            raise ValueError("storage_directory must be a non-empty path or None")
+def coerce_storage_directory(value: Optional[str | Path]) -> Optional[str | Path]:
+    """Convert nonblank paths, deferring validation to nonfatal storage initialization."""
+    if isinstance(value, str) and value.strip():
         return Path(value)
-    raise ValueError("storage_directory must be a string path, Path, or None")
+    return value
 
 
 def create_a365_components(
@@ -669,8 +658,11 @@ def create_a365_components(
         ``token_resolver`` when set.
     :param disable_offline_storage: When True, disables durable delivery (no disk writes or
         replay). Defaults to False.
-    :param storage_directory: Custom directory for durable offline storage. When None, a
-        platform default path is used. Defaults to None.
+    :param storage_directory: Root for an Agent365-only ``a365`` cache subdirectory.
+        When None, Azure Monitor's default path resolver selects an Agent365 namespace.
+        Invalid configuration disables only offline delivery, with an error log.
+        Use separate sibling roots for Agent365 and Azure Monitor;
+        shared or overlapping cache paths are unsupported and are not rejected.
 
     All other configuration is read from environment variables:
       - ``ENABLE_A365_OBSERVABILITY_EXPORTER`` -- must be true for the HTTP exporter

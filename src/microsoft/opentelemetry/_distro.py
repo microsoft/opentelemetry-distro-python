@@ -209,10 +209,12 @@ def use_microsoft_opentelemetry(**kwargs: object) -> None:  # pylint: disable=to
         failed export payloads are not persisted to disk and at-least-once
         delivery is not guaranteed. Defaults to ``False`` (storage enabled).
     :keyword str a365_exporter_storage_directory:
-        Custom directory for durable offline storage. When ``None``, a
-        platform default path is used. Stored payloads are unencrypted; choose
-        a path that only the service account can read, especially when
-        sensitive-data capture is enabled.
+        Root for an Agent365-only ``a365`` cache using Azure Monitor file
+        storage and permission handling. ``None`` selects Azure Monitor's
+        default path resolver with an Agent365 namespace. Stored payloads
+        are unencrypted; provision private parents for sensitive telemetry.
+        Configure separate sibling roots for Agent365 and Azure Monitor;
+        shared or overlapping cache paths are unsupported and are not rejected.
     :keyword bool enable_console:
         Enable console exporter for traces, metrics, and logs (development
         only).  Mirrors ``ExportTarget.Console`` from the .NET distro.
@@ -536,9 +538,8 @@ def _append_a365_components(
         coerce_storage_directory,
     )
 
-    # Validate/normalize the storage directory up front so an explicitly empty
-    # value raises ValueError instead of being swallowed by the broad handler
-    # below (which would silently fall back to the platform default path).
+    # Defer invalid storage configuration to lazy initialization, so it disables
+    # offline delivery without preventing online export.
     storage_directory_path = coerce_storage_directory(storage_directory)
     _resolve_batch_options(
         max_queue_size=max_queue_size,

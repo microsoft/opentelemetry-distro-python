@@ -1,55 +1,111 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-"""Secure SQLite-backed durable queue for A365 telemetry delivery."""
+"""Agent365 record adapter for Azure Monitor's offline storage provider."""
 
 from __future__ import annotations
 
-import getpass
 import hashlib
+import json
 import logging
-import ntpath
+import math
 import os
-import sqlite3
 import stat
-import subprocess
 import sys
-import tempfile
 import threading
 import time
-from dataclasses import dataclass, field
+from collections.abc import Callable, Generator, Iterator
+from contextlib import closing, contextmanager
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from types import FunctionType, TracebackType
+
+from azure.monitor.opentelemetry.exporter._storage import LocalFileBlob, LocalFileStorage, StorageExportResult
+from azure.monitor.opentelemetry.exporter.export._base import _get_storage_directory
 
 from microsoft.opentelemetry.a365.core.exporters.durable_delivery import IdentityKey
 
 _logger = logging.getLogger(__name__)
-
-_DEFAULT_CAPACITY_BYTES = 50 * 1024 * 1024  # 50 MB
-_DEFAULT_RETENTION_SECONDS = 2 * 24 * 3600  # 2 days
-
+_DEFAULT_CAPACITY_BYTES = 50 * 1024 * 1024
+_DEFAULT_RETENTION_SECONDS = 2 * 24 * 3600
 _SCHEMA_VERSION = 2
 
 
-def _table_ddl(table_name: str) -> str:
-    return f"""
-CREATE TABLE IF NOT EXISTS {table_name} (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    schema_version INTEGER NOT NULL,
-    tenant_id TEXT NOT NULL,
-    agent_id TEXT NOT NULL,
-    agentic_user_id TEXT,
-    use_s2s_endpoint INTEGER NOT NULL,
-    payload TEXT NOT NULL,
-    created_at REAL NOT NULL,
-    lease_until REAL,
-    retry_count INTEGER NOT NULL DEFAULT 0
-);
-"""
+@contextmanager
+def _storage_lock(directory: str) -> Iterator[bool]:
+    if sys.platform != "win32":
+        yield True
+        return
+
+    import ctypes
+    from ctypes import wintypes
+
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateMutexW.argtypes = [wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR]
+    kernel32.CreateMutexW.restype = wintypes.HANDLE
+    kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel32.WaitForSingleObject.restype = wintypes.DWORD
+    kernel32.ReleaseMutex.argtypes = [wintypes.HANDLE]
+    kernel32.ReleaseMutex.restype = wintypes.BOOL
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+
+    identity = os.fsencode(os.path.normcase(os.path.realpath(directory)))
+    name = "Global\\Microsoft.Agent365.Storage." + hashlib.sha256(identity).hexdigest()
+    handle = kernel32.CreateMutexW(None, False, name)
+    if not handle:
+        _logger.error("Agent365 storage lock could not be created: %s", ctypes.WinError(ctypes.get_last_error()))
+        yield False
+        return
+    acquired = False
+    try:
+        result = kernel32.WaitForSingleObject(handle, 30_000)
+        # WAIT_ABANDONED also grants ownership after a consumer process exits.
+        acquired = result in (0, 0x80)
+        if not acquired:
+            _logger.error(
+                "Agent365 storage lock acquisition failed: result=%s, error=%s", result, ctypes.get_last_error()
+            )
+        yield acquired
+    finally:
+        if acquired and not kernel32.ReleaseMutex(handle):
+            _logger.error("Agent365 storage lock release failed: %s", ctypes.WinError(ctypes.get_last_error()))
+        if not kernel32.CloseHandle(handle):
+            _logger.error("Agent365 storage lock close failed: %s", ctypes.WinError(ctypes.get_last_error()))
+
+
+class _Agent365LocalFileStorage(LocalFileStorage):
+    def _check_and_set_folder_permissions(self) -> bool:
+        # Rebind only this invocation's diagnostics, never Azure Monitor's globals.
+        # Execute the upstream permission implementation unchanged.
+        check = LocalFileStorage._check_and_set_folder_permissions
+        namespace = dict(check.__globals__)
+        namespace["set_local_storage_setup_state_exception"] = lambda error: _logger.error(
+            "Agent365 storage setup failed: %s", error
+        )
+        namespace["set_local_storage_setup_state_readonly"] = lambda: _logger.error(
+            "Agent365 storage setup failed: read-only filesystem"
+        )
+        isolated_check: Callable[[_Agent365LocalFileStorage], bool] = FunctionType(
+            check.__code__, namespace, check.__name__, check.__defaults__, check.__closure__
+        )
+        if not isolated_check(self):  # pylint: disable=not-callable
+            return False
+        with _storage_lock(self._path) as acquired:
+            return acquired
+
+    def gets(self) -> Generator[LocalFileBlob, None, None]:
+        # Windows can rename the same source through concurrent open handles.
+        # Hold the mutex across enumeration AND the caller's lease/read, including
+        # enumeration by the upstream maintenance task.
+        with _storage_lock(self._path) as acquired:
+            if acquired:
+                yield from super().gets()
 
 
 @dataclass(frozen=True)
 class DurableRecord:
-    """An envelope for one telemetry payload."""
+    """An identity and telemetry payload, never a replay URL or bearer token."""
 
     schema_version: int
     tenant_id: str
@@ -76,371 +132,220 @@ class DurableRecord:
         )
 
 
-def _resolve_default_directory() -> Path:
-    digest = hashlib.sha256((getpass.getuser() + sys.executable + str(Path.cwd())).encode()).hexdigest()[:16]
-    if sys.platform == "win32":
-        base = Path(os.environ.get("LOCALAPPDATA", tempfile.gettempdir()))
-    else:
-        xdg = os.environ.get("XDG_STATE_HOME")
-        if xdg:
-            base = Path(xdg)
-        else:
-            # Prefer ~/.local/state (created on demand) rather than falling back
-            # to a shared temp dir merely because the path does not exist yet.
-            # Only fall back when the home directory cannot be resolved at all.
-            try:
-                base = Path.home() / ".local" / "state"
-            except (RuntimeError, OSError):
-                base = Path(tempfile.gettempdir())
-    return base / "a365-durable-queue" / digest
-
-
-def _restrict_windows_directory_permissions(directory: Path) -> None:
-    """Restrict a Windows queue directory to administrators and the current user."""
-    domain = os.environ.get("USERDOMAIN")
-    username = os.environ.get("USERNAME")
-    current_user = f"{domain}\\{username}" if domain and username else os.getlogin()
-    system_root = os.environ.get("SYSTEMROOT", r"C:\Windows")
-    icacls = ntpath.join(system_root, "System32", "icacls.exe")
-    commands = [
-        [icacls, str(directory), "/reset", "/T"],
-        [
-            icacls,
-            str(directory),
-            "/inheritance:r",
-            "/grant:r",
-            "*S-1-5-32-544:(OI)(CI)F",
-            f"{current_user}:(OI)(CI)F",
-        ],
-    ]
-    for command in commands:
-        result = subprocess.run(
-            command,
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
-        if result.returncode == 0:
-            continue
-        detail = result.stderr.strip() or f"icacls exited with code {result.returncode}"
-        raise PermissionError(f"Could not restrict durable queue permissions: {detail}")
-
-
-def _ensure_private_directory(directory: Path) -> None:
-    """Create the directory with mode 0700, or validate ownership if it exists."""
-    if directory.exists():
-        if os.name == "nt":
-            _restrict_windows_directory_permissions(directory)
-            return
-        # Use a non-symlink-following lstat so a symlinked queue directory
-        # cannot redirect telemetry writes outside a private, caller-owned
-        # location or defeat the ownership check via its target.
-        st = os.lstat(directory)
-        if stat.S_ISLNK(st.st_mode):
-            raise PermissionError(f"Durable queue directory must not be a symlink: {directory}")
-        if st.st_uid != getattr(os, "getuid")():
-            raise PermissionError(f"Durable queue directory has unsafe ownership: {directory}")
-        os.chmod(directory, 0o700)
-        return
-    # Create parents first (no mode enforcement needed for intermediate dirs),
-    # then create the final directory with explicit mode so the kernel sets it
-    # before any child entry can appear. chmod follows to override a restrictive umask.
-    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-    if os.name == "nt":
-        _restrict_windows_directory_permissions(directory)
-        return
-    os.chmod(directory, 0o700)
-
-
 class PersistentStorage:
-    """Thread-safe SQLite-backed durable record queue."""
+    """Adapt Agent365 replay to Azure Monitor's files, leases and permissions.
+
+    Each blob holds one identity envelope. Configured roots get an ``a365``
+    child. Use separate sibling roots for Azure Monitor and Agent365;
+    shared or overlapping cache paths are unsupported and are not rejected.
+    """
 
     def __init__(
         self,
-        directory: Path | None = None,
+        directory: str | Path | None = None,
         capacity_bytes: int = _DEFAULT_CAPACITY_BYTES,
         retention_seconds: float = _DEFAULT_RETENTION_SECONDS,
     ) -> None:
-        self._directory = Path(directory) if directory is not None else _resolve_default_directory()
+        if directory is not None and (not isinstance(directory, (str, Path)) or not str(directory).strip()):
+            raise ValueError("storage_directory must be a non-empty string path, Path, or None")
+        if directory is None:
+            self.directory = Path(_get_storage_directory("agent365"))
+        else:
+            root = Path(os.path.abspath(directory))
+            if sys.platform != "win32":
+                try:
+                    root_stat = root.lstat()
+                except FileNotFoundError:
+                    root.mkdir(mode=0o700, parents=True, exist_ok=True)
+                    root_stat = root.lstat()
+                if not stat.S_ISDIR(root_stat.st_mode):
+                    raise PermissionError(f"Agent365 storage root must be a directory, not a file or symlink: {root}")
+                if root_stat.st_uid not in (os.getuid(), 0):  # pylint: disable=no-member
+                    raise PermissionError(f"Agent365 storage root must be owned by the current user or root: {root}")
+                if root_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+                    raise PermissionError(f"Agent365 storage root must not be group- or world-writable: {root}")
+            self.directory = root / "a365"
         self._capacity_bytes = capacity_bytes
         self._retention_seconds = retention_seconds
         self._lock = threading.RLock()
-
-        _ensure_private_directory(self._directory)
-
-        self.database_path = self._directory / "queue.db"
-        # isolation_level=None → autocommit; all transactions are explicit.
-        self._conn = sqlite3.connect(str(self.database_path), check_same_thread=False, isolation_level=None)
-        if os.name != "nt":
-            os.chmod(self.database_path, 0o600)
-
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._initialize_schema()
-
-        if os.name != "nt":
-            # WAL journal initialization creates the -wal/-shm sidecars, which can
-            # hold the same OTLP payloads as the DB. Lock the DB and any existing
-            # sidecars to owner-only now; the 0700 directory keeps future sidecars
-            # private on creation.
-            self._restrict_file_permissions()
-
-    def _initialize_schema(self) -> None:
-        """Create the current schema or migrate the legacy url-backed schema."""
-        self._conn.execute("BEGIN IMMEDIATE")
-        try:
-            columns = self._table_columns("durable_records")
-            if not columns:
-                self._conn.execute(_table_ddl("durable_records"))
-            elif "url" in columns:
-                self._migrate_legacy_schema()
-            self._conn.execute("COMMIT")
-        except sqlite3.Error:
-            self._conn.execute("ROLLBACK")
-            raise
-
-    def _table_columns(self, table_name: str) -> set[str]:
-        rows = self._conn.execute(f"PRAGMA table_info({table_name})").fetchall()
-        return {row[1] for row in rows}
-
-    def _migrate_legacy_schema(self) -> None:
-        """Rewrite the v1 url-backed table into the v2 identity-only schema."""
-        self._conn.execute("DROP TABLE IF EXISTS durable_records_v2")
-        self._conn.execute(_table_ddl("durable_records_v2"))
-        self._conn.execute(
-            """
-            INSERT INTO durable_records_v2 (
-                id, schema_version, tenant_id, agent_id, agentic_user_id,
-                use_s2s_endpoint, payload, created_at, lease_until, retry_count
+        self._closed = False
+        self._next_record_id = 0
+        self._claimed: dict[int, tuple[LocalFileBlob, float]] = {}
+        if directory is not None and (self.directory.parent / "queue.db").exists():
+            _logger.warning(
+                "Legacy Agent365 SQLite backlog exists at %s; it is not migrated or replayed by "
+                "Azure Monitor file storage. Drain it with the previous SDK before upgrading.",
+                self.directory.parent / "queue.db",
             )
-            SELECT
-                id,
-                ?,
-                tenant_id,
-                agent_id,
-                agentic_user_id,
-                use_s2s_endpoint,
-                payload,
-                created_at,
-                lease_until,
-                retry_count
-            FROM durable_records
-            """,
-            (_SCHEMA_VERSION,),
+        self._provider = _Agent365LocalFileStorage(
+            str(self.directory),
+            max_size=capacity_bytes,
+            retention_period=math.ceil(retention_seconds),
+            name="Agent365Storage",
         )
-        self._conn.execute("DROP TABLE durable_records")
-        self._conn.execute("ALTER TABLE durable_records_v2 RENAME TO durable_records")
-
-    def _restrict_file_permissions(self) -> None:
-        """Restrict the DB and any existing WAL/SHM sidecars to owner-only (0600).
-
-        Callers gate this on POSIX; on Windows the durable queue relies on the
-        private (0700) directory for confidentiality.
-        """
-        for suffix in ("", "-wal", "-shm"):
-            sidecar = Path(f"{self.database_path}{suffix}")
-            if sidecar.exists():
-                os.chmod(sidecar, 0o600)
-
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+        # The provider reports permission failures by disabling itself, rather
+        # than raising. Propagate that state to the exporter's nonfatal handler.
+        if not self._provider._enabled:  # pylint: disable=protected-access
+            self._provider.close()
+            raise OSError("Azure Monitor local file storage could not be initialized")
 
     def store(self, record: DurableRecord) -> bool:
-        """Persist a record. Returns False (and logs) if storage fails."""
+        """Persist one envelope using the upstream atomic blob writer."""
         with self._lock:
-            try:
-                now = time.time()
-                expire_before = now - self._retention_seconds
-
-                self._conn.execute("BEGIN IMMEDIATE")
-                # Prune expired rows first
-                self._conn.execute(
-                    "DELETE FROM durable_records WHERE created_at < ?",
-                    (expire_before,),
-                )
-
-                # Capacity check based on live (in-use) pages. SQLite does not
-                # shrink the file on delete; freed pages move to the freelist and
-                # would otherwise be counted as "used", permanently wedging the
-                # queue after a fill -> delete -> refill cycle. Subtracting the
-                # freelist gives the reclaimable, live footprint.
-                row = self._conn.execute(
-                    "SELECT (page_count - freelist_count) * page_size "
-                    "FROM pragma_page_count(), pragma_freelist_count(), pragma_page_size()"
-                ).fetchone()
-                current_bytes = row[0] if row and row[0] is not None else 0
-                current_bytes = max(current_bytes, 0)
-                if current_bytes + len(record.payload.encode()) > self._capacity_bytes:
-                    self._conn.execute("ROLLBACK")
-                    _logger.error(
-                        "PersistentStorage: capacity exceeded (%d bytes used, limit %d)",
-                        current_bytes,
-                        self._capacity_bytes,
-                    )
-                    return False
-
-                self._conn.execute(
-                    """INSERT INTO durable_records
-                       (schema_version, tenant_id, agent_id, agentic_user_id,
-                        use_s2s_endpoint, payload, created_at)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
-                    (
-                        record.schema_version,
-                        record.tenant_id,
-                        record.agent_id,
-                        record.agentic_user_id,
-                        int(record.use_s2s_endpoint),
-                        record.payload,
-                        record.created_at,
-                    ),
-                )
-                self._conn.execute("COMMIT")
-                return True
-            except sqlite3.Error as exc:
-                _logger.error("PersistentStorage.store failed: %s", exc)
-                try:
-                    self._conn.execute("ROLLBACK")
-                except sqlite3.Error:
-                    pass
+            if self._closed:
+                _logger.error("PersistentStorage.store failed: storage is closed")
                 return False
+            envelope = asdict(record)
+            del envelope["record_id"]
+            del envelope["lease_until"]
+            if len(json.dumps(envelope).encode("utf-8")) > self._capacity_bytes:
+                _logger.error("PersistentStorage.store failed: record exceeds storage capacity")
+                return False
+            result = self._provider.put([envelope], lease_period=0)
+            if result != StorageExportResult.LOCAL_FILE_BLOB_SUCCESS:
+                _logger.error("PersistentStorage.store failed: %s", result)
+                return False
+            return True
 
     def claim(self, limit: int, lease_seconds: float) -> list[DurableRecord]:
-        """Atomically lease up to *limit* unleased records."""
-        with self._lock:
-            try:
-                now = time.time()
-                expire_before = now - self._retention_seconds
-                lease_until = now + lease_seconds
-
-                self._conn.execute("BEGIN IMMEDIATE")
-
-                # Prune expired rows inside the same transaction
-                self._conn.execute(
-                    "DELETE FROM durable_records WHERE created_at < ?",
-                    (expire_before,),
-                )
-
-                records: list[DurableRecord] = []
-                claimed_ids: set[int] = set()
-                while len(records) < limit:
-                    select_sql = """
-                        SELECT id, schema_version, tenant_id, agent_id, agentic_user_id,
-                               use_s2s_endpoint, payload, created_at, lease_until, retry_count
-                        FROM durable_records
-                        WHERE (lease_until IS NULL OR lease_until <= ?)
-                          AND created_at >= ?
-                    """
-                    params: list[object] = [now, expire_before]
-                    if claimed_ids:
-                        placeholders = ", ".join("?" for _ in claimed_ids)
-                        select_sql += f" AND id NOT IN ({placeholders})"
-                        params.extend(claimed_ids)
-                    select_sql += " ORDER BY created_at LIMIT 1"
-
-                    row = self._conn.execute(select_sql, tuple(params)).fetchone()
-                    if row is None:
-                        break
-
-                    invalid_reason = self._claim_validation_error(row)
-                    if invalid_reason is not None:
-                        self._conn.execute(
-                            "DELETE FROM durable_records WHERE id = ?",
-                            (row[0],),
-                        )
-                        _logger.warning(
-                            "PersistentStorage.claim dropped durable record %s: %s",
-                            row[0],
-                            invalid_reason,
-                        )
-                        continue
-
-                    self._conn.execute(
-                        "UPDATE durable_records SET lease_until = ? WHERE id = ?",
-                        (lease_until, row[0]),
-                    )
-                    claimed_ids.add(int(row[0]))
-                    records.append(
-                        DurableRecord(
-                            record_id=row[0],
-                            schema_version=row[1],
-                            tenant_id=row[2],
-                            agent_id=row[3],
-                            agentic_user_id=row[4],
-                            use_s2s_endpoint=bool(row[5]),
-                            payload=row[6],
-                            created_at=row[7],
-                            lease_until=lease_until,
-                            retry_count=row[9],
-                        )
-                    )
-
-                self._conn.execute("COMMIT")
-                return records
-            except sqlite3.Error as exc:
-                _logger.error("PersistentStorage.claim failed: %s", exc)
-                try:
-                    self._conn.execute("ROLLBACK")
-                except sqlite3.Error:
-                    pass
+        """Lease blobs with serialized Windows enumeration and lease transitions."""
+        with self._lock, closing(self._provider.gets()) as blobs:
+            if self._closed:
+                _logger.error("PersistentStorage.claim failed: storage is closed")
                 return []
-
-    def delete(self, record_id: int) -> bool:
-        """Delete a record by id. Returns False if not found or on error."""
-        with self._lock:
-            try:
-                self._conn.execute("BEGIN IMMEDIATE")
-                cur = self._conn.execute("DELETE FROM durable_records WHERE id = ?", (record_id,))
-                found = cur.rowcount > 0
-                self._conn.execute("COMMIT")
-                return found
-            except sqlite3.Error as exc:
-                _logger.error("PersistentStorage.delete failed: %s", exc)
+            now = time.time()
+            self._claimed = {key: entry for key, entry in self._claimed.items() if entry[1] > now}
+            records: list[DurableRecord] = []
+            for blob in blobs:
+                if len(records) >= limit:
+                    break
+                leased = blob.lease(math.ceil(lease_seconds))
+                if leased is None:
+                    continue
+                data = leased.get()
+                # Upstream returns None for both corrupt JSON and transient I/O
+                # failures. Do not discard a potentially valid unreadable blob.
+                if data is None:
+                    _logger.error(
+                        "PersistentStorage.claim failed to read durable record; retained: %s", leased.fullpath
+                    )
+                    if leased.lease(0) is None:
+                        _logger.error("PersistentStorage.release failed for unreadable blob: %s", leased.fullpath)
+                    continue
                 try:
-                    self._conn.execute("ROLLBACK")
-                except sqlite3.Error:
-                    pass
-                return False
+                    if len(data) != 1 or not isinstance(data[0], dict):
+                        raise ValueError("expected one Agent365 identity envelope")
+                    record = self._decode_record(data[0])
+                except (ValueError, TypeError, KeyError, OverflowError) as exc:
+                    _logger.warning("PersistentStorage.claim dropped invalid durable record: %s", exc)
+                    self._delete_blob(leased)
+                    continue
+                if record.created_at < now - self._retention_seconds:
+                    self._delete_blob(leased)
+                    continue
+                self._next_record_id += 1
+                record_id = self._next_record_id
+                lease_until = now + math.ceil(lease_seconds)
+                self._claimed[record_id] = (leased, lease_until)
+                records.append(
+                    DurableRecord(
+                        schema_version=record.schema_version,
+                        tenant_id=record.tenant_id,
+                        agent_id=record.agent_id,
+                        agentic_user_id=record.agentic_user_id,
+                        use_s2s_endpoint=record.use_s2s_endpoint,
+                        payload=record.payload,
+                        created_at=record.created_at,
+                        retry_count=record.retry_count,
+                        lease_until=lease_until,
+                        record_id=record_id,
+                    )
+                )
+            return records
 
     @staticmethod
-    def _claim_validation_error(row: tuple[object, ...]) -> str | None:
-        if row[1] != _SCHEMA_VERSION:
-            return f"unsupported schema_version={row[1]!r}"
-        if not isinstance(row[2], str) or not row[2].strip():
-            return "blank tenant_id"
-        if not isinstance(row[3], str) or not row[3].strip():
-            return "blank agent_id"
-        if not isinstance(row[6], str) or not row[6].strip():
-            return "blank payload"
-        return None
+    def _decode_record(data: dict) -> DurableRecord:
+        for name in ("tenant_id", "agent_id", "payload"):
+            if not isinstance(data.get(name), str) or not data[name].strip():
+                raise ValueError(f"blank or invalid {name}")
+        if data.get("schema_version") != _SCHEMA_VERSION:
+            raise ValueError("unsupported schema_version")
+        if not isinstance(data.get("use_s2s_endpoint"), bool):
+            raise ValueError("invalid use_s2s_endpoint")
+        if data.get("agentic_user_id") is not None and not isinstance(data["agentic_user_id"], str):
+            raise ValueError("invalid agentic_user_id")
+        created_at = data["created_at"]
+        if isinstance(created_at, bool) or not isinstance(created_at, (int, float)) or not math.isfinite(created_at):
+            raise ValueError("invalid created_at")
+        retry_count = data.get("retry_count", 0)
+        if isinstance(retry_count, bool) or not isinstance(retry_count, int) or retry_count < 0:
+            raise ValueError("invalid retry_count")
+        return DurableRecord(
+            schema_version=_SCHEMA_VERSION,
+            tenant_id=data["tenant_id"],
+            agent_id=data["agent_id"],
+            agentic_user_id=data.get("agentic_user_id"),
+            use_s2s_endpoint=data["use_s2s_endpoint"],
+            payload=data["payload"],
+            created_at=created_at,
+            retry_count=retry_count,
+        )
+
+    @staticmethod
+    def _delete_blob(blob: LocalFileBlob) -> bool:
+        blob.delete()
+        try:
+            Path(blob.fullpath).stat()
+        except FileNotFoundError:
+            return True
+        except OSError as exc:
+            _logger.error("PersistentStorage.delete failed: could not check blob %s: %s", blob.fullpath, exc)
+            return False
+        _logger.error("PersistentStorage.delete failed: blob was not removed: %s", blob.fullpath)
+        return False
+
+    def delete(self, record_id: int) -> bool:
+        """Delete a claimed blob, reporting upstream's otherwise-silent failure."""
+        with self._lock, _storage_lock(str(self.directory)) as acquired:
+            if not acquired:
+                return False
+            entry = self._claimed.get(record_id)
+            if entry is None:
+                return False
+            if not self._delete_blob(entry[0]):
+                return False
+            del self._claimed[record_id]
+            return True
 
     def release(self, record_id: int) -> bool:
-        """Release a lease so the record becomes claimable again."""
-        with self._lock:
-            try:
-                self._conn.execute("BEGIN IMMEDIATE")
-                cur = self._conn.execute(
-                    "UPDATE durable_records SET lease_until = NULL WHERE id = ?",
-                    (record_id,),
-                )
-                found = cur.rowcount > 0
-                self._conn.execute("COMMIT")
-                return found
-            except sqlite3.Error as exc:
-                _logger.error("PersistentStorage.release failed: %s", exc)
-                try:
-                    self._conn.execute("ROLLBACK")
-                except sqlite3.Error:
-                    pass
+        """Expire a claimed blob's lease so another replay pass can claim it."""
+        with self._lock, _storage_lock(str(self.directory)) as acquired:
+            if not acquired:
                 return False
+            entry = self._claimed.get(record_id)
+            if entry is None:
+                return False
+            if entry[0].lease(0) is None:
+                _logger.error("PersistentStorage.release failed: could not release blob %s", entry[0].fullpath)
+                return False
+            del self._claimed[record_id]
+            return True
 
     def close(self) -> None:
-        """Close the underlying SQLite connection."""
+        """Stop the upstream maintenance task."""
         with self._lock:
-            try:
-                self._conn.close()
-            except sqlite3.Error as exc:
-                _logger.error("PersistentStorage.close failed: %s", exc)
+            if not self._closed:
+                self._provider.close()
+                self._claimed.clear()
+                self._closed = True
+
+    def __enter__(self) -> PersistentStorage:
+        return self
+
+    def __exit__(
+        self, exc_type: type[BaseException] | None, exc_value: BaseException | None, traceback: TracebackType | None
+    ) -> None:
+        self.close()
 
 
 __all__ = ["DurableRecord", "PersistentStorage"]
