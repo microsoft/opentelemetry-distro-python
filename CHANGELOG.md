@@ -1,6 +1,11 @@
 # Release History
 # Unreleased
 
+### Features Added
+- Record `url.full` on Agent365 execute-tool spans when a full endpoint URL is supplied.
+  Add `ServiceEndpoint.from_url()` while preserving hostname/port-only endpoints
+  (microsoft/opentelemetry-distro-dotnet#170).
+
 ### Other Changes
 - Update the `AZURE_OPENAI_API_VERSION` fallback version in integration tests
 
