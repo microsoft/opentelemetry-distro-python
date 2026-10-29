@@ -61,15 +61,13 @@ class Agent365ExporterOptions:
                 900_000 (~100 KB headroom for estimator error and JSON envelope overhead).
             disable_offline_storage: When True, disables durable delivery (no disk writes or
                 replay). Defaults to False (storage enabled).
-            storage_directory: Custom directory for durable offline storage. When None, a
-                platform default path is used. An explicitly empty or whitespace-only string
-                is rejected with ``ValueError``. Defaults to None.
-
-        Raises:
-            ValueError: If ``storage_directory`` is an empty or whitespace-only string.
+            storage_directory: Root for an Agent365-only ``a365`` cache subdirectory.
+                None selects Azure Monitor's default path resolver with an Agent365
+                namespace. Invalid configuration is logged during lazy initialization
+                and disables only offline delivery. Defaults to None.
+                Use separate sibling roots for Agent365 and Azure Monitor;
+                shared or overlapping cache paths are unsupported and are not rejected.
         """
-        if storage_directory is not None and not str(storage_directory).strip():
-            raise ValueError("storage_directory must be a non-empty path or None")
         self.cluster_category = cluster_category
         self.token_resolver = token_resolver
         self.contextual_token_resolver = contextual_token_resolver
