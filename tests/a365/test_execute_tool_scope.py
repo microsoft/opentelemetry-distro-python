@@ -372,6 +372,27 @@ def test_transfer_is_safe_with_telemetry_disabled(monkeypatch):
         assert scope._span is None
 
 
+@pytest.mark.parametrize("session_id", ["session-123", None])
+def test_execute_tool_records_request_session_without_a_baggage_processor(monkeypatch, session_id):
+    provider = TracerProvider()
+    monkeypatch.setenv("ENABLE_OBSERVABILITY", "true")
+    monkeypatch.setattr(ExecuteToolScope, "_tracer", provider.get_tracer("Agent365Sdk"))
+    try:
+        with ExecuteToolScope.start(
+            Request(session_id=session_id, conversation_id="conversation-123"),
+            ToolCallDetails(tool_name="lookup"),
+            AgentDetails("agent"),
+        ) as scope:
+            attrs = dict(scope._span.attributes)
+            assert attrs["gen_ai.conversation.id"] == "conversation-123"
+            if session_id is None:
+                assert "microsoft.session.id" not in attrs
+            else:
+                assert attrs["microsoft.session.id"] == session_id
+    finally:
+        provider.shutdown()
+
+
 @pytest.mark.parametrize(
     "url,host,port",
     [

@@ -20,6 +20,7 @@ from microsoft.opentelemetry.a365.core.constants import (
     GEN_AI_TOOL_TYPE_KEY,
     SERVER_ADDRESS_KEY,
     SERVER_PORT_KEY,
+    SESSION_ID_KEY,
     TRANSFER_MODE_KEY,
     TRANSFER_TARGET_TYPE_KEY,
     TRANSFER_TARGET_AGENT_ID_KEY,
@@ -154,6 +155,7 @@ class ExecuteToolScope(OpenTelemetryScope):
         self.set_tag_maybe(GEN_AI_TOOL_CALL_ID_KEY, tool_call_id)
         self.set_tag_maybe(GEN_AI_TOOL_DESCRIPTION_KEY, description)
         self.set_tag_maybe(GEN_AI_CONVERSATION_ID_KEY, request.conversation_id)
+        self.set_tag_maybe(SESSION_ID_KEY, request.session_id)
 
         transfer = details.transfer_details
         if transfer is not None:

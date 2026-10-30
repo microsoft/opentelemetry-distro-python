@@ -4,6 +4,8 @@
 import os
 from typing import Any, cast
 
+import pytest
+
 from microsoft.opentelemetry.a365.core import (
     AgentDetails,
     InferenceCallDetails,
@@ -113,3 +115,18 @@ def test_inference_scope_records_late_response_details() -> None:
         assert attrs["gen_ai.usage.cache_write.input_tokens"] == 6
     finally:
         scope.dispose()
+
+
+@pytest.mark.parametrize("session_id", ["session-123", None])
+def test_inference_records_request_session_without_a_baggage_processor(session_id) -> None:
+    with InferenceScope.start(
+        Request(session_id=session_id, conversation_id="conversation-123"),
+        InferenceCallDetails(operationName=InferenceOperationType.CHAT, model="model", providerName="provider"),
+        AgentDetails("agent"),
+    ) as scope:
+        attrs = _span_attributes(scope)
+        assert attrs["gen_ai.conversation.id"] == "conversation-123"
+        if session_id is None:
+            assert "microsoft.session.id" not in attrs
+        else:
+            assert attrs["microsoft.session.id"] == session_id

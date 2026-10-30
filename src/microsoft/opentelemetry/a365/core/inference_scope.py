@@ -24,6 +24,7 @@ from microsoft.opentelemetry.a365.core.constants import (
     GEN_AI_USAGE_OUTPUT_TOKENS_KEY,
     SERVER_ADDRESS_KEY,
     SERVER_PORT_KEY,
+    SESSION_ID_KEY,
     USER_EMAIL_KEY,
     USER_ID_KEY,
     USER_NAME_KEY,
@@ -109,6 +110,7 @@ class InferenceScope(OpenTelemetryScope):
         if request.content is not None:
             self.record_input_messages(request.content)
         self.set_tag_maybe(GEN_AI_CONVERSATION_ID_KEY, request.conversation_id)
+        self.set_tag_maybe(SESSION_ID_KEY, request.session_id)
 
         self.set_tag_maybe(GEN_AI_OPERATION_NAME_KEY, operation_name)
         self.set_tag_maybe(GEN_AI_REQUEST_MODEL_KEY, details.model)
