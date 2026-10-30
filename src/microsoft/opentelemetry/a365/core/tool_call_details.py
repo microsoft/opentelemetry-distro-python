@@ -9,6 +9,7 @@ from dataclasses import dataclass
 
 from microsoft.opentelemetry.a365.core.models.tool_call_schema import ExecuteToolCallArguments
 from microsoft.opentelemetry.a365.core.models.service_endpoint import ServiceEndpoint
+from microsoft.opentelemetry.a365.core.transfer_details import TransferDetails
 
 
 @dataclass
@@ -21,3 +22,4 @@ class ToolCallDetails:
     description: str | None = None
     tool_type: str | None = None
     endpoint: ServiceEndpoint | None = None
+    transfer_details: TransferDetails | None = None

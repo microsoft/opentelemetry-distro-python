@@ -1,6 +1,12 @@
 # Release History
 # Unreleased
 
+### Features Added
+- Add handoff details to Agent365 tool spans, including the transfer mode and target agent, human, or workflow.
+  ([#309](https://github.com/microsoft/opentelemetry-distro-python/pull/309))
+- Record full endpoint URLs on Agent365 tool spans with `ServiceEndpoint.from_url()`.
+  ([#311](https://github.com/microsoft/opentelemetry-distro-python/pull/311))
+
 ### Breaking Changes
 - Agent365 offline delivery now reuses Azure Monitor's JSON-blob storage provider,
   file leases, Unix permission handling, and Windows ACL handling instead of a
@@ -39,10 +45,6 @@
   so Python 3.14 does not silently treat access failures as missing blobs.
 - Include the request's session ID on Agent365 tool and inference spans without requiring a baggage processor.
   ([#310](https://github.com/microsoft/opentelemetry-distro-python/pull/310))
-
-### Features Added
-- Record full endpoint URLs on Agent365 tool spans with `ServiceEndpoint.from_url()`.
-  ([#311](https://github.com/microsoft/opentelemetry-distro-python/pull/311))
 
 ### Other Changes
 - Update the `AZURE_OPENAI_API_VERSION` fallback version in integration tests

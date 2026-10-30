@@ -262,6 +262,116 @@ class TestExecuteToolScopeWithTelemetryDisabled(unittest.TestCase):
         self.assertIsNone(raw_scope._span)
 
 
+@pytest.fixture(name="transfer_tracer")
+def _transfer_tracer(monkeypatch):
+    provider = TracerProvider()
+    monkeypatch.setenv("ENABLE_OBSERVABILITY", "true")
+    monkeypatch.setattr(ExecuteToolScope, "_tracer", provider.get_tracer("Agent365Sdk"))
+    yield
+    provider.shutdown()
+
+
+@pytest.mark.parametrize("mode", ["RETURN_TO_CALLER", "PASS_CONTROL"])
+@pytest.mark.parametrize("target_type", ["AGENT", "HUMAN", "WORKFLOW"])
+def test_transfer_modes_and_target_types(transfer_tracer, mode, target_type):
+    from microsoft.opentelemetry.a365.core import TransferDetails, TransferMode, TransferTargetType
+
+    with ExecuteToolScope.start(
+        Request(),
+        ToolCallDetails(
+            tool_name="handoff",
+            transfer_details=TransferDetails(TransferMode[mode], TransferTargetType[target_type]),
+        ),
+        AgentDetails(agent_id="source-agent"),
+    ) as scope:
+        attrs = dict(scope._span.attributes)
+        assert attrs["microsoft.a365.transfer.mode"] == mode.lower()
+        assert attrs["microsoft.a365.transfer.target.type"] == target_type.lower()
+        assert not any(key.startswith("microsoft.a365.transfer.target.agent.") for key in attrs)
+
+
+def test_transfer_records_only_supported_target_fields_and_preserves_source(transfer_tracer):
+    from microsoft.opentelemetry.a365.core import TransferDetails, TransferMode
+
+    target = AgentDetails(
+        agent_id="target-agent",
+        agent_name="Target",
+        agent_blueprint_id="target-blueprint",
+        agent_platform_id="target-platform",
+        agent_version="2",
+        tenant_id="target-tenant",
+        agentic_user_id="target-user",
+        agentic_user_email="target@example.test",
+        agent_description="not transferred",
+    )
+    with ExecuteToolScope.start(
+        Request(),
+        ToolCallDetails(
+            tool_name="handoff",
+            transfer_details=TransferDetails(TransferMode.PASS_CONTROL, target_agent_details=target),
+        ),
+        AgentDetails(agent_id="source-agent", agent_name="Source", tenant_id="source-tenant"),
+    ) as scope:
+        attrs = dict(scope._span.attributes)
+        assert attrs["gen_ai.agent.id"] == "source-agent"
+        assert attrs["gen_ai.agent.name"] == "Source"
+        assert attrs["microsoft.tenant.id"] == "source-tenant"
+        assert attrs["microsoft.a365.transfer.target.type"] == "agent"
+        assert {
+            key.removeprefix("microsoft.a365.transfer.target.agent."): value
+            for key, value in attrs.items()
+            if key.startswith("microsoft.a365.transfer.target.agent.")
+        } == {
+            "id": "target-agent",
+            "name": "Target",
+            "blueprint.id": "target-blueprint",
+            "platform.id": "target-platform",
+            "version": "2",
+        }
+
+
+@pytest.mark.parametrize("transfer_enabled", [False, True])
+def test_transfer_attributes_follow_explicit_opt_in(transfer_tracer, transfer_enabled):
+    from microsoft.opentelemetry.a365.core import TransferDetails, TransferMode
+
+    details = TransferDetails(TransferMode.RETURN_TO_CALLER) if transfer_enabled else None
+    with ExecuteToolScope.start(
+        Request(), ToolCallDetails(tool_name="ordinary_tool", transfer_details=details), AgentDetails("source")
+    ) as scope:
+        attrs = dict(scope._span.attributes)
+        assert any(key.startswith("microsoft.a365.transfer.") for key in attrs) == transfer_enabled
+
+
+@pytest.mark.parametrize("target_type", ["HUMAN", "WORKFLOW"])
+def test_transfer_rejects_agent_details_for_non_agent_targets(target_type):
+    from microsoft.opentelemetry.a365.core import TransferDetails, TransferMode, TransferTargetType
+
+    with pytest.raises(ValueError, match="agent"):
+        TransferDetails(TransferMode.PASS_CONTROL, TransferTargetType[target_type], AgentDetails("target"))
+
+
+@pytest.mark.parametrize("field", ["mode", "target_type"])
+def test_transfer_rejects_untyped_enum_values(field):
+    from microsoft.opentelemetry.a365.core import TransferDetails, TransferMode, TransferTargetType
+
+    values = {"mode": TransferMode.PASS_CONTROL, "target_type": TransferTargetType.AGENT}
+    values[field] = "invalid"
+    with pytest.raises(TypeError, match=field):
+        TransferDetails(**values)
+
+
+def test_transfer_is_safe_with_telemetry_disabled(monkeypatch):
+    from microsoft.opentelemetry.a365.core import TransferDetails, TransferMode
+
+    monkeypatch.setenv("ENABLE_OBSERVABILITY", "false")
+    with ExecuteToolScope.start(
+        Request(),
+        ToolCallDetails(tool_name="handoff", transfer_details=TransferDetails(TransferMode.PASS_CONTROL)),
+        AgentDetails("source"),
+    ) as scope:
+        assert scope._span is None
+
+
 @pytest.mark.parametrize("session_id", ["session-123", None])
 def test_execute_tool_records_request_session_without_a_baggage_processor(monkeypatch, session_id):
     provider = TracerProvider()

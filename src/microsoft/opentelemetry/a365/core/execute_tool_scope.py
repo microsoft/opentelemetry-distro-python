@@ -21,6 +21,13 @@ from microsoft.opentelemetry.a365.core.constants import (
     SERVER_ADDRESS_KEY,
     SERVER_PORT_KEY,
     SESSION_ID_KEY,
+    TRANSFER_MODE_KEY,
+    TRANSFER_TARGET_TYPE_KEY,
+    TRANSFER_TARGET_AGENT_ID_KEY,
+    TRANSFER_TARGET_AGENT_NAME_KEY,
+    TRANSFER_TARGET_AGENT_BLUEPRINT_ID_KEY,
+    TRANSFER_TARGET_AGENT_PLATFORM_ID_KEY,
+    TRANSFER_TARGET_AGENT_VERSION_KEY,
     URL_FULL_KEY,
     USER_EMAIL_KEY,
     USER_ID_KEY,
@@ -149,6 +156,18 @@ class ExecuteToolScope(OpenTelemetryScope):
         self.set_tag_maybe(GEN_AI_TOOL_DESCRIPTION_KEY, description)
         self.set_tag_maybe(GEN_AI_CONVERSATION_ID_KEY, request.conversation_id)
         self.set_tag_maybe(SESSION_ID_KEY, request.session_id)
+
+        transfer = details.transfer_details
+        if transfer is not None:
+            self.set_tag_maybe(TRANSFER_MODE_KEY, transfer.mode.value)
+            self.set_tag_maybe(TRANSFER_TARGET_TYPE_KEY, transfer.target_type.value)
+            target = transfer.target_agent_details
+            if target is not None:
+                self.set_tag_maybe(TRANSFER_TARGET_AGENT_ID_KEY, target.agent_id)
+                self.set_tag_maybe(TRANSFER_TARGET_AGENT_NAME_KEY, target.agent_name)
+                self.set_tag_maybe(TRANSFER_TARGET_AGENT_BLUEPRINT_ID_KEY, target.agent_blueprint_id)
+                self.set_tag_maybe(TRANSFER_TARGET_AGENT_PLATFORM_ID_KEY, target.agent_platform_id)
+                self.set_tag_maybe(TRANSFER_TARGET_AGENT_VERSION_KEY, target.agent_version)
 
         if endpoint:
             self.set_tag_maybe(SERVER_ADDRESS_KEY, endpoint.hostname)

@@ -570,6 +570,43 @@ with ExecuteToolScope.start(
     scope.record_response(result)
 ```
 
+#### Explicit transfers
+
+Set `ToolCallDetails.transfer_details` to describe a tool that transfers control:
+
+```python
+from microsoft.opentelemetry.a365.core import (
+    AgentDetails, ToolCallDetails, TransferDetails, TransferMode, TransferTargetType,
+)
+
+details = ToolCallDetails(
+    tool_name="handoff",
+    transfer_details=TransferDetails(
+        mode=TransferMode.PASS_CONTROL,
+        target_agent_details=AgentDetails(agent_id="target-agent", agent_name="Specialist"),
+    ),
+)
+
+human_transfer = TransferDetails(
+    mode=TransferMode.RETURN_TO_CALLER,
+    target_type=TransferTargetType.HUMAN,
+)
+```
+
+`TransferMode` supports `RETURN_TO_CALLER` (`return_to_caller`) and `PASS_CONTROL`
+(`pass_control`). `TransferTargetType` supports `AGENT` (the default), `HUMAN`,
+and `WORKFLOW`, emitted as lowercase tokens. Pass enum members, not raw strings.
+Human and workflow targets cannot include `target_agent_details`.
+
+The scope records `microsoft.a365.transfer.mode` and
+`microsoft.a365.transfer.target.type`. For agent targets, only ID, name, blueprint ID,
+platform ID and version are emitted under `microsoft.a365.transfer.target.agent.*`.
+The original `gen_ai.agent.*` attributes continue to identify the source agent;
+target tenant, user, email and description fields are not copied.
+No transfer attributes are recorded when `transfer_details` is omitted.
+
+#### Full endpoint URLs
+
 For remote tools, pass a full endpoint URL to retain its path and query in `url.full`:
 
 ```python
@@ -593,6 +630,8 @@ Only execute-tool scopes emit this URL attribute; other scopes retain their exis
 Do not pass URLs containing credentials, access tokens, personal data or other secrets;
 sanitize them before constructing the endpoint. URL capture is not gated by
 `enable_sensitive_data`.
+
+#### Typed tool payloads
 
 `ToolCallDetails.arguments` and `ExecuteToolScope.record_response()` also accept typed execute-tool schema models.
 Typed top-level arguments and results serialize to the Agent365 JSON contract with `schema_version: "1.0"`,
