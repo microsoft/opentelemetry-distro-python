@@ -21,6 +21,7 @@ from microsoft.opentelemetry.a365.core.constants import (
     SERVER_ADDRESS_KEY,
     SERVER_PORT_KEY,
     SESSION_ID_KEY,
+    URL_FULL_KEY,
     USER_EMAIL_KEY,
     USER_ID_KEY,
     USER_NAME_KEY,
@@ -151,6 +152,7 @@ class ExecuteToolScope(OpenTelemetryScope):
 
         if endpoint:
             self.set_tag_maybe(SERVER_ADDRESS_KEY, endpoint.hostname)
+            self.set_tag_maybe(URL_FULL_KEY, endpoint.url)
             if endpoint.port and endpoint.port != 443:
                 self.set_tag_maybe(SERVER_PORT_KEY, endpoint.port)
 

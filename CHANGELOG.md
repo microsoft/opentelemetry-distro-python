@@ -40,6 +40,10 @@
 - Include the request's session ID on Agent365 tool and inference spans without requiring a baggage processor.
   ([#310](https://github.com/microsoft/opentelemetry-distro-python/pull/310))
 
+### Features Added
+- Record full endpoint URLs on Agent365 tool spans with `ServiceEndpoint.from_url()`.
+  ([#311](https://github.com/microsoft/opentelemetry-distro-python/pull/311))
+
 ### Other Changes
 - Update the `AZURE_OPENAI_API_VERSION` fallback version in integration tests
 
