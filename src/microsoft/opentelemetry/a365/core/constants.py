@@ -158,6 +158,7 @@ ERROR_TYPE_CANCELLED = "TaskCanceledException"
 # --- OTel standard keys ---
 SERVER_ADDRESS_KEY = "server.address"
 SERVER_PORT_KEY = "server.port"
+URL_FULL_KEY = "url.full"
 SERVICE_NAME_KEY = "service.name"
 
 # --- Custom span keys ---

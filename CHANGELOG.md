@@ -4,6 +4,8 @@
 ### Features Added
 - Add handoff details to Agent365 tool spans, including the transfer mode and target agent, human, or workflow.
   ([#309](https://github.com/microsoft/opentelemetry-distro-python/pull/309))
+- Record full endpoint URLs on Agent365 tool spans with `ServiceEndpoint.from_url()`.
+  ([#311](https://github.com/microsoft/opentelemetry-distro-python/pull/311))
 
 ### Breaking Changes
 - Agent365 offline delivery now reuses Azure Monitor's JSON-blob storage provider,

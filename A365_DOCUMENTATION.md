@@ -599,6 +599,32 @@ The original `gen_ai.agent.*` attributes continue to identify the source agent;
 target tenant, user, email and description fields are not copied.
 No transfer attributes are recorded when `transfer_details` is omitted.
 
+#### Full endpoint URLs
+
+For remote tools, pass a full endpoint URL to retain its path and query in `url.full`:
+
+```python
+from microsoft.opentelemetry.a365.core import ServiceEndpoint, ToolCallDetails
+
+details = ToolCallDetails(
+    tool_name="get_weather",
+    endpoint=ServiceEndpoint.from_url("https://tools.example.test:8443/api/weather"),
+)
+```
+
+`ServiceEndpoint.from_url()` requires an absolute URL with a hostname and a valid port.
+It derives `server.address` and `server.port` while preserving the original full URL.
+As before, port `443` is omitted on execute-tool spans.
+Existing `ServiceEndpoint(hostname="tools.example.test", port=8443)` calls remain valid
+and do not invent or emit a full URL. A full URL can also be supplied via the optional
+`ServiceEndpoint.url` field alongside the existing hostname and port.
+Only execute-tool scopes emit this URL attribute; other scopes retain their existing behavior.
+
+**Privacy:** Full URLs are recorded as supplied, including paths and query parameters.
+Do not pass URLs containing credentials, access tokens, personal data or other secrets;
+sanitize them before constructing the endpoint. URL capture is not gated by
+`enable_sensitive_data`.
+
 #### Typed tool payloads
 
 `ToolCallDetails.arguments` and `ExecuteToolScope.record_response()` also accept typed execute-tool schema models.
