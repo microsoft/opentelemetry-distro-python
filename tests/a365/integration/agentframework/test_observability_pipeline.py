@@ -23,7 +23,7 @@ from opentelemetry.trace import get_tracer_provider
 try:
     from agent_framework._agents import RawAgent
     from agent_framework._tools import tool as ai_function
-    from agent_framework.openai import OpenAIChatClient
+    from agent_framework.openai import OpenAIChatCompletionClient
 except ImportError:
     pytest.skip(
         "AgentFramework library and dependencies required for integration tests",
@@ -87,12 +87,13 @@ class TestAgentFrameworkObservabilityPipeline:
     """
 
     @pytest.fixture
-    def chat_client(self, azure_openai_config: dict) -> OpenAIChatClient:
+    def chat_client(self, azure_openai_config: dict) -> OpenAIChatCompletionClient:
         """Create a real Azure OpenAI chat client."""
-        return OpenAIChatClient(
+        return OpenAIChatCompletionClient(
             model=azure_openai_config["deployment"],
             azure_endpoint=azure_openai_config["endpoint"],
             api_key=azure_openai_config["api_key"],
+            api_version=azure_openai_config["api_version"],
         )
 
     @pytest.fixture
@@ -119,7 +120,7 @@ class TestAgentFrameworkObservabilityPipeline:
     async def test_pipeline_invoke_agent_with_tool_call(  # pylint: disable=too-many-statements
         self,
         distro_exporter,
-        chat_client: OpenAIChatClient,
+        chat_client: OpenAIChatCompletionClient,
         agent_details: AgentDetails,
         agent365_config: dict,
     ) -> None:
@@ -262,7 +263,7 @@ class TestAgentFrameworkObservabilityPipeline:
     async def test_pipeline_invoke_agent_simple_inference(
         self,
         distro_exporter,
-        chat_client: OpenAIChatClient,
+        chat_client: OpenAIChatCompletionClient,
         agent_details: AgentDetails,
         agent365_config: dict,
     ) -> None:

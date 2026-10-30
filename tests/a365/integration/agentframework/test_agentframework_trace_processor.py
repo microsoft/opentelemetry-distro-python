@@ -19,7 +19,7 @@ from microsoft.opentelemetry.a365.core.constants import (
 try:
     from agent_framework._agents import RawAgent
     from agent_framework._tools import tool as ai_function
-    from agent_framework.openai import OpenAIChatClient
+    from agent_framework.openai import OpenAIChatCompletionClient
 except ImportError as _e:
     pytest.skip(
         f"AgentFramework library and dependencies required for integration tests: {_e}",
@@ -47,10 +47,11 @@ class TestAgentFrameworkTraceProcessorIntegration:
         """Test AgentFramework trace processor with real Azure OpenAI call."""
 
         # Create Azure OpenAI ChatClient
-        chat_client = OpenAIChatClient(
+        chat_client = OpenAIChatCompletionClient(
             model=azure_openai_config["deployment"],
             azure_endpoint=azure_openai_config["endpoint"],
             api_key=azure_openai_config["api_key"],
+            api_version=azure_openai_config["api_version"],
         )
 
         # Create agent framework agent
@@ -93,10 +94,11 @@ class TestAgentFrameworkTraceProcessorIntegration:
         """Test AgentFramework trace processor with tool calls."""
 
         # Create Azure OpenAI ChatClient
-        chat_client = OpenAIChatClient(
+        chat_client = OpenAIChatCompletionClient(
             model=azure_openai_config["deployment"],
             azure_endpoint=azure_openai_config["endpoint"],
             api_key=azure_openai_config["api_key"],
+            api_version=azure_openai_config["api_version"],
         )
 
         # Create agent framework agent
