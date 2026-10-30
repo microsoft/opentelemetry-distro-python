@@ -37,6 +37,11 @@
 - Log blob deletion-check filesystem errors without interrupting replay of
   other valid Agent365 records in the same batch. Verify deletion with `stat()`
   so Python 3.14 does not silently treat access failures as missing blobs.
+
+### Features Added
+- Record full endpoint URLs on Agent365 tool spans with `ServiceEndpoint.from_url()`.
+  ([#311](https://github.com/microsoft/opentelemetry-distro-python/pull/311))
+
 ### Other Changes
 - Update the `AZURE_OPENAI_API_VERSION` fallback version in integration tests
 

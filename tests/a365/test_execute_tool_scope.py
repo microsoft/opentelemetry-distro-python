@@ -6,6 +6,7 @@ import os
 import unittest
 from unittest.mock import patch
 
+import pytest
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 
@@ -259,3 +260,77 @@ class TestExecuteToolScopeWithTelemetryDisabled(unittest.TestCase):
 
         self.assertIsNone(scope._span)
         self.assertIsNone(raw_scope._span)
+
+
+@pytest.mark.parametrize(
+    "url,host,port",
+    [
+        ("https://tools.example.test/api/search?q=weather", "tools.example.test", None),
+        ("https://tools.example.test:8443/api", "tools.example.test", 8443),
+        ("http://tools.example.test/api", "tools.example.test", 80),
+        ("https://[::1]:8443/api", "::1", 8443),
+    ],
+)
+def test_execute_tool_records_full_endpoint_url(monkeypatch, url, host, port):
+    from microsoft.opentelemetry.a365.core import ServiceEndpoint
+
+    provider = TracerProvider()
+    monkeypatch.setenv("ENABLE_OBSERVABILITY", "true")
+    monkeypatch.setattr(ExecuteToolScope, "_tracer", provider.get_tracer("Agent365Sdk"))
+    try:
+        with ExecuteToolScope.start(
+            Request(),
+            ToolCallDetails(tool_name="search", endpoint=ServiceEndpoint.from_url(url)),
+            AgentDetails("agent"),
+        ) as scope:
+            attrs = dict(scope._span.attributes)
+            assert attrs["url.full"] == url
+            assert attrs["server.address"] == host
+            if port is None:
+                assert "server.port" not in attrs
+            else:
+                assert attrs["server.port"] == port
+    finally:
+        provider.shutdown()
+
+
+def test_execute_tool_preserves_hostname_only_endpoints(monkeypatch):
+    from microsoft.opentelemetry.a365.core import ServiceEndpoint
+
+    provider = TracerProvider()
+    monkeypatch.setenv("ENABLE_OBSERVABILITY", "true")
+    monkeypatch.setattr(ExecuteToolScope, "_tracer", provider.get_tracer("Agent365Sdk"))
+    try:
+        with ExecuteToolScope.start(
+            Request(),
+            ToolCallDetails(tool_name="search", endpoint=ServiceEndpoint("tools.example.test", 8443)),
+            AgentDetails("agent"),
+        ) as scope:
+            attrs = dict(scope._span.attributes)
+            assert attrs["server.address"] == "tools.example.test"
+            assert attrs["server.port"] == 8443
+            assert "url.full" not in attrs
+    finally:
+        provider.shutdown()
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        pytest.param("", id="empty"),
+        pytest.param(" \t\r\n", id="whitespace-only"),
+        pytest.param("relative/path", id="relative-path"),
+        pytest.param("//tools.example.test/api", id="missing-scheme"),
+        pytest.param("https:///api", id="missing-host"),
+        pytest.param("https://:8443/api", id="port-without-host"),
+        pytest.param("https://[::1/api", id="malformed-ipv6"),
+        pytest.param("https://tools.example.test:invalid/api", id="nonnumeric-port"),
+        pytest.param("https://tools.example.test:-1/api", id="negative-port"),
+        pytest.param("https://tools.example.test:65536/api", id="out-of-range-port"),
+    ],
+)
+def test_service_endpoint_rejects_invalid_absolute_urls(url):
+    from microsoft.opentelemetry.a365.core import ServiceEndpoint
+
+    with pytest.raises(ValueError):
+        ServiceEndpoint.from_url(url)

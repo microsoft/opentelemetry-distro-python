@@ -21,7 +21,7 @@ from opentelemetry.trace import get_tracer_provider
 try:
     from agent_framework._agents import RawAgent
     from agent_framework._tools import tool
-    from agent_framework.openai import OpenAIChatClient
+    from agent_framework.openai import OpenAIChatCompletionClient
 except ImportError:
     pytest.skip(
         "AgentFramework library and dependencies required for integration tests",
@@ -54,12 +54,13 @@ class TestAgentFrameworkMessageFormat:
     and verify the A365 structured message format."""
 
     @pytest.fixture
-    def chat_client(self, azure_openai_config: dict[str, Any]) -> OpenAIChatClient:
+    def chat_client(self, azure_openai_config: dict[str, Any]) -> OpenAIChatCompletionClient:
         """Create a real Azure OpenAI chat client."""
-        return OpenAIChatClient(
+        return OpenAIChatCompletionClient(
             model=azure_openai_config["deployment"],
             azure_endpoint=azure_openai_config["endpoint"],
             api_key=azure_openai_config["api_key"],
+            api_version=azure_openai_config["api_version"],
         )
 
     def _find_chat_spans(self, distro_exporter) -> list[ReadableSpan]:
@@ -72,7 +73,7 @@ class TestAgentFrameworkMessageFormat:
         return [s for s in distro_exporter.spans if s.attributes and GEN_AI_INPUT_MESSAGES_KEY in s.attributes]
 
     @pytest.mark.asyncio
-    async def test_simple_chat_message_mapping(self, distro_exporter, chat_client: OpenAIChatClient) -> None:
+    async def test_simple_chat_message_mapping(self, distro_exporter, chat_client: OpenAIChatCompletionClient) -> None:
         """Simple chat: verify exported spans contain structured A365 messages
         after enrichment (no manual mapper call)."""
         agent = RawAgent(
@@ -124,7 +125,7 @@ class TestAgentFrameworkMessageFormat:
         print(f"\n=== Enriched output ===\n{json.dumps(output_data, indent=2)}")
 
     @pytest.mark.asyncio
-    async def test_tool_call_message_mapping(self, distro_exporter, chat_client: OpenAIChatClient) -> None:
+    async def test_tool_call_message_mapping(self, distro_exporter, chat_client: OpenAIChatCompletionClient) -> None:
         """Tool-calling chat: verify tool_call and tool_call_response parts
         survive enrichment in exported spans."""
         agent = RawAgent(
