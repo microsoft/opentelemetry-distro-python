@@ -1,5 +1,5 @@
 # Release History
-# Unreleased
+# 1.6.0 (2026-11-05)
 
 ### Features Added
 - Add handoff details to Agent365 tool spans, including the transfer mode and target agent, human, or workflow.
@@ -21,33 +21,42 @@
   Provision a private service-account-owned root (normally `0700` on Unix),
   review ACLs and ancestors, and protect against path replacement. Upstream
   cache permission enforcement remains enabled.
+  ([#300](https://github.com/microsoft/opentelemetry-distro-python/pull/300))
 - Explicit Agent365 roots on Linux/macOS must not be symlinks, foreign-owned
   (other than root), or group/world-writable. Invalid roots disable offline
   delivery without changing their permissions. Missing roots are created with
   mode `0700` subject to umask and validated before cache initialization.
+  ([#300](https://github.com/microsoft/opentelemetry-distro-python/pull/300))
 
 ### Bugs Fixed
 - Invalid Agent365 storage configuration or provider initialization failure logs
   a nonfatal error and disables only offline buffering/replay, preserving online
   export. Explicit offline disablement bypasses storage initialization.
+  ([#300](https://github.com/microsoft/opentelemetry-distro-python/pull/300))
 - Malformed durable records with oversized numeric timestamps are logged and
   discarded without interrupting replay of valid records in the same batch.
+  ([#300](https://github.com/microsoft/opentelemetry-distro-python/pull/300))
 - Normalize configured Agent365 roots with the storage provider's `abspath`
   rules before validation, so symlinks followed by `..` cannot redirect the
   checks to a different root. Legacy-backlog warnings use the same root.
+  ([#300](https://github.com/microsoft/opentelemetry-distro-python/pull/300))
 - Serialize Agent365 cache enumeration and lease transitions across Windows
   threads and processes, including storage maintenance, to prevent concurrent
   consumers from claiming the same record.
+  ([#300](https://github.com/microsoft/opentelemetry-distro-python/pull/300))
 - Isolate Agent365 storage setup diagnostics from Azure Monitor's process-global
   customer SDKStats state while preserving upstream permission enforcement.
+  ([#300](https://github.com/microsoft/opentelemetry-distro-python/pull/300))
 - Log blob deletion-check filesystem errors without interrupting replay of
   other valid Agent365 records in the same batch. Verify deletion with `stat()`
   so Python 3.14 does not silently treat access failures as missing blobs.
+  ([#300](https://github.com/microsoft/opentelemetry-distro-python/pull/300))
 - Include the request's session ID on Agent365 tool and inference spans without requiring a baggage processor.
   ([#310](https://github.com/microsoft/opentelemetry-distro-python/pull/310))
 
 ### Other Changes
 - Update the `AZURE_OPENAI_API_VERSION` fallback version in integration tests
+  ([#302](https://github.com/microsoft/opentelemetry-distro-python/pull/302))
 
 # 1.5.0 (2026-10-20)
 ### Features Added
