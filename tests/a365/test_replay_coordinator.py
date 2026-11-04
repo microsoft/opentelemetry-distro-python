@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import threading
 import time
+from dataclasses import replace
 from unittest.mock import MagicMock
 
 from microsoft.opentelemetry.a365.constants import A365_HTTP_TIMEOUT_SECONDS
@@ -86,7 +87,10 @@ class FakeStorage:
             self.block_event.wait()
         with self._lock:
             if self._batches:
-                return self._batches.pop(0)
+                batch = self._batches.pop(0)
+                if len(batch) > limit:
+                    self._batches.insert(0, batch[limit:])
+                return batch[:limit]
             return []
 
     def delete(self, record_id: int) -> bool:
@@ -138,7 +142,7 @@ def test_replay_lease_covers_worst_case_full_pass() -> None:
 
     coordinator.run_once()
 
-    assert storage.claim_limits == [_MAX_RECORDS_PER_PASS]
+    assert storage.claim_limits == [100]
     assert storage.claim_lease_seconds == [_LEASE_SECONDS]
     assert _LEASE_SECONDS > _MAX_RECORDS_PER_PASS * A365_HTTP_TIMEOUT_SECONDS
 
@@ -158,6 +162,68 @@ def test_replay_retains_retryable_record_and_updates_gate() -> None:
     assert storage.released == [RECORD.record_id]
     assert not storage.deleted
     gate.record_retryable_failure.assert_called_once_with(IDENTITY, 45)
+
+
+def test_retryable_identity_allows_other_tenants_and_later_recovers() -> None:
+    sibling = _make_record(2)
+    other_tenant = replace(_make_record(3), tenant_id="tenant-2")
+    storage = FakeStorage([[RECORD, sibling, other_tenant], [RECORD]])
+    now = [0.0]
+    gate = TransmissionGate(clock=lambda: now[0])
+    send = MagicMock(
+        side_effect=[
+            DeliveryResult(DeliveryDisposition.RETRYABLE, retry_after=45),
+            DeliveryResult(DeliveryDisposition.DELIVERED),
+            DeliveryResult(DeliveryDisposition.DELIVERED),
+        ]
+    )
+    coordinator = ReplayCoordinator(storage, gate, send=send)
+
+    assert coordinator.run_once() is False
+    assert [call.args[0].record_id for call in send.call_args_list] == [1, 3]
+    assert storage.released == [1, 2]
+    assert storage.deleted == [3]
+    assert not gate.try_acquire(IDENTITY)
+
+    now[0] = 46.0
+    assert coordinator.run_once() is False
+    assert [call.args[0].record_id for call in send.call_args_list] == [1, 3, 1]
+    assert storage.deleted == [3, 1]
+    assert gate.try_acquire(IDENTITY)
+
+
+def test_replay_reaches_healthy_tenant_beyond_a_blocked_batch() -> None:
+    blocked = [_make_record(i) for i in range(1, 13)]
+    healthy = replace(_make_record(13), tenant_id="tenant-2")
+    storage = FakeStorage([[*blocked, healthy]])
+    gate = TransmissionGate(clock=lambda: 0.0)
+    gate.record_retryable_failure(IDENTITY, retry_after=45)
+    send = MagicMock(return_value=DeliveryResult(DeliveryDisposition.DELIVERED))
+    coordinator = ReplayCoordinator(storage, gate, send=send)
+
+    assert coordinator.run_once() is False
+
+    send.assert_called_once_with(healthy)
+    assert storage.deleted == [13]
+    assert storage.released == list(range(1, 13))
+
+
+def test_full_attempt_batch_with_retryable_record_uses_periodic_backoff() -> None:
+    records = [replace(_make_record(i), tenant_id=f"tenant-{i}") for i in range(1, 11)]
+    storage = FakeStorage([records])
+    gate = TransmissionGate()
+    send = MagicMock(
+        side_effect=[
+            DeliveryResult(DeliveryDisposition.RETRYABLE, retry_after=45),
+            *[DeliveryResult(DeliveryDisposition.DELIVERED) for _ in range(9)],
+        ]
+    )
+    coordinator = ReplayCoordinator(storage, gate, send=send)
+
+    assert coordinator.run_once() is False
+    assert send.call_count == 10
+    assert storage.released == [1]
+    assert storage.deleted == list(range(2, 11))
 
 
 def test_replay_deletes_permanent_record() -> None:
@@ -303,15 +369,47 @@ def test_general_exception_releases_current_and_remaining_and_stops() -> None:
     gate.release_probe.assert_called_once_with(IDENTITY)
 
 
-def test_run_once_claims_at_most_ten_records() -> None:
-    storage = FakeStorage([[RECORD]])
+def test_run_once_bounds_scanning_when_all_records_are_blocked() -> None:
+    storage = FakeStorage([[_make_record(i) for i in range(1, 102)]])
     gate = MagicMock(spec=TransmissionGate)
-    gate.try_acquire.return_value = True
-    coordinator = ReplayCoordinator(storage, gate, send=lambda record: DeliveryResult(DeliveryDisposition.DELIVERED))
+    gate.try_acquire.return_value = False
+    send = MagicMock()
+    coordinator = ReplayCoordinator(storage, gate, send=send)
 
-    coordinator.run_once()
+    assert coordinator.run_once() is False
 
-    assert storage.claim_limits == [10]
+    assert storage.claim_limits == [100]
+    assert gate.try_acquire.call_count == 100
+    assert storage.released == list(range(1, 101))
+    send.assert_not_called()
+
+
+def test_run_once_bounds_attempts_and_releases_unattempted_records() -> None:
+    storage = FakeStorage([[_make_record(i) for i in range(1, 12)]])
+    gate = TransmissionGate()
+    send = MagicMock(return_value=DeliveryResult(DeliveryDisposition.DELIVERED))
+    coordinator = ReplayCoordinator(storage, gate, send=send)
+
+    assert coordinator.run_once() is True
+
+    assert send.call_count == 10
+    assert storage.deleted == list(range(1, 11))
+    assert storage.released == [11]
+
+
+def test_shutdown_during_send_releases_remaining_scanned_records() -> None:
+    storage = FakeStorage([[_make_record(i) for i in range(1, 21)]])
+    gate = TransmissionGate()
+
+    def send(record: DurableRecord) -> DeliveryResult:
+        coordinator._stop_event.set()
+        return DeliveryResult(DeliveryDisposition.DELIVERED)
+
+    coordinator = ReplayCoordinator(storage, gate, send=send)
+
+    assert coordinator.run_once() is False
+    assert storage.deleted == [1]
+    assert storage.released == list(range(2, 21))
 
 
 def test_start_and_wake_process_a_later_batch() -> None:

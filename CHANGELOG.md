@@ -27,6 +27,9 @@
   mode `0700` subject to umask and validated before cache initialization.
 
 ### Bugs Fixed
+- Export Agent365 `text_completion` and `generate_content` inference spans instead of filtering them out.
+- Continue Agent365 durable replay for healthy identities when another identity is retrying or blocked,
+  scanning up to 100 records while limiting each pass to 10 delivery attempts.
 - Invalid Agent365 storage configuration or provider initialization failure logs
   a nonfatal error and disables only offline buffering/replay, preserving online
   export. Explicit offline disablement bypasses storage initialization.

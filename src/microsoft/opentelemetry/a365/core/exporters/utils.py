@@ -70,6 +70,7 @@ GEN_AI_OPERATION_NAMES: frozenset[str] = frozenset(
         APPLY_GUARDRAIL_OPERATION_NAME,
         InferenceOperationType.CHAT.value,
     }
+    | {operation.name.lower() for operation in InferenceOperationType}
 )
 
 

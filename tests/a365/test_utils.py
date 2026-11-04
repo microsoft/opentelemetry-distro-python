@@ -130,6 +130,13 @@ class TestFilterAndPartitionByIdentity(unittest.TestCase):
         self.assertEqual(len(result[("t1", "a1")]), 2)
         self.assertEqual(len(result[("t2", "a2")]), 1)
 
+    def test_includes_canonical_inference_operations(self):
+        for operation_name in ("chat", "text_completion", "generate_content"):
+            with self.subTest(operation_name=operation_name):
+                span = self._make_span("t1", "a1", operation_name)
+
+                self.assertEqual(filter_and_partition_by_identity([span]), {("t1", "a1"): [span]})
+
     def test_skips_missing_tenant(self):
         span = MagicMock()
         span.attributes = {"gen_ai.agent.id": "a1", "gen_ai.operation.name": "invoke_agent"}
