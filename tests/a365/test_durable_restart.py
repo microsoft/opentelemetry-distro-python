@@ -89,6 +89,30 @@ def _queue_size(storage) -> int:
     return len(claimed)
 
 
+def test_replay_releases_unattempted_backlog_for_the_next_pass(tmp_path):
+    exporter = _Agent365Exporter(
+        token_resolver=lambda a, t: "test-token",
+        storage_directory=tmp_path / "queue",
+        enable_durable_delivery=True,
+    )
+    try:
+        exporter._ensure_durable_initialized()
+        identity = IdentityKey("t1", "a1", None, False)
+        for _ in range(15):
+            assert exporter._storage.store(DurableRecord.new(identity, '{"resourceSpans":[]}'))
+        exporter._post_once = MagicMock(  # type: ignore[method-assign]
+            return_value=DeliveryResult(DeliveryDisposition.DELIVERED)
+        )
+
+        assert exporter._replay.run_once() is True
+        assert exporter._post_once.call_count == 10
+        assert exporter._replay.run_once() is False
+        assert exporter._post_once.call_count == 15
+        assert _queue_size(exporter._storage) == 0
+    finally:
+        exporter.shutdown()
+
+
 def test_restart_replays_persisted_record_with_fresh_token(tmp_path):
     storage_dir = tmp_path / "queue"
     storage_dir.mkdir()

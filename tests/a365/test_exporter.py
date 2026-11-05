@@ -605,8 +605,8 @@ class TestAgent365ExporterFiltering(unittest.TestCase):
         exporter.shutdown()
 
     @patch.dict(os.environ, {}, clear=True)
-    def test_export_filters_out_unsupported_inference_operation_types(self):
-        """Spans with TextCompletion / GenerateContent are filtered out."""
+    def test_export_filters_out_legacy_non_chat_operation_names(self):
+        """Noncanonical TextCompletion / GenerateContent names remain filtered out."""
         exporter = make_exporter()
         exporter._post_once = MagicMock(return_value=_delivered())
         text_completion_span = _make_span(
@@ -624,17 +624,27 @@ class TestAgent365ExporterFiltering(unittest.TestCase):
 
     @patch.dict(os.environ, {}, clear=True)
     def test_export_does_not_normalize_canonical_operation_names(self):
-        """invoke_agent / execute_tool / output_messages / chat are not rewritten."""
+        """Canonical operation names, including non-chat inference, are exported unchanged."""
         exporter = make_exporter()
         exporter._post_once = MagicMock(return_value=_delivered())
-        for op in ("invoke_agent", "execute_tool", "output_messages", "chat"):
-            with self.subTest(operation_name=op):
-                exporter._post_once.reset_mock()
-                span = _make_span(name=f"{op}_span", trace_id=1, span_id=2, operation_name=op)
-                result = exporter.export([span])
-                self.assertEqual(result, SpanExportResult.SUCCESS)
-                exporter._post_once.assert_called_once()
-        exporter.shutdown()
+        try:
+            for op in (
+                "invoke_agent",
+                "execute_tool",
+                "output_messages",
+                "chat",
+                "text_completion",
+                "generate_content",
+            ):
+                with self.subTest(operation_name=op):
+                    exporter._post_once.reset_mock()
+                    span = _make_span(name=f"{op}_span", trace_id=1, span_id=2, operation_name=op)
+                    result = exporter.export([span])
+                    self.assertEqual(result, SpanExportResult.SUCCESS)
+                    exporter._post_once.assert_called_once()
+                    self.assertEqual(span.attributes["gen_ai.operation.name"], op)
+        finally:
+            exporter.shutdown()
 
 
 # ---------------------------------------------------------------------------

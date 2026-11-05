@@ -24,6 +24,7 @@ from microsoft.opentelemetry.a365.constants import A365_HTTP_TIMEOUT_SECONDS
 _logger = logging.getLogger(__name__)
 
 _MAX_RECORDS_PER_PASS = 10
+_MAX_RECORDS_TO_SCAN_PER_PASS = 100
 # A pass leases all records before sending them sequentially. Keep every lease
 # valid for the worst-case full pass so another process sharing the file
 # queue cannot reclaim a record while this coordinator is still sending it.
@@ -137,30 +138,33 @@ class ReplayCoordinator:
     def run_once(self) -> bool:
         """Claim and process a single bounded replay batch.
 
-        Returns ``True`` only when a maximal batch (``_MAX_RECORDS_PER_PASS``)
-        was claimed *and* every record in it reached a terminal state
-        (delivered or permanently dropped). In that case more records may
-        remain and the loop should run again immediately. It returns ``False``
-        for an empty/partial batch, when the pass was stopped early (retryable
-        failure, shutdown, or unexpected error), or when any record was left
-        behind (gate-blocked or released), so the loop falls back to the
-        periodic cadence and does not busy-spin.
+        Scan up to ``_MAX_RECORDS_TO_SCAN_PER_PASS`` records to find identities
+        whose gates are open, attempting at most ``_MAX_RECORDS_PER_PASS``.
+        Retryable failures update only their identity's gate without stopping the pass.
+        Return ``True`` only when the full attempt budget was deleted, allowing
+        healthy backlogs to drain immediately. Otherwise use the periodic cadence
+        so retained or gate-blocked records do not cause a busy-spin.
         """
-        records = self._storage.claim(_MAX_RECORDS_PER_PASS, _LEASE_SECONDS)
+        records = self._storage.claim(_MAX_RECORDS_TO_SCAN_PER_PASS, _LEASE_SECONDS)
         if not records:
             return False
 
+        attempted_count = 0
         deleted_count = 0
         for index, record in enumerate(records):
             if self._stop_event.is_set():
                 self._release_remaining(records, index)
                 return False
+            if attempted_count >= _MAX_RECORDS_PER_PASS:
+                self._release_remaining(records, index)
+                break
 
             identity = self._identity_for(record)
             if not self._gate.try_acquire(identity):
                 self._release_record(record)
                 continue
 
+            attempted_count += 1
             try:
                 result = self._send(record)
             except ReplayIdentityError as exc:
@@ -216,13 +220,8 @@ class ReplayCoordinator:
 
             self._gate.record_retryable_failure(identity, result.retry_after)
             self._release_record(record)
-            self._release_remaining(records, index + 1)
-            return False
 
-        # Only request an immediate re-run when we fully drained a maximal
-        # batch; otherwise re-claiming would return records that are still
-        # gated/leased and spin the loop.
-        return deleted_count == len(records) and len(records) >= _MAX_RECORDS_PER_PASS
+        return deleted_count == _MAX_RECORDS_PER_PASS
 
     def _run_loop(self) -> None:
         while not self._stop_event.is_set():
