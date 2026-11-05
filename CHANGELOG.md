@@ -1,5 +1,5 @@
 # Release History
-# Unreleased
+# 1.6.0 (2026-11-05)
 
 ### Features Added
 - Add handoff details to Agent365 tool spans, including the transfer mode and target agent, human, or workflow.
