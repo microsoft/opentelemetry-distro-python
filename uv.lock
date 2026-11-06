@@ -1035,8 +1035,8 @@ wheels = [
 
 [[package]]
 name = "azure-monitor-opentelemetry-exporter"
-version = "1.0.0b58"
-source = { registry = "https://pypi.org/simple" }
+version = "1.0.0b59"
+source = { registry = "https://packagefeedproxy.microsoft.io/pypi/simple" }
 dependencies = [
     { name = "azure-core" },
     { name = "azure-identity" },
@@ -1045,9 +1045,9 @@ dependencies = [
     { name = "opentelemetry-sdk" },
     { name = "psutil" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/95/33/feadb708d9b8de6cc846118f287110d069ebeaee2d3abf9433695c2800ae/azure_monitor_opentelemetry_exporter-1.0.0b58.tar.gz", hash = "sha256:5152d75bd9780fef02fcc9550e0323ba3f661a8fcba017ea04b027151ae0932e", size = 362674, upload-time = "2026-10-07T17:35:54.445Z" }
+sdist = { url = "https://ms-feed-25.pkgs.visualstudio.com/6f084628-a36d-42cb-934d-057357e379dc/_packaging/49d7402f-07bb-4b18-a9ce-086e6e98a554/pypi/download/azure-monitor-opentelemetry-exporter/1b59/azure_monitor_opentelemetry_exporter-1.0.0b59.tar.gz", hash = "sha256:0dfaec6b1aada54a4c8f4572fd1e1da67609459caf418298b5d91b4c67c0282e", size = 369603, upload-time = "2026-11-05T20:51:56Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/55/fe/a010e943605fc017b1030159851e48e715fb5616675447f0d8c0a74de4e6/azure_monitor_opentelemetry_exporter-1.0.0b58-py2.py3-none-any.whl", hash = "sha256:cf036f7a99515d4e6626f3c33e5ac1ae633731882239542353e1f4a17285e9fc", size = 257459, upload-time = "2026-10-07T17:35:56.218Z" },
+    { url = "https://ms-feed-25.pkgs.visualstudio.com/6f084628-a36d-42cb-934d-057357e379dc/_packaging/49d7402f-07bb-4b18-a9ce-086e6e98a554/pypi/download/azure-monitor-opentelemetry-exporter/1b59/azure_monitor_opentelemetry_exporter-1.0.0b59-py2.py3-none-any.whl", hash = "sha256:e831b74132fb899e640cddbb340f0fbfe11937f788715ce3f0acd120c8e91227", size = 259551, upload-time = "2026-11-05T23:19:11Z" },
 ]
 
 [[package]]
@@ -2720,7 +2720,7 @@ wheels = [
 
 [[package]]
 name = "microsoft-opentelemetry"
-version = "1.5.0"
+version = "1.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "aiohttp" },
@@ -2790,7 +2790,7 @@ requires-dist = [
     { name = "aiohttp", specifier = ">=3.8.0" },
     { name = "azure-core", specifier = ">=1.38.0,<2.0.0" },
     { name = "azure-core-tracing-opentelemetry", specifier = "~=1.0.0b11" },
-    { name = "azure-monitor-opentelemetry-exporter", specifier = "~=1.0.0b58" },
+    { name = "azure-monitor-opentelemetry-exporter", specifier = "~=1.0.0b59" },
     { name = "black", marker = "extra == 'dev'", specifier = ">=26.10.1" },
     { name = "microsoft-agents-activity", marker = "extra == 'hosting'", specifier = ">=0.9.0" },
     { name = "microsoft-agents-hosting-core", marker = "extra == 'hosting'", specifier = ">=0.9.0" },
