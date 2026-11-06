@@ -142,6 +142,50 @@ string arguments/results remain supported. See the A365 guide for complete examp
 
 > For A365 token resolver patterns, baggage, and scope classes, see the [A365 guide](https://github.com/microsoft/opentelemetry-distro-python/blob/main/A365_DOCUMENTATION.md).
 
+### Azure Monitor multi-endpoint routing (preview)
+
+Use multi-endpoint routing to send telemetry from one application to different
+Application Insights resources. This preview requires a routing-enabled Azure
+Monitor exporter.
+
+> The distro currently depends on exporter 1.0.0b59, which does not include
+> routing. Use a routing-enabled 1.0.0b60 development build for this preview.
+
+Enable the feature before configuring OpenTelemetry. Restart the process after
+changing the setting.
+
+```powershell
+$env:APPLICATIONINSIGHTS_EXPERIMENTAL_FEATURES = "multi_endpoint_routing"
+```
+
+```python
+from microsoft.opentelemetry import use_microsoft_opentelemetry
+from opentelemetry import trace
+
+use_microsoft_opentelemetry(
+    enable_azure_monitor=True,
+    azure_monitor_enable_live_metrics=False,
+    azure_monitor_enable_performance_counters=False,
+)
+
+destination = {
+    "microsoft.instrumentation_key": "<destination-instrumentation-key>",
+    "microsoft.ingestion_endpoint": "https://<destination-ingestion-host>/",
+}
+
+with trace.get_tracer(__name__).start_as_current_span("routed-operation", attributes=destination):
+    pass
+```
+
+- No routing-specific distro argument or default connection string is required.
+- Set both destination attributes on each span, log, or metric measurement.
+  Logs accept them through `extra`; metrics accept them as measurement attributes.
+- Each item is routed independently. Span events inherit their parent span's destination.
+- Items with missing or invalid destination attributes are dropped.
+- For Microsoft Entra ID authentication, also set
+  `microsoft.ingestion_auth` to `"aad"` and configure
+  `azure_monitor_exporter_credential`. Other items use key-based ingestion.
+
 ### InvokeAgent semantic parameters
 
 Manual `InvokeAgentScope` instrumentation accepts Python-native request and response parameter models:
