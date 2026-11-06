@@ -22,16 +22,39 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Verify CHANGELOG.md was updated
+      - name: Verify CHANGELOG.md was updated and links this PR
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
         run: |
           if git diff --name-only "$BASE_SHA...$HEAD_SHA" | grep -qx 'CHANGELOG.md'; then
             echo "CHANGELOG.md was updated."
           else
             echo "::error::CHANGELOG.md was not updated in this PR."
             echo "Add an entry to CHANGELOG.md, or apply the 'skip-changelog' label if this change does not warrant one."
+            exit 1
+          fi
+
+          added_changelog_lines="$(
+            git diff --unified=0 "$BASE_SHA...$HEAD_SHA" -- CHANGELOG.md |
+              awk '
+                /^@@/ {
+                  in_hunk = 1
+                  next
+                }
+                in_hunk && /^\+/ {
+                  print substr($0, 2)
+                }
+              '
+          )"
+          expected_pr_link="([#$PR_NUMBER]($PR_URL))"
+          if grep -Fq "$expected_pr_link" <<< "$added_changelog_lines"; then
+            echo "CHANGELOG.md links to PR #$PR_NUMBER."
+          else
+            echo "::error::New CHANGELOG.md content does not link to this PR."
+            echo "Add $expected_pr_link to the changelog entry, or apply the 'skip-changelog' label."
             exit 1
           fi
 
