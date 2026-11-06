@@ -1,4 +1,9 @@
 # Release History
+#
+
+### Features Added
+- Testing to see if changelog validation works
+
 # 1.6.0 (2026-11-05)
 
 ### Features Added
