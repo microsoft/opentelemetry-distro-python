@@ -1,4 +1,10 @@
 # Release History
+# Unreleased
+
+### Bugs Fixed
+- Skip A365 OpenAI Agents instrumentation when the optional `openai-agents` SDK is not installed.
+  ([#322](https://github.com/microsoft/opentelemetry-distro-python/issues/322))
+
 # 1.6.0 (2026-11-05)
 
 ### Features Added
