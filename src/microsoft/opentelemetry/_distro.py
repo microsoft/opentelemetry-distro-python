@@ -864,6 +864,11 @@ def _setup_instrumentations(otel_kwargs: Dict[str, Any], **kwargs: Any) -> None:
 def _setup_a365_openai_agents_instrumentation() -> None:
     """Register the A365 OpenAI Agents trace processor."""
     try:
+        conflict = get_dependency_conflicts(["openai-agents"])
+        if conflict:
+            _logger.debug("Skipping instrumentation openai_agents: %s", conflict)
+            return
+
         from microsoft.opentelemetry._genai._openai_agents._trace_instrumentor import (
             A365OpenAIAgentsInstrumentor,
         )

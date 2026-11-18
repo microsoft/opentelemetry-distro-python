@@ -20,6 +20,7 @@ Covers:
 """
 
 import unittest
+from importlib.metadata import PackageNotFoundError
 from unittest.mock import MagicMock, patch
 
 from microsoft.opentelemetry._constants import _SUPPORTED_INSTRUMENTED_LIBRARIES
@@ -97,6 +98,72 @@ class TestGetInstrumentationKwargs(unittest.TestCase):
 # ---------------------------------------------------------------------------
 # Unit tests for kwargs forwarding through _setup_instrumentations
 # ---------------------------------------------------------------------------
+
+
+@patch("microsoft.opentelemetry._distro._logger")
+@patch("microsoft.opentelemetry._distro.set_sdkstats_instrumentation_by_name")
+class TestA365OpenAIAgentsInstrumentation(unittest.TestCase):
+    def setUp(self):
+        self.entry_point = MagicMock()
+        self.entry_point.name = "openai_agents"
+        self.instrumentor = MagicMock()
+        instrumentor_module = MagicMock(A365OpenAIAgentsInstrumentor=self.instrumentor)
+        for patcher in (
+            patch("microsoft.opentelemetry._distro.entry_points", return_value=[self.entry_point]),
+            patch.dict(
+                "sys.modules",
+                {"microsoft.opentelemetry._genai._openai_agents._trace_instrumentor": instrumentor_module},
+            ),
+        ):
+            patcher.start()
+            self.addCleanup(patcher.stop)
+
+    @patch("microsoft.opentelemetry._instrumentation.version", side_effect=PackageNotFoundError("openai-agents"))
+    def test_missing_sdk_is_skipped(self, version, set_sdkstats, logger):
+        for agents_module in (None, MagicMock()):
+            with self.subTest(agents_module=agents_module), patch.dict("sys.modules", {"agents": agents_module}):
+                version.reset_mock()
+                _setup_instrumentations({}, enable_a365=True)
+                version.assert_called_once_with("openai-agents")
+
+        self.instrumentor.assert_not_called()
+        self.entry_point.load.assert_not_called()
+        set_sdkstats.assert_not_called()
+        logger.warning.assert_not_called()
+        logger.debug.assert_called()
+
+    @patch("microsoft.opentelemetry._instrumentation.version", return_value="0.0.7")
+    def test_installed_sdk_uses_a365_instrumentor(self, version, set_sdkstats, logger):
+        _setup_instrumentations({}, enable_a365=True)
+
+        version.assert_called_with("openai-agents")
+        self.instrumentor.return_value.instrument.assert_called_once_with()
+        self.entry_point.load.assert_not_called()
+        set_sdkstats.assert_called_once_with("openai_agents")
+        logger.warning.assert_not_called()
+
+    @patch("microsoft.opentelemetry._instrumentation.version", return_value="0.0.7")
+    def test_setup_failure_still_warns(self, _version, set_sdkstats, logger):
+        error = RuntimeError("instrumentation failed")
+        self.instrumentor.return_value.instrument.side_effect = error
+
+        _setup_instrumentations({}, enable_a365=True)
+
+        logger.warning.assert_called_once_with("Failed to set up A365 OpenAI Agents instrumentation.", exc_info=error)
+        set_sdkstats.assert_not_called()
+
+    @patch("microsoft.opentelemetry._instrumentation.version")
+    def test_disabled_instrumentation_is_skipped(self, version, set_sdkstats, logger):
+        _setup_instrumentations(
+            {"instrumentation_options": {"openai_agents": {"enabled": False}}},
+            enable_a365=True,
+        )
+
+        version.assert_not_called()
+        self.instrumentor.assert_not_called()
+        self.entry_point.load.assert_not_called()
+        set_sdkstats.assert_not_called()
+        logger.warning.assert_not_called()
 
 
 class TestInstrumentationKwargsForwarding(unittest.TestCase):

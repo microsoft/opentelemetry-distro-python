@@ -29,6 +29,8 @@
   ([#300](https://github.com/microsoft/opentelemetry-distro-python/pull/300))
 
 ### Bugs Fixed
+- Skip A365 OpenAI Agents instrumentation when the optional `openai-agents` SDK is not installed.
+  ([#322](https://github.com/microsoft/opentelemetry-distro-python/issues/322))
 - Export Agent365 `text_completion` and `generate_content` inference spans instead of filtering them out.
   ([#316](https://github.com/microsoft/opentelemetry-distro-python/pull/316))
 - Continue Agent365 durable replay for healthy identities when another identity is retrying or blocked,
