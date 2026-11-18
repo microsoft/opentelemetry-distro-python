@@ -3,7 +3,7 @@
 
 ### Bugs Fixed
 - Skip A365 OpenAI Agents instrumentation when the optional `openai-agents` SDK is not installed.
-  ([#322](https://github.com/microsoft/opentelemetry-distro-python/issues/322))
+  ([#325](https://github.com/microsoft/opentelemetry-distro-python/pull/325))
 
 # 1.6.0 (2026-11-05)
 
