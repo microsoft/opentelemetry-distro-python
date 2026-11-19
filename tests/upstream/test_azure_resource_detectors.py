@@ -1,9 +1,10 @@
 import json
 import os
-from importlib.metadata import entry_points
+from importlib.metadata import entry_points, version
 from urllib.error import URLError
 
 import pytest
+from packaging.version import Version
 from opentelemetry.resource.detector.azure.app_service import AzureAppServiceResourceDetector
 from opentelemetry.resource.detector.azure.functions import AzureFunctionsResourceDetector
 from opentelemetry.resource.detector.azure.vm import AzureVMResourceDetector
@@ -113,7 +114,10 @@ def test_functions_detector_maps_azure_environment_to_resource(monkeypatch):
         "/subscriptions/subscription-id/resourceGroups/functions-rg/" "providers/Microsoft.Web/sites/queue-processor"
     )
     assert attributes["faas.instance"] == "function-instance"
-    assert attributes["faas.max_memory"] == 1536
+    detector_version = Version(version("opentelemetry-resource-detector-azure"))
+    # Version 0.4.0 corrected this attribute from MiB to bytes.
+    expected_max_memory = 1536 * 1024 * 1024 if detector_version >= Version("0.4.0") else 1536
+    assert attributes["faas.max_memory"] == expected_max_memory
     process_pid = attributes["process.pid"]
     assert isinstance(process_pid, int)
     assert process_pid > 0
