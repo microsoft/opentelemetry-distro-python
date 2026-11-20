@@ -35,6 +35,8 @@
   ([#300](https://github.com/microsoft/opentelemetry-distro-python/pull/300))
 
 ### Bugs Fixed
+- Upgrade `azure-ai-projects` from 2.4.0 to 2.11.0 to address Component Governance alert 40663659.
+  ([#326](https://github.com/microsoft/opentelemetry-distro-python/pull/326))
 - Export Agent365 `text_completion` and `generate_content` inference spans instead of filtering them out.
   ([#316](https://github.com/microsoft/opentelemetry-distro-python/pull/316))
 - Continue Agent365 durable replay for healthy identities when another identity is retrying or blocked,
