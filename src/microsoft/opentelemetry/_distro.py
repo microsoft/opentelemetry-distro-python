@@ -8,6 +8,8 @@ from functools import cached_property
 from logging import getLogger, Formatter
 from typing import Any, Callable, Dict, List, Optional
 
+from packaging.requirements import Requirement
+
 from opentelemetry.metrics import set_meter_provider
 from opentelemetry.sdk.metrics import MeterProvider
 from opentelemetry.sdk.metrics.export import MetricReader
@@ -864,6 +866,13 @@ def _setup_instrumentations(otel_kwargs: Dict[str, Any], **kwargs: Any) -> None:
 def _setup_a365_openai_agents_instrumentation() -> None:
     """Register the A365 OpenAI Agents trace processor."""
     try:
+        requirement = Requirement("openai-agents")
+        requirement.specifier.prereleases = True
+        conflict = get_dependency_conflicts([requirement])
+        if conflict:
+            _logger.debug("Skipping instrumentation openai_agents: %s", conflict)
+            return
+
         from microsoft.opentelemetry._genai._openai_agents._trace_instrumentor import (
             A365OpenAIAgentsInstrumentor,
         )
