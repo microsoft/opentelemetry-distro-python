@@ -121,7 +121,15 @@ def check_feed(package: LockedPackage, timeout: int) -> FeedCheck:
         versions = metadata.get("versions")
         if not isinstance(versions, list) or any(not isinstance(version, str) for version in versions):
             raise ValueError("Feed metadata does not contain a valid version list.")
-        if Version(package.version) not in {Version(version) for version in versions}:
+        parsed_versions = set()
+        for version in versions:
+            try:
+                parsed_versions.add(Version(version))
+            except ValueError:
+                continue
+        if versions and not parsed_versions:
+            raise ValueError("Feed metadata does not contain any PEP 440 versions.")
+        if Version(package.version) not in parsed_versions:
             return FeedCheck(package.name, package.version, "missing", "Locked version is not listed in the feed.")
         return FeedCheck(package.name, package.version, "available")
     except (OSError, URLError, HTTPException, ValueError) as error:
@@ -233,7 +241,7 @@ def audit_lock(project: Path, report: Report, timeout: int) -> None:
     if summary["vulnerabilities"] != len(vulnerabilities) or summary["adverse_statuses"] != len(adverse_statuses):
         raise ValueError("uv audit summary does not match its findings.")
     has_findings = bool(vulnerabilities or adverse_statuses)
-    if result.returncode != int(has_findings):
+    if result.returncode != int(bool(vulnerabilities)):
         raise ValueError(f"uv audit exit code disagrees with its findings: {result.stderr.strip()}")
     report.status = "findings" if has_findings else "clean"
 
