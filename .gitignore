@@ -16,3 +16,4 @@ docs/api/
 docs/superpowers/
 *.log
 *_output.txt
+dependency-audit-report.json
