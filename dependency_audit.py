@@ -1,7 +1,12 @@
 # Copyright (c) Microsoft Corporation.
 # Licensed under the MIT License.
 
-"""Read-only audit of the committed uv lockfile and Microsoft package feed."""
+"""Read-only audit of the committed uv lockfile and Microsoft package feed.
+
+Feed availability requires a listed version and a matching wheel or source archive.
+Skipped project-status checks fail the audit even when OSV reports no vulnerabilities.
+Distribution artifacts are not downloaded.
+"""
 
 from __future__ import annotations
 
@@ -14,6 +19,7 @@ from http.client import HTTPException
 import json
 from multiprocessing import get_context
 from multiprocessing.queues import Queue
+import os
 from pathlib import Path
 from queue import Empty
 import re
@@ -23,6 +29,7 @@ import time
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
+from packaging.utils import canonicalize_name, parse_sdist_filename, parse_wheel_filename
 from packaging.version import Version
 
 if sys.version_info >= (3, 11):
@@ -63,6 +70,7 @@ class Report:
     excluded_packages: list[dict[str, str]] = field(default_factory=list)
     feed_checks: list[FeedCheck] = field(default_factory=list)
     artifact_downloads_verified: bool = False
+    skipped_project_status_checks: list[str] = field(default_factory=list)
     audit: dict[str, object] | None = None
     warnings: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
@@ -131,7 +139,34 @@ def check_feed(package: LockedPackage, timeout: int) -> FeedCheck:
             raise ValueError("Feed metadata does not contain any PEP 440 versions.")
         if Version(package.version) not in parsed_versions:
             return FeedCheck(package.name, package.version, "missing", "Locked version is not listed in the feed.")
-        return FeedCheck(package.name, package.version, "available")
+        files = metadata.get("files")
+        if not isinstance(files, list) or any(
+            not isinstance(file, dict)
+            or not isinstance(file.get("filename"), str)
+            or not isinstance(file.get("url"), str)
+            or not file["url"]
+            for file in files
+        ):
+            raise ValueError("Feed metadata does not contain a valid file list.")
+        for file in files:
+            filename = file["filename"]
+            try:
+                if filename.endswith(".whl"):
+                    file_name, file_version, _, _ = parse_wheel_filename(filename)
+                elif filename.endswith((".tar.gz", ".zip")):
+                    file_name, file_version = parse_sdist_filename(filename)
+                else:
+                    continue
+            except ValueError:
+                continue
+            if file_name == canonicalize_name(package.name) and file_version == Version(package.version):
+                return FeedCheck(package.name, package.version, "available")
+        return FeedCheck(
+            package.name,
+            package.version,
+            "missing",
+            "Locked version has no matching wheel or source archive in the feed.",
+        )
     except (OSError, URLError, HTTPException, ValueError) as error:
         return FeedCheck(package.name, package.version, "failed", str(error))
 
@@ -171,12 +206,18 @@ def verify_feed(packages: list[LockedPackage], network_timeout: int, feed_timeou
 
 
 def run_uv(project: Path, arguments: list[str], timeout: float) -> subprocess.CompletedProcess[str]:
+    environment = None
+    if arguments and arguments[0] == "audit":
+        environment = os.environ.copy()
+        # uv's JSON omits skipped status checks; enable only the status-audit trace messages.
+        environment["RUST_LOG"] = "warn,uv_audit::service::project_status=trace"
     return subprocess.run(
         ["uv", *arguments],
         cwd=project,
         capture_output=True,
         text=True,
         encoding="utf-8",
+        env=environment,
         timeout=timeout,
         check=False,
     )
@@ -210,8 +251,18 @@ def audit_lock(project: Path, report: Report, timeout: int) -> None:
             ADVISORY_URL,
             "--preview-features",
             "audit-command,json-output",
+            "--color",
+            "never",
         ],
         remaining_timeout(),
+    )
+    report.skipped_project_status_checks = sorted(
+        set(
+            re.findall(
+                r"(?:Skipping project-status check|Failed to read archived project status) for `([^`]+)`",
+                result.stderr,
+            )
+        )
     )
     if result.returncode not in (0, 1):
         raise ValueError(f"uv audit failed ({result.returncode}): {result.stderr.strip()}")
@@ -243,6 +294,12 @@ def audit_lock(project: Path, report: Report, timeout: int) -> None:
     has_findings = bool(vulnerabilities or adverse_statuses)
     if result.returncode != int(bool(vulnerabilities)):
         raise ValueError(f"uv audit exit code disagrees with its findings: {result.stderr.strip()}")
+    if report.skipped_project_status_checks:
+        skipped_count = len(report.skipped_project_status_checks)
+        raise ValueError(
+            f"Incomplete project-status coverage: skipped checks for {skipped_count} projects. "
+            "See skipped_project_status_checks in the report."
+        )
     report.status = "findings" if has_findings else "clean"
 
 

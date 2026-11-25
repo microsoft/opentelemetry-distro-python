@@ -6,6 +6,7 @@
 import io
 from http.client import IncompleteRead
 import json
+import os
 from queue import Empty
 import subprocess
 from unittest.mock import Mock
@@ -34,6 +35,15 @@ def _audit_json(count=1, findings=False):
         "summary": {"audited_packages": count, "vulnerabilities": int(findings), "adverse_statuses": 0},
         "vulnerabilities": [{"id": "GHSA-example", "fix_versions": ["2.32.5"]}] if findings else [],
         "adverse_statuses": [],
+    }
+
+
+def _feed_metadata(versions, filenames=None):
+    if filenames is None:
+        filenames = ["Some_Package.Name-2.32.5-py3-none-any.whl"]
+    return {
+        "versions": versions,
+        "files": [{"filename": filename, "url": f"https://example.invalid/{filename}"} for filename in filenames],
     }
 
 
@@ -150,13 +160,23 @@ def test_missing_lock_produces_failure_report(project, tmp_path, capsys):
 @pytest.mark.parametrize(
     "metadata,status",
     [
-        ({"versions": ["2.32.5"]}, "available"),
-        ({"versions": ["2.32.5.0"]}, "available"),
+        (_feed_metadata(["2.32.5"]), "available"),
+        (_feed_metadata(["2.32.5.0"], ["Some_Package.Name-2.32.5.0.tar.gz"]), "available"),
+        (_feed_metadata(["2.32.5"], ["Some_Package.Name-2.32.5.zip"]), "available"),
+        (_feed_metadata(["2.32.5", "legacy-release"]), "available"),
         ({"versions": ["2.20.0"]}, "missing"),
         ({"versions": []}, "missing"),
         ({"files": []}, "failed"),
         ({"versions": [123]}, "failed"),
         ({"versions": ["invalid"]}, "failed"),
+        ({"versions": ["2.32.5"]}, "failed"),
+        (_feed_metadata(["2.32.5"], []), "missing"),
+        (_feed_metadata(["2.32.5"], ["Some_Package.Name-2.20.0.tar.gz"]), "missing"),
+        (_feed_metadata(["2.32.5"], ["different_package-2.32.5-py3-none-any.whl"]), "missing"),
+        (_feed_metadata(["2.32.5"], ["Some_Package.Name-2.32.5.metadata"]), "missing"),
+        (_feed_metadata(["2.32.5"], ["invalid.whl", "Some_Package.Name-2.32.5.tar.gz"]), "available"),
+        ({"versions": ["2.32.5"], "files": ["invalid"]}, "failed"),
+        ({"versions": ["2.32.5"], "files": [{"filename": "Some_Package.Name-2.32.5-py3-none-any.whl"}]}, "failed"),
         ([], "failed"),
     ],
 )
@@ -236,6 +256,55 @@ def test_scanner_failures_and_incomplete_results(project, monkeypatch, successfu
     report = audit.scan(project)
     assert report.status == "failed"
     assert message in report.errors[-1]
+
+
+@pytest.mark.parametrize(
+    "diagnostic",
+    [
+        "TRACE Skipping project-status check for `requests`: Failed to fetch registry metadata",
+        "TRACE Failed to read archived project status for `requests`: invalid metadata",
+    ],
+)
+@pytest.mark.parametrize("findings", [False, True])
+def test_skipped_status_checks_fail_and_preserve_audit(project, monkeypatch, successful_checks, diagnostic, findings):
+    original = audit.run_uv
+    data = _audit_json(findings=findings)
+
+    def run_uv(project, arguments, timeout):
+        if arguments[0] == "audit":
+            return subprocess.CompletedProcess(
+                arguments, int(findings), json.dumps(data), diagnostic + "\n" + diagnostic
+            )
+        return original(project, arguments, timeout)
+
+    monkeypatch.setattr(audit, "run_uv", run_uv)
+    output = project / "report.json"
+    assert audit.main(["--project", str(project), "--output", str(output)]) == 2
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["status"] == "failed"
+    assert report["audit"] == data
+    assert report["skipped_project_status_checks"] == ["requests"]
+    assert "Incomplete project-status coverage" in report["errors"][0]
+
+
+def test_adverse_status_only_is_a_finding_not_a_scanner_failure(project, monkeypatch, successful_checks):
+    original = audit.run_uv
+    data = _audit_json()
+    data["summary"]["adverse_statuses"] = 1
+    data["adverse_statuses"] = [{"name": "requests", "status": "deprecated", "reason": "Use its replacement."}]
+
+    def run_uv(project, arguments, timeout):
+        if arguments[0] == "audit":
+            return subprocess.CompletedProcess(arguments, 0, json.dumps(data), "")
+        return original(project, arguments, timeout)
+
+    monkeypatch.setattr(audit, "run_uv", run_uv)
+    output = project / "report.json"
+    assert audit.main(["--project", str(project), "--output", str(output)]) == 1
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["status"] == "findings"
+    assert not report["errors"]
+    assert report["audit"] == data
 
 
 @pytest.mark.parametrize(
@@ -337,6 +406,7 @@ def test_timeouts_must_be_positive(value):
 
 
 def test_run_uv_does_not_use_shell_and_enforces_timeout(project, monkeypatch):
+    monkeypatch.setenv("RUST_LOG", "off")
     calls = []
 
     def run(command, **kwargs):
@@ -349,6 +419,8 @@ def test_run_uv_does_not_use_shell_and_enforces_timeout(project, monkeypatch):
     assert calls[0][1]["timeout"] == 42
     assert calls[0][1]["cwd"] == project
     assert not calls[0][1].get("shell", False)
+    assert calls[0][1]["env"]["RUST_LOG"] == "warn,uv_audit::service::project_status=trace"
+    assert os.environ["RUST_LOG"] == "off"
 
 
 def test_feed_deadline_retains_partial_results_and_terminates_worker(monkeypatch):
